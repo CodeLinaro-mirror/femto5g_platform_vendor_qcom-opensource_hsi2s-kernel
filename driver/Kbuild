@@ -1,0 +1,4 @@
+# Kernel module instructions go here.
+obj-m := hsi2s.o
+
+hsi2s-y := hsi2s_drv.o
