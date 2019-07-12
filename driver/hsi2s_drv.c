@@ -23,52 +23,170 @@ static u32 wrdma_periodic_length;
 module_param(wrdma_periodic_length, uint, 0644);
 MODULE_PARM_DESC(wrdma_periodic_length, "Periodic length for write channel in KB");
 
-static int operation_mode;
+static int operation_mode = 1;
 module_param(operation_mode, int, 0644);
 MODULE_PARM_DESC(operation_mode, "Default operation mode");
+
+/* Macro callbacks */
+
+static void t_assign_macros()
+{
+
+	hsi2s_core->macro->offset_i2s_ctl = T_LPAIF_I2S_CTL;
+	hsi2s_core->macro->offset_i2s_sel = T_LPAIF_PCM_I2S_SEL;
+	hsi2s_core->macro->offset_irq_en = T_LPAIF_IRQ_EN;
+	hsi2s_core->macro->offset_irq_stat = T_LPAIF_IRQ_STAT;
+	hsi2s_core->macro->offset_irq_clear = T_LPAIF_IRQ_CLEAR;
+	hsi2s_core->macro->offset_rddma_ctl = T_LPAIF_RDDMA_CTL;
+	hsi2s_core->macro->offset_rddma_base = T_LPAIF_RDDMA_BASE;
+	hsi2s_core->macro->offset_rddma_buff_len = T_LPAIF_RDDMA_BUFF_LEN;
+	hsi2s_core->macro->offset_rddma_curr_addr = T_LPAIF_RDDMA_CURR_ADDR;
+	hsi2s_core->macro->offset_rddma_per_len = T_LPAIF_RDDMA_PER_LEN;
+	hsi2s_core->macro->offset_wrdma_ctl = T_LPAIF_WRDMA_CTL;
+	hsi2s_core->macro->offset_wrdma_base = T_LPAIF_WRDMA_BASE;
+	hsi2s_core->macro->offset_wrdma_buff_len = T_LPAIF_WRDMA_BUFF_LEN;
+	hsi2s_core->macro->offset_wrdma_curr_addr = T_LPAIF_WRDMA_CURR_ADDR;
+	hsi2s_core->macro->offset_wrdma_per_len = T_LPAIF_WRDMA_PER_LEN;
+	hsi2s_core->macro->bit_ws_src = T_I2S_WS_SRC;
+	hsi2s_core->macro->bit_mic_en = T_I2S_MIC_EN;
+	hsi2s_core->macro->bit_spkr_en = T_I2S_SPKR_EN;
+	hsi2s_core->macro->bit_loopback = T_I2S_LOOPBACK;
+	hsi2s_core->macro->bit_i2s_reset = T_I2S_RESET;
+	hsi2s_core->macro->bit_i2s_sel = T_I2S_SEL;
+	hsi2s_core->macro->bit_rddma_en = T_RDDMA_EN;
+	hsi2s_core->macro->bit_rddma_burst_en = T_RDDMA_BURST_EN;
+	hsi2s_core->macro->bit_rddma_dyn_clk = T_RDDMA_DYN_CLK;
+	hsi2s_core->macro->bit_rddma_reset = T_RDDMA_RESET;
+	hsi2s_core->macro->bit_wrdma_en = T_WRDMA_EN;
+	hsi2s_core->macro->bit_wrdma_burst_en = T_WRDMA_BURST_EN;
+	hsi2s_core->macro->bit_wrdma_dyn_clk = T_WRDMA_DYN_CLK;
+	hsi2s_core->macro->bit_wrdma_reset = T_WRDMA_RESET;
+	hsi2s_core->macro->regfield_i2s_lrate15 = T_I2S_LONG_RATE_15;
+	hsi2s_core->macro->regfield_spkr_mode_sd0 = T_I2S_SPKR_MODE_SD0;
+	hsi2s_core->macro->regfield_spkr_mode_quad01 = T_I2S_SPKR_MODE_QUAD01;
+	hsi2s_core->macro->regfield_spkr_mono = T_I2S_SPKR_MONO;
+	hsi2s_core->macro->regfield_mic_mode_sd1 = T_I2S_MIC_MODE_SD1;
+	hsi2s_core->macro->regfield_mic_mode_quad01 = T_I2S_MIC_MODE_QUAD01;
+	hsi2s_core->macro->regfield_mic_mono = T_I2S_MIC_MONO;
+	hsi2s_core->macro->regfield_bit_width16 = T_I2S_BIT_WIDTH_16;
+	hsi2s_core->macro->regfield_bit_width32 = T_I2S_BIT_WIDTH_32;
+	hsi2s_core->macro->regfield_rddma_wpscnt_two = T_RDDMA_WPSCNT_TWO;
+	hsi2s_core->macro->regfield_rddma_pri_audio_intf = T_RDDMA_PRI_AUDIO_INTF;
+	hsi2s_core->macro->regfield_rddma_sec_audio_intf = T_RDDMA_SEC_AUDIO_INTF;
+	hsi2s_core->macro->regfield_rddma_fifo_wm8 = T_RDDMA_FIFO_WM_8;
+	hsi2s_core->macro->regfield_wrdma_wpscnt_two = T_WRDMA_WPSCNT_TWO;
+	hsi2s_core->macro->regfield_wrdma_wpscnt_four = T_WRDMA_WPSCNT_FOUR;
+	hsi2s_core->macro->regfield_wrdma_pri_audio_intf = T_WRDMA_PRI_AUDIO_INTF;
+	hsi2s_core->macro->regfield_wrdma_sec_audio_intf = T_WRDMA_SEC_AUDIO_INTF;
+	hsi2s_core->macro->regfield_wrdma_loopback_ch0 = T_WRDMA_LOOPBACK_CH0;
+	hsi2s_core->macro->regfield_wrdma_loopback_ch1 = T_WRDMA_LOOPBACK_CH1;
+	hsi2s_core->macro->regfield_wrdma_fifo_wm8 = T_WRDMA_FIFO_WM_8;
+}
+
+static void h_assign_macros()
+{
+
+	hsi2s_core->macro->offset_i2s_ctl = H_LPAIF_I2S_CTL;
+	hsi2s_core->macro->offset_i2s_sel = H_LPAIF_PCM_I2S_SEL;
+	hsi2s_core->macro->offset_irq_en = H_LPAIF_IRQ_EN;
+	hsi2s_core->macro->offset_irq_stat = H_LPAIF_IRQ_STAT;
+	hsi2s_core->macro->offset_irq_clear = H_LPAIF_IRQ_CLEAR;
+	hsi2s_core->macro->offset_rddma_ctl = H_LPAIF_RDDMA_CTL;
+	hsi2s_core->macro->offset_rddma_base = H_LPAIF_RDDMA_BASE;
+	hsi2s_core->macro->offset_rddma_buff_len = H_LPAIF_RDDMA_BUFF_LEN;
+	hsi2s_core->macro->offset_rddma_curr_addr = H_LPAIF_RDDMA_CURR_ADDR;
+	hsi2s_core->macro->offset_rddma_per_len = H_LPAIF_RDDMA_PER_LEN;
+	hsi2s_core->macro->offset_wrdma_ctl = H_LPAIF_WRDMA_CTL;
+	hsi2s_core->macro->offset_wrdma_base = H_LPAIF_WRDMA_BASE;
+	hsi2s_core->macro->offset_wrdma_buff_len = H_LPAIF_WRDMA_BUFF_LEN;
+	hsi2s_core->macro->offset_wrdma_curr_addr = H_LPAIF_WRDMA_CURR_ADDR;
+	hsi2s_core->macro->offset_wrdma_per_len = H_LPAIF_WRDMA_PER_LEN;
+	hsi2s_core->macro->bit_ws_src = H_I2S_WS_SRC;
+	hsi2s_core->macro->bit_mic_en = H_I2S_MIC_EN;
+	hsi2s_core->macro->bit_spkr_en = H_I2S_SPKR_EN;
+	hsi2s_core->macro->bit_loopback = H_I2S_LOOPBACK;
+	hsi2s_core->macro->bit_i2s_reset = H_I2S_RESET;
+	hsi2s_core->macro->bit_i2s_sel = H_I2S_SEL;
+	hsi2s_core->macro->bit_rddma_en = H_RDDMA_EN;
+	hsi2s_core->macro->bit_rddma_burst_en = H_RDDMA_BURST_EN;
+	hsi2s_core->macro->bit_rddma_dyn_clk = H_RDDMA_DYN_CLK;
+	hsi2s_core->macro->bit_rddma_reset = H_RDDMA_RESET;
+	hsi2s_core->macro->bit_wrdma_en = H_WRDMA_EN;
+	hsi2s_core->macro->bit_wrdma_burst_en = H_WRDMA_BURST_EN;
+	hsi2s_core->macro->bit_wrdma_dyn_clk = H_WRDMA_DYN_CLK;;
+	hsi2s_core->macro->bit_wrdma_reset = H_WRDMA_RESET;
+	hsi2s_core->macro->regfield_i2s_lrate15 = H_I2S_LONG_RATE_15;
+	hsi2s_core->macro->regfield_spkr_mode_sd0 = H_I2S_SPKR_MODE_SD0;
+	hsi2s_core->macro->regfield_spkr_mode_quad01 = H_I2S_SPKR_MODE_QUAD01;
+	hsi2s_core->macro->regfield_spkr_mono = H_I2S_SPKR_MONO;
+	hsi2s_core->macro->regfield_mic_mode_sd1 = H_I2S_MIC_MODE_SD1;
+	hsi2s_core->macro->regfield_mic_mode_quad01 = H_I2S_MIC_MODE_QUAD01;
+	hsi2s_core->macro->regfield_mic_mono = H_I2S_MIC_MONO;
+	hsi2s_core->macro->regfield_bit_width16 = H_I2S_BIT_WIDTH_16;
+	hsi2s_core->macro->regfield_bit_width32 = H_I2S_BIT_WIDTH_32;
+	hsi2s_core->macro->regfield_rddma_wpscnt_two = H_RDDMA_WPSCNT_TWO;
+	hsi2s_core->macro->regfield_rddma_pri_audio_intf = H_RDDMA_PRI_AUDIO_INTF;
+	hsi2s_core->macro->regfield_rddma_sec_audio_intf = H_RDDMA_SEC_AUDIO_INTF;
+	hsi2s_core->macro->regfield_rddma_ter_audio_intf = H_RDDMA_TER_AUDIO_INTF;
+	hsi2s_core->macro->regfield_rddma_fifo_wm8 = H_RDDMA_FIFO_WM_8;
+	hsi2s_core->macro->regfield_wrdma_wpscnt_two = H_WRDMA_WPSCNT_TWO;
+	hsi2s_core->macro->regfield_wrdma_wpscnt_four = H_WRDMA_WPSCNT_FOUR;
+	hsi2s_core->macro->regfield_wrdma_pri_audio_intf = H_WRDMA_PRI_AUDIO_INTF;
+	hsi2s_core->macro->regfield_wrdma_sec_audio_intf = H_WRDMA_SEC_AUDIO_INTF;
+	hsi2s_core->macro->regfield_wrdma_ter_audio_intf = H_WRDMA_TER_AUDIO_INTF;
+	hsi2s_core->macro->regfield_wrdma_loopback_ch0 = H_WRDMA_LOOPBACK_CH0;
+	hsi2s_core->macro->regfield_wrdma_loopback_ch1 = H_WRDMA_LOOPBACK_CH1;
+	hsi2s_core->macro->regfield_wrdma_loopback_ch2 = H_WRDMA_LOOPBACK_CH2;
+	hsi2s_core->macro->regfield_wrdma_fifo_wm8 = H_WRDMA_FIFO_WM_8;
+}
 
 /* Register callbacks */
 
 /* Map the register memory regions */
 static void map_registers(struct hsi2s_device *hs_dev, int intf)
 {
-	hs_dev->i2s_ctl = hsi2s_core->lpaif_base_va + LPAIF_I2S_CTL +
+	hs_dev->i2s_ctl = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_i2s_ctl +
 				(0x1000 * intf);
-	hs_dev->i2s_sel = hsi2s_core->lpaif_base_va + LPAIF_PCM_I2S_SEL +
+	hs_dev->i2s_sel = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_i2s_sel +
 				(0x1000 * intf);
 	hs_dev->rddma_ctl = hsi2s_core->lpaif_base_va +
-					     LPAIF_RDDMA_CTL +
+					     hsi2s_core->macro->offset_rddma_ctl +
 					     (0x1000 * intf);
 	hs_dev->rddma_base = hsi2s_core->lpaif_base_va +
-					     LPAIF_RDDMA_BASE +
+					     hsi2s_core->macro->offset_rddma_base +
 					     (0x1000 * intf);
 	hs_dev->rddma_buff_len = hsi2s_core->lpaif_base_va +
-					     LPAIF_RDDMA_BUFF_LEN +
+					     hsi2s_core->macro->offset_rddma_buff_len +
 					     (0x1000 * intf);
 	hs_dev->rddma_curr_addr = hsi2s_core->lpaif_base_va +
-					     LPAIF_RDDMA_CURR_ADDR +
+					     hsi2s_core->macro->offset_rddma_curr_addr +
 					     (0x1000 * intf);
 	hs_dev->rddma_per_len = hsi2s_core->lpaif_base_va +
-					     LPAIF_RDDMA_PER_LEN +
+					     hsi2s_core->macro->offset_rddma_per_len +
 					     (0x1000 * intf);
 	hs_dev->wrdma_ctl = hsi2s_core->lpaif_base_va +
-					     LPAIF_WRDMA_CTL +
+					     hsi2s_core->macro->offset_wrdma_ctl +
 					     (0x1000 * intf);
 	hs_dev->wrdma_base = hsi2s_core->lpaif_base_va +
-					     LPAIF_WRDMA_BASE +
+					     hsi2s_core->macro->offset_wrdma_base +
 					     (0x1000 * intf);
 	hs_dev->wrdma_buff_len = hsi2s_core->lpaif_base_va +
-					     LPAIF_WRDMA_BUFF_LEN +
+					     hsi2s_core->macro->offset_wrdma_buff_len +
 					     (0x1000 * intf);
 	hs_dev->wrdma_curr_addr = hsi2s_core->lpaif_base_va +
-					     LPAIF_WRDMA_CURR_ADDR +
+					     hsi2s_core->macro->offset_wrdma_curr_addr +
 					     (0x1000 * intf);
 	hs_dev->wrdma_per_len = hsi2s_core->lpaif_base_va +
-					     LPAIF_WRDMA_PER_LEN +
+					     hsi2s_core->macro->offset_wrdma_per_len +
 					     (0x1000 * intf);
-	hs_dev->irq_en = hsi2s_core->lpaif_base_va + LPAIF_IRQ_EN;
-	hs_dev->irq_stat = hsi2s_core->lpaif_base_va + LPAIF_IRQ_STAT;
-	hs_dev->irq_clear = hsi2s_core->lpaif_base_va + LPAIF_IRQ_CLEAR;
+	hs_dev->irq_en = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_irq_en;
+	hs_dev->irq_stat = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_irq_stat;
+	hs_dev->irq_clear = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_irq_clear;
+
+	if (hsi2s_core->target == 8155) {
+		hs_dev->lpaif_muxmode = hsi2s_core->lpass_tcsr_base_va +
+					H_LPAIF_MUXMODE + (0x4 * intf);
+	}
 }
 
 /* Set specific register bits */
@@ -107,18 +225,15 @@ static void clear_irqs(struct hsi2s_device *hs_dev)
 static void reset_registers(struct hsi2s_device *hs_dev)
 {
 	reg_clear(hs_dev->i2s_ctl);
-	setbits(hs_dev->i2s_ctl, I2S_LONG_RATE |
-				 I2S_SPKR_MODE_QUAD01 |
-				 I2S_MIC_MODE_QUAD01 |
-				 I2S_LOOPBACK);
+
 	clear_irqs(hs_dev);
 	reg_clear(hs_dev->rddma_ctl);
 	reg_clear(hs_dev->rddma_base);
 	reg_clear(hs_dev->rddma_buff_len);
 	reg_clear(hs_dev->rddma_curr_addr);
 	reg_clear(hs_dev->rddma_per_len);
-	setbits(hs_dev->rddma_ctl, RDDMA_RESET);
-	clearbits(hs_dev->rddma_ctl, RDDMA_RESET);
+	setbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_reset);
+	clearbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_reset);
 
 	msleep(1000);
 
@@ -127,13 +242,13 @@ static void reset_registers(struct hsi2s_device *hs_dev)
 	reg_clear(hs_dev->wrdma_buff_len);
 	reg_clear(hs_dev->wrdma_curr_addr);
 	reg_clear(hs_dev->wrdma_per_len);
-	setbits(hs_dev->wrdma_ctl, WRDMA_RESET);
-	clearbits(hs_dev->wrdma_ctl, WRDMA_RESET);
+	setbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_reset);
+	clearbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_reset);
 
 	msleep(1000);
 
-	setbits(hs_dev->i2s_ctl, I2S_RESET);
-	clearbits(hs_dev->i2s_ctl, I2S_RESET);
+	setbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_i2s_reset);
+	clearbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_i2s_reset);
 }
 
 /* Reset the read DMA registers */
@@ -144,8 +259,8 @@ static void reset_rddma_registers(struct hsi2s_device *hs_dev)
 	reg_clear(hs_dev->rddma_buff_len);
 	reg_clear(hs_dev->rddma_curr_addr);
 	reg_clear(hs_dev->rddma_per_len);
-	setbits(hs_dev->rddma_ctl, RDDMA_RESET);
-	clearbits(hs_dev->rddma_ctl, RDDMA_RESET);
+	setbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_reset);
+	clearbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_reset);
 }
 
 /* Reset the write DMA registers */
@@ -156,125 +271,213 @@ static void reset_wrdma_registers(struct hsi2s_device *hs_dev)
 	reg_clear(hs_dev->wrdma_buff_len);
 	reg_clear(hs_dev->wrdma_curr_addr);
 	reg_clear(hs_dev->wrdma_per_len);
-	setbits(hs_dev->wrdma_ctl, WRDMA_RESET);
-	clearbits(hs_dev->wrdma_ctl, WRDMA_RESET);
+	setbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_reset);
+	clearbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_reset);
+}
+
+/* Configure i2s control register for speaker operation */
+static void configure_i2s_spkr(struct hsi2s_device *hs_dev)
+{
+	setbits(hs_dev->i2s_ctl, hsi2s_core->macro->regfield_i2s_lrate15 |
+				 hsi2s_core->macro->regfield_spkr_mode_sd0 |
+				 hsi2s_core->macro->regfield_spkr_mono |
+				 hsi2s_core->macro->regfield_bit_width32);
+	clearbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
+	setbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_i2s_reset);
+	clearbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_i2s_reset);
+}
+
+/* Configure i2s control register for mic operation */
+static void configure_i2s_mic(struct hsi2s_device *hs_dev)
+{
+	setbits(hs_dev->i2s_ctl, hsi2s_core->macro->regfield_i2s_lrate15 |
+				 hsi2s_core->macro->regfield_mic_mode_sd1 |
+				 hsi2s_core->macro->regfield_mic_mono |
+				 hsi2s_core->macro->bit_ws_src |
+				 hsi2s_core->macro->regfield_bit_width32);
+	clearbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
+	setbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_i2s_reset);
+	clearbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_i2s_reset);
+
 }
 
 /* Configure the read DMA registers */
 static void configure_rddma(struct hsi2s_device *hs_dev, int intf)
 {
-	reg_clear(hs_dev->i2s_ctl);
-	setbits(hs_dev->i2s_ctl, I2S_LONG_RATE |
-				 I2S_SPKR_MODE_QUAD01 |
-				 I2S_MIC_MODE_QUAD01 |
-				 I2S_LOOPBACK);
-	clearbits(hs_dev->i2s_sel, I2S_SEL);
-	setbits(hs_dev->i2s_ctl, I2S_RESET);
-	clearbits(hs_dev->i2s_ctl, I2S_RESET);
-
-	if (!intf) {
-		setbits(hs_dev->rddma_ctl, RDDMA_BURST_EN |
-					   RDDMA_DYN_CLK |
-					   RDDMA_WPSCNT_TWO |
-					   RDDMA_PRI_AUDIO_INTF |
-					   RDDMA_FIFO_WM_8);
+	if (intf == HS0_I2S) {
+		setbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_burst_en |
+					   hsi2s_core->macro->bit_rddma_dyn_clk |
+					   hsi2s_core->macro->regfield_rddma_pri_audio_intf |
+					   hsi2s_core->macro->regfield_rddma_fifo_wm8);
 		setbits(hs_dev->irq_en, IRQ_PER_RDDMA_CH0 |
 					IRQ_UNDR_RDDMA_CH0 |
 					IRQ_ERR_RDDMA_CH0);
 		pr_warn("[HSI2S] Configured rddma channel for sdr0");
-	} else {
-		setbits(hs_dev->rddma_ctl, RDDMA_BURST_EN |
-					   RDDMA_DYN_CLK |
-					   RDDMA_WPSCNT_TWO |
-					   RDDMA_SEC_AUDIO_INTF |
-					   RDDMA_FIFO_WM_8);
+	} else if (intf == HS1_I2S) {
+		setbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_burst_en |
+					   hsi2s_core->macro->bit_rddma_dyn_clk |
+					   hsi2s_core->macro->regfield_rddma_sec_audio_intf |
+					   hsi2s_core->macro->regfield_rddma_fifo_wm8);
 		setbits(hs_dev->irq_en, IRQ_PER_RDDMA_CH1 |
 					IRQ_UNDR_RDDMA_CH1 |
 					IRQ_ERR_RDDMA_CH1);
 		pr_warn("[HSI2S] Configured rddma channel for sdr1");
+	} else if (intf == HS2_I2S) {
+		setbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_burst_en |
+					   hsi2s_core->macro->bit_rddma_dyn_clk |
+					   hsi2s_core->macro->regfield_rddma_ter_audio_intf |
+					   hsi2s_core->macro->regfield_rddma_fifo_wm8);
+		setbits(hs_dev->irq_en, IRQ_PER_RDDMA_CH2 |
+					IRQ_UNDR_RDDMA_CH2 |
+					IRQ_ERR_RDDMA_CH2);
+		pr_warn("[HSI2S] Configured rddma channel for sdr2");
 	}
 }
 
 /* Configure the write DMA registers */
 static void configure_wrdma(struct hsi2s_device *hs_dev, int intf)
 {
-	reg_clear(hs_dev->i2s_ctl);
-	setbits(hs_dev->i2s_ctl, I2S_LONG_RATE |
-				 I2S_MIC_MODE_QUAD01 |
-				 I2S_WS_SRC |
-				 I2S_BIT_WIDTH_32);
-	clearbits(hs_dev->i2s_sel, I2S_SEL);
-	setbits(hs_dev->i2s_ctl, I2S_RESET);
-	clearbits(hs_dev->i2s_ctl, I2S_RESET);
-
 	writel_relaxed(virt_to_phys(hs_dev->lpass_wrdma_start),
 		       hs_dev->wrdma_base);
 	writel_relaxed(DEFAULT_BUFF_LEN_WORDS, hs_dev->wrdma_buff_len);
-	writel_relaxed(wrdma_periodic_length, hs_dev->wrdma_per_len);
 
-	if (!intf) {
-		setbits(hs_dev->wrdma_ctl, WRDMA_DYN_CLK |
-					   WRDMA_WPSCNT_FOUR |
-					   WRDMA_PRI_AUDIO_INTF |
-					   WRDMA_FIFO_WM_8);
+	if (hs_dev->mode == NORMAL)
+		writel_relaxed(wrdma_periodic_length, hs_dev->wrdma_per_len);
+
+	if (intf == HS0_I2S) {
+		setbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_dyn_clk |
+					   hsi2s_core->macro->bit_wrdma_burst_en |
+					   hsi2s_core->macro->regfield_wrdma_pri_audio_intf |
+					   hsi2s_core->macro->regfield_wrdma_fifo_wm8);
 		setbits(hs_dev->irq_en, IRQ_PER_WRDMA_CH0 |
 					IRQ_OVR_WRDMA_CH0 |
 					IRQ_ERR_WRDMA_CH0);
 		pr_warn("[HSI2S] Enabling wrdma channel for sdr0");
-	} else {
-		setbits(hs_dev->wrdma_ctl, WRDMA_DYN_CLK |
-					   WRDMA_WPSCNT_FOUR |
-					   WRDMA_SEC_AUDIO_INTF |
-					   WRDMA_FIFO_WM_8);
+	} else if (intf == HS1_I2S) {
+		setbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_dyn_clk |
+					   hsi2s_core->macro->bit_wrdma_burst_en |
+					   hsi2s_core->macro->regfield_wrdma_sec_audio_intf |
+					   hsi2s_core->macro->regfield_wrdma_fifo_wm8);
 		setbits(hs_dev->irq_en, IRQ_PER_WRDMA_CH1 |
 					IRQ_OVR_WRDMA_CH1 |
 					IRQ_ERR_WRDMA_CH1);
 		pr_warn("[HSI2S] Enabling wrdma channel for sdr1");
+	} else if (intf == HS2_I2S) {
+		setbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_dyn_clk |
+					   hsi2s_core->macro->bit_wrdma_burst_en |
+					   hsi2s_core->macro->regfield_wrdma_ter_audio_intf |
+					   hsi2s_core->macro->regfield_wrdma_fifo_wm8);
+		setbits(hs_dev->irq_en, IRQ_PER_WRDMA_CH2 |
+					IRQ_OVR_WRDMA_CH2 |
+					IRQ_ERR_WRDMA_CH2);
+		pr_warn("[HSI2S] Enabling wrdma channel for sdr2");
 	}
 
-	setbits(hs_dev->wrdma_ctl, WRDMA_EN);
+	if (hs_dev->mode == NORMAL)
+		setbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_en);
+}
+
+/* Configure the I2S control register for internal loopback */
+static void configure_i2s_int_lb(struct hsi2s_device *hs_dev)
+{
+	setbits(hs_dev->i2s_ctl, hsi2s_core->macro->regfield_i2s_lrate15 |
+				 hsi2s_core->macro->regfield_spkr_mode_quad01 |
+				 hsi2s_core->macro->regfield_mic_mode_quad01 |
+				 hsi2s_core->macro->bit_loopback);
+	clearbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
+	setbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_i2s_reset);
+	clearbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_i2s_reset);
+}
+
+/* Configure the read DMA registers */
+static void configure_rddma_int_lb(struct hsi2s_device *hs_dev, int intf)
+{
+	if (intf == HS0_I2S) {
+		setbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_burst_en |
+					   hsi2s_core->macro->bit_rddma_dyn_clk |
+					   hsi2s_core->macro->regfield_rddma_wpscnt_two |
+					   hsi2s_core->macro->regfield_rddma_pri_audio_intf |
+					   hsi2s_core->macro->regfield_rddma_fifo_wm8);
+		setbits(hs_dev->irq_en, IRQ_PER_RDDMA_CH0 |
+					IRQ_UNDR_RDDMA_CH0 |
+					IRQ_ERR_RDDMA_CH0);
+		pr_warn("[HSI2S] Configured rddma channel for sdr0");
+	} else if (intf == HS1_I2S) {
+		setbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_burst_en |
+					   hsi2s_core->macro->bit_rddma_dyn_clk |
+					   hsi2s_core->macro->regfield_rddma_wpscnt_two |
+					   hsi2s_core->macro->regfield_rddma_sec_audio_intf |
+					   hsi2s_core->macro->regfield_rddma_fifo_wm8);
+		setbits(hs_dev->irq_en, IRQ_PER_RDDMA_CH1 |
+					IRQ_UNDR_RDDMA_CH1 |
+					IRQ_ERR_RDDMA_CH1);
+		pr_warn("[HSI2S] Configured rddma channel for sdr1");
+	} else if (intf == HS2_I2S) {
+		setbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_burst_en |
+					   hsi2s_core->macro->bit_rddma_dyn_clk |
+					   hsi2s_core->macro->regfield_rddma_wpscnt_two |
+					   hsi2s_core->macro->regfield_rddma_ter_audio_intf |
+					   hsi2s_core->macro->regfield_rddma_fifo_wm8);
+		setbits(hs_dev->irq_en, IRQ_PER_RDDMA_CH2 |
+					IRQ_UNDR_RDDMA_CH2 |
+					IRQ_ERR_RDDMA_CH2);
+		pr_warn("[HSI2S] Configured rddma channel for sdr2");
+	}
 }
 
 /* Configure the write DMA registers for internal loopback */
-static void configure_wrdma_lb(struct hsi2s_device *hs_dev, int intf)
+static void configure_wrdma_int_lb(struct hsi2s_device *hs_dev, int intf)
 {
-	reg_clear(hs_dev->i2s_ctl);
-	setbits(hs_dev->i2s_ctl, I2S_LONG_RATE |
-				 I2S_SPKR_MODE_QUAD01 |
-				 I2S_MIC_MODE_QUAD01 |
-				 I2S_LOOPBACK);
-	clearbits(hs_dev->i2s_sel, I2S_SEL);
-	setbits(hs_dev->i2s_ctl, I2S_RESET);
-	clearbits(hs_dev->i2s_ctl, I2S_RESET);
-
 	writel_relaxed(virt_to_phys(hs_dev->lpass_wrdma_start),
 		       hs_dev->wrdma_base);
 	writel_relaxed(DEFAULT_BUFF_LEN_WORDS, hs_dev->wrdma_buff_len);
-	writel_relaxed(wrdma_periodic_length, hs_dev->wrdma_per_len);
 
-	if (!intf) {
-		setbits(hs_dev->wrdma_ctl, WRDMA_DYN_CLK |
-					   WRDMA_BURST_EN |
-					   WRDMA_WPSCNT_TWO |
-					   WRDMA_LOOPBACK_CH0 |
-					   WRDMA_FIFO_WM_8);
+	if (intf == HS0_I2S) {
+		setbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_dyn_clk |
+					   hsi2s_core->macro->bit_wrdma_burst_en |
+					   hsi2s_core->macro->regfield_wrdma_wpscnt_two |
+					   hsi2s_core->macro->regfield_wrdma_loopback_ch0 |
+					   hsi2s_core->macro->regfield_wrdma_fifo_wm8);
 		setbits(hs_dev->irq_en, IRQ_PER_WRDMA_CH0 |
 					IRQ_OVR_WRDMA_CH0 |
 					IRQ_ERR_WRDMA_CH0);
 		pr_warn("[HSI2S] Enabling wrdma channel for sdr0");
-	} else {
-		setbits(hs_dev->wrdma_ctl, WRDMA_DYN_CLK |
-					   WRDMA_BURST_EN |
-					   WRDMA_WPSCNT_TWO |
-					   WRDMA_LOOPBACK_CH1 |
-					   WRDMA_FIFO_WM_8);
+	} else if (intf == HS1_I2S) {
+		setbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_dyn_clk |
+					   hsi2s_core->macro->bit_wrdma_burst_en |
+					   hsi2s_core->macro->regfield_wrdma_wpscnt_two |
+					   hsi2s_core->macro->regfield_wrdma_loopback_ch1 |
+					   hsi2s_core->macro->regfield_wrdma_fifo_wm8);
 		setbits(hs_dev->irq_en, IRQ_PER_WRDMA_CH1 |
 					IRQ_OVR_WRDMA_CH1 |
 					IRQ_ERR_WRDMA_CH1);
 		pr_warn("[HSI2S] Enabling wrdma channel for sdr1");
+	} else if (intf == HS2_I2S) {
+		setbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_dyn_clk |
+					   hsi2s_core->macro->bit_wrdma_burst_en |
+					   hsi2s_core->macro->regfield_wrdma_wpscnt_two |
+					   hsi2s_core->macro->regfield_wrdma_loopback_ch2 |
+					   hsi2s_core->macro->regfield_wrdma_fifo_wm8);
+		setbits(hs_dev->irq_en, IRQ_PER_WRDMA_CH2 |
+					IRQ_OVR_WRDMA_CH2 |
+					IRQ_ERR_WRDMA_CH2);
+		pr_warn("[HSI2S] Enabling wrdma channel for sdr2");
 	}
 
-	setbits(hs_dev->wrdma_ctl, WRDMA_EN);
+}
+
+/* Configure the I2S control register for external loopback */
+static void configure_i2s_ext_lb(struct hsi2s_device *hs_dev)
+{
+	setbits(hs_dev->i2s_ctl, hsi2s_core->macro->regfield_i2s_lrate15 |
+				 hsi2s_core->macro->regfield_spkr_mode_sd0 |
+				 hsi2s_core->macro->regfield_spkr_mono |
+				 hsi2s_core->macro->regfield_mic_mode_sd1 |
+				 hsi2s_core->macro->regfield_mic_mono |
+				 hsi2s_core->macro->regfield_bit_width32);
+	clearbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
+	setbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_i2s_reset);
+	clearbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_i2s_reset);
 }
 
 /* Function to configure HS-I2S registers in normal mode */
@@ -282,10 +485,15 @@ static void configure_normal_mode(struct hsi2s_device *hs_dev, int intf)
 {
 	pr_warn("[HSI2S] Configuring normal mode operation");
 	/* Set operational mode */
-	hs_dev->mode = 1;
+	hs_dev->mode = NORMAL;
 	/* Reset the DMA registers */
 	reset_rddma_registers(hs_dev);
 	reset_wrdma_registers(hs_dev);
+	/* Reset I2S control register */
+	reg_clear(hs_dev->i2s_ctl);
+	/* Configure I2S control register */
+	configure_i2s_spkr(hs_dev);
+	configure_i2s_mic(hs_dev);
 	/* Configure RDDMA registers */
 	configure_rddma(hs_dev, intf);
 	/* Configure WRDMA registers */
@@ -294,27 +502,7 @@ static void configure_normal_mode(struct hsi2s_device *hs_dev, int intf)
 	/* Clear the IRQs */
 	clear_irqs(hs_dev);
 	/* Enable mic */
-	setbits(hs_dev->i2s_ctl, I2S_MIC_EN);
-}
-
-/* Function to configure HS-I2S registers in loopback mode */
-static void configure_loopback_mode(struct hsi2s_device *hs_dev, int intf)
-{
-	pr_warn("[HSI2S] Configuring loopback mode operation");
-	/* Set operational mode */
-	hs_dev->mode = 0;
-	/* Reset the DMA registers */
-	reset_rddma_registers(hs_dev);
-	reset_wrdma_registers(hs_dev);
-	/* Configure RDDMA registers */
-	configure_rddma(hs_dev, intf);
-	/* Configure WRDMA registers */
-	configure_wrdma_lb(hs_dev, intf);
-	msleep(1000);
-	/* Clear the IRQs */
-	clear_irqs(hs_dev);
-	/* Enable mic */
-	setbits(hs_dev->i2s_ctl, I2S_MIC_EN);
+	setbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_mic_en);
 	/* Reset metadata counters */
 	hs_dev->meta_index_read = 0;
 	hs_dev->meta_index_write = 0;
@@ -322,6 +510,81 @@ static void configure_loopback_mode(struct hsi2s_device *hs_dev, int intf)
 	/* Reset buffer pointers */
 	hs_dev->write_buffer->head = hs_dev->lpass_wrdma_start;
 	hs_dev->write_buffer->tail = hs_dev->lpass_wrdma_start;
+}
+
+/* Function to configure HS-I2S registers in loopback mode */
+static void configure_int_loopback_mode(struct hsi2s_device *hs_dev, int intf)
+{
+	pr_warn("[HSI2S] Configuring loopback mode operation");
+	/* Set operational mode */
+	hs_dev->mode = INTERNAL_LB;
+	/* Reset the DMA registers */
+	reset_rddma_registers(hs_dev);
+	reset_wrdma_registers(hs_dev);
+	/* Reset I2S control register */
+	reg_clear(hs_dev->i2s_ctl);
+	/* Configure I2S control register */
+	configure_i2s_int_lb(hs_dev);
+	/* Configure RDDMA registers */
+	configure_rddma_int_lb(hs_dev, intf);
+	/* Configure WRDMA registers */
+	configure_wrdma_int_lb(hs_dev, intf);
+	msleep(1000);
+	/* Clear the IRQs */
+	clear_irqs(hs_dev);
+	/* Reset metadata counters */
+	hs_dev->meta_index_read = 0;
+	hs_dev->meta_index_write = 0;
+	hs_dev->user_read_index = 0;
+	/* Reset buffer pointers */
+	hs_dev->write_buffer->head = hs_dev->lpass_wrdma_start;
+	hs_dev->write_buffer->tail = hs_dev->lpass_wrdma_start;
+}
+
+/* Function to configure HS-I2S registers in external loopback mode */
+static void configure_ext_loopback_mode(struct hsi2s_device *hs_dev, int intf)
+{
+	pr_warn("[HSI2S] Configuring external loopback mode operation");
+	/* Set operational mode */
+	hs_dev->mode = EXTERNAL_LB_MASTER;
+	/* Reset the DMA registers */
+	reset_rddma_registers(hs_dev);
+	reset_wrdma_registers(hs_dev);
+	/* Reset I2S control register */
+	reg_clear(hs_dev->i2s_ctl);
+	/* Configure I2S control register */
+	configure_i2s_ext_lb(hs_dev);
+	/* Configure WRDMA registers */
+	configure_wrdma(hs_dev, intf);
+	/* Configure RDDMA registers */
+	configure_rddma(hs_dev, intf);
+	msleep(1000);
+	/* Clear the IRQs */
+	clear_irqs(hs_dev);
+	/* Reset metadata counters */
+	hs_dev->meta_index_read = 0;
+	hs_dev->meta_index_write = 0;
+	hs_dev->user_read_index = 0;
+	/* Reset buffer pointers */
+	hs_dev->write_buffer->head = hs_dev->lpass_wrdma_start;
+	hs_dev->write_buffer->tail = hs_dev->lpass_wrdma_start;
+}
+
+/* Configure interface as master/slave */
+static void configure_muxmode(struct hsi2s_device *hs_dev, int mode)
+{
+	if (mode) {
+		/* Configure slave */
+		setbits(hs_dev->lpaif_muxmode, BIT(0));
+		setbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_ws_src);
+		pr_warn("[HSI2S] hs%d configured as slave", hs_dev->minor_num);
+	} else {
+		/* Configure master */
+		clearbits(hs_dev->lpaif_muxmode, BIT(0));
+		clearbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_ws_src);
+		pr_warn("[HSI2S] hs%d configured as master", hs_dev->minor_num);
+	}
+
 }
 
 /* DMA buffer callbacks */
@@ -344,6 +607,8 @@ static int hsi2s_buffer_init(struct hsi2s_device *hs_dev)
 
 	for (i = 0; i < METADATA_SIZE; i++)
 		hs_dev->b_meta_read[i].data_ready = 0;
+
+	pr_warn("[HSI2S] Allocated buffer size:%d", wrdma_periodic_length_bytes);
 
 	hs_dev->rddma_busy = 0;
 	hs_dev->meta_index_read = 0;
@@ -472,9 +737,6 @@ static int init_default(struct hsi2s_device *hs_dev, int intf)
 		return ret;
 	}
 
-	/* Initialize the spinlocks */
-	spin_lock_init(&hs_dev->metacount_lock);
-
 	/* Initialize the wait queues */
 	init_waitqueue_head(&hs_dev->wq_rddma);
 	init_waitqueue_head(&hs_dev->wq_wrdma);
@@ -594,6 +856,109 @@ static int hsi2s_configure_gpio_pins(struct platform_device *pdev)
 }
 
 /* Clock management functions */
+
+static void h_modify_core_clks(int enable)
+{
+	void __iomem *gcc_lpass_sway;
+	void __iomem *lpass_gdscr;
+	void __iomem *lpass_core_cbcr;
+	void __iomem *hs_rdmem;
+	void __iomem *hs_wrmem;
+	void __iomem *lpass_mport;
+
+	gcc_lpass_sway = ioremap(0x147004, 4);
+	lpass_gdscr = ioremap(0x1700B000, 4);
+	lpass_core_cbcr = ioremap(0x1701F000, 4);
+	hs_rdmem = ioremap(0x17049004, 4);
+	hs_wrmem = ioremap(0x17049000, 4);
+	lpass_mport = ioremap(0x17023000, 4);
+
+	if (enable) {
+		pr_warn("[HSI2S] Enable core clocks for 8155");
+		setbits(gcc_lpass_sway, 0x1);
+		clearbits(lpass_gdscr, 0x1);
+		setbits(lpass_core_cbcr, 0x1);
+		setbits(hs_rdmem, 0x1);
+		setbits(hs_wrmem, 0x1);
+		setbits(lpass_mport, 0x1);
+		pr_warn("[HSI2S] Core clocks enabled for 8155");
+	} else {
+		pr_warn("[HSI2S] Disable core clocks for 8155");
+		clearbits(lpass_mport, 0x1);
+		clearbits(hs_wrmem, 0x1);
+		clearbits(hs_rdmem, 0x1);
+		clearbits(lpass_core_cbcr, 0x1);
+		setbits(lpass_gdscr, 0x1);
+		clearbits(gcc_lpass_sway, 0x1);
+		pr_warn("[HSI2S] Core clocks disabled for 8155");
+	}
+
+	iounmap(gcc_lpass_sway);
+	iounmap(lpass_gdscr);
+	iounmap(lpass_core_cbcr);
+	iounmap(hs_rdmem);
+	iounmap(hs_wrmem);
+	iounmap(lpass_mport);
+}
+
+static void h_modify_interface_clks(int enable)
+{
+	void __iomem *hs_if0_ibit;
+	void __iomem *hs_if1_ibit;
+	void __iomem *hs_if2_ibit;
+	void __iomem *hs_if0_ebit;
+	void __iomem *hs_if1_ebit;
+	void __iomem *hs_if2_ebit;
+	void __iomem *hs_if0_mclk;
+	void __iomem *hs_if1_mclk;
+	void __iomem *hs_if2_mclk;
+
+	hs_if0_ibit = ioremap(0x17046018, 4);
+	hs_if0_ebit = ioremap(0x1704601C, 4);
+	hs_if0_mclk = ioremap(0x17020014, 4);
+	hs_if1_ibit = ioremap(0x17047018, 4);
+	hs_if1_ebit = ioremap(0x1704701C, 4);
+	hs_if1_mclk = ioremap(0x17021014, 4);
+	hs_if2_ibit = ioremap(0x17048018, 4);
+	hs_if2_ebit = ioremap(0x1704801C, 4);
+	hs_if2_mclk = ioremap(0x17022014, 4);
+
+	if (enable) {
+		pr_warn("[HSI2S] Enable interface clocks for 8155");
+		setbits(hs_if0_ibit, 0x1);
+		setbits(hs_if1_ibit, 0x1);
+		setbits(hs_if2_ibit, 0x1);
+		setbits(hs_if0_ebit, 0x1);
+		setbits(hs_if1_ebit, 0x1);
+		setbits(hs_if2_ebit, 0x1);
+		setbits(hs_if0_mclk, 0x1);
+		setbits(hs_if1_mclk, 0x1);
+		setbits(hs_if2_mclk, 0x1);
+		pr_warn("[HSI2S] Interface clocks enabled for 8155");
+	} else {
+		pr_warn("[HSI2S] Disable interface clocks for 8155");
+		clearbits(hs_if0_ibit, 0x1);
+		clearbits(hs_if1_ibit, 0x1);
+		clearbits(hs_if2_ibit, 0x1);
+		clearbits(hs_if0_ebit, 0x1);
+		clearbits(hs_if1_ebit, 0x1);
+		clearbits(hs_if2_ebit, 0x1);
+		clearbits(hs_if0_mclk, 0x1);
+		clearbits(hs_if1_mclk, 0x1);
+		clearbits(hs_if2_mclk, 0x1);
+		pr_warn("[HSI2S] Interface clocks disabled for 8155");
+	}
+
+	iounmap(hs_if0_ibit);
+	iounmap(hs_if0_ebit);
+	iounmap(hs_if0_mclk);
+	iounmap(hs_if1_ibit);
+	iounmap(hs_if1_ebit);
+	iounmap(hs_if1_mclk);
+	iounmap(hs_if2_ibit);
+	iounmap(hs_if2_ebit);
+	iounmap(hs_if2_mclk);
+}
 
 /* Function to disable core clocks */
 static void hsi2s_disable_core_clks(struct platform_device *pdev)
@@ -891,6 +1256,7 @@ static int rddma_schedule(void *data)
 		}
 
 		if (hs_dev->b_meta_read[i].data_ready) {
+			pr_warn("[HSI2S] DMA to be scheduled on hs%d interface",hs_dev->minor_num);
 			/* Wait until any pending DMA is complete */
 			wait_event_interruptible(hs_dev->wq_rddma,
 						 hs_dev->rddma_busy == 0);
@@ -900,16 +1266,23 @@ static int rddma_schedule(void *data)
 			virt_to_phys(hs_dev->b_meta_read[i].start_address);
 			buff_len = ((hs_dev->b_meta_read[i].length) /
 					BYTES_PER_SAMPLE) - 1;
-			per_len = (hs_dev->b_meta_read[i].length) /
-					BYTES_PER_SAMPLE;
+			per_len = ((hs_dev->b_meta_read[i].length) /
+					BYTES_PER_SAMPLE);
 			writel_relaxed(base_addr, hs_dev->rddma_base);
 			writel_relaxed(buff_len, hs_dev->rddma_buff_len);
 			writel_relaxed(per_len, hs_dev->rddma_per_len);
+			/* Enable mic for loopback configurations */
+			if (hs_dev->mode >= INTERNAL_LB) {
+				writel_relaxed(per_len, hsi2s_core->hsi2s_arr[hs_dev->slave]->wrdma_per_len);
+				setbits(hsi2s_core->hsi2s_arr[hs_dev->slave]->wrdma_ctl, hsi2s_core->macro->bit_wrdma_en);
+				setbits(hsi2s_core->hsi2s_arr[hs_dev->slave]->i2s_ctl, hsi2s_core->macro->bit_mic_en);
+			}
 			/* Enable the DMA channel */
-			setbits(hs_dev->rddma_ctl, RDDMA_EN);
-			/* Enable output */
-			setbits(hs_dev->i2s_ctl, I2S_SPKR_EN);
+			setbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_en);
+			/* Enable speaker */
+			setbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_spkr_en);
 			hs_dev->b_meta_read[i].data_ready = 0;
+			pr_warn("[HSI2S] DMA scheduled on hs%d interface",hs_dev->minor_num);
 		}
 
 		i = (i + 1) % METADATA_SIZE;
@@ -923,10 +1296,12 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 {
 	u32 temp_len;
 	u32 wrdma_periodic_length_bytes = wrdma_periodic_length * 4;
+	u32 write_len = wrdma_periodic_length_bytes;
 	u32 irq_stat;
 	u32 curr_addr;
 	struct hsi2s_device **hs_arr;
 	int index;
+	int slave;
 	void *tail;
 
 	hs_arr = hsi2s_core->hsi2s_arr;
@@ -936,12 +1311,21 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 		irq_stat = readl_relaxed(hs_arr[0]->irq_stat);
 		/* Periodic interrupt on read channel 0 */
 		if (irq_stat & IRQ_PER_RDDMA_CH0) {
-			clearbits(hs_arr[0]->i2s_ctl, I2S_SPKR_EN);
-			clearbits(hs_arr[0]->rddma_ctl, RDDMA_EN);
+			clearbits(hs_arr[0]->i2s_ctl, hsi2s_core->macro->bit_spkr_en);
+			/* Disable write channel for loopback mode */
+			if (hs_arr[0]->mode >= INTERNAL_LB) {
+				slave = hs_arr[0]->slave;
+				write_len = readl_relaxed(hs_arr[slave]->wrdma_per_len);
+				write_len *= BYTES_PER_SAMPLE;
+				clearbits(hs_arr[slave]->i2s_ctl, hsi2s_core->macro->bit_mic_en);
+				clearbits(hs_arr[slave]->wrdma_ctl, hsi2s_core->macro->bit_wrdma_en);
+			}
+			clearbits(hs_arr[0]->rddma_ctl, hsi2s_core->macro->bit_rddma_en);
 			setbits(hs_arr[0]->irq_clear, IRQ_PER_RDDMA_CH0);
 			hs_arr[0]->rddma_busy = 0;
 			wake_up_interruptible(&hs_arr[0]->wq_rddma);
 		}
+
 		irq_stat = readl_relaxed(hs_arr[0]->irq_stat);
 		/* Periodic interrupt on write channel 0 */
 		if (irq_stat & IRQ_PER_WRDMA_CH0) {
@@ -949,32 +1333,60 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 
 			index = hs_arr[0]->meta_index_write;
 			tail = hs_arr[0]->write_buffer->tail;
-			/* Boundary condition on write buffer */
-			if ((hs_arr[0]->lpass_wrdma_end - tail) <
-			    wrdma_periodic_length_bytes) {
+
+			while (write_len > wrdma_periodic_length_bytes) {
+				/* Boundary condition on write buffer */
+				if ((hs_arr[0]->lpass_wrdma_end - tail) <
+				    wrdma_periodic_length_bytes) {
+					pr_warn("[HSI2S] End of DMA buffer at %d bytes", DEFAULT_BUFF_LEN_BYTES);
+					temp_len = hs_arr[0]->lpass_wrdma_end - tail;
+					memcpy(hs_arr[0]->b_meta_write[index].start_address,
+					       tail, temp_len);
+					memcpy(hs_arr[0]->b_meta_write[index].start_address + temp_len,
+					       hs_arr[0]->lpass_wrdma_start,
+					       wrdma_periodic_length_bytes - temp_len);
+					tail = hs_arr[0]->lpass_wrdma_start +
+					       (wrdma_periodic_length_bytes - temp_len);
+				} else {
+					memcpy(hs_arr[0]->b_meta_write[index].start_address,
+					       tail, wrdma_periodic_length_bytes);
+					tail +=	wrdma_periodic_length_bytes;
+				}
+				write_len -= wrdma_periodic_length_bytes;
+				hs_arr[0]->b_meta_write[index].data_ready = 1;
+				index = (index + 1) % METADATA_SIZE;
+				/* Notify event read */
+				wake_up_interruptible(&hs_arr[0]->wq_wrdma);
+			}
+
+			if ((hs_arr[0]->lpass_wrdma_end - tail) < write_len) {
 				temp_len = hs_arr[0]->lpass_wrdma_end - tail;
 				memcpy(hs_arr[0]->b_meta_write[index].start_address,
 				       tail, temp_len);
 				memcpy(hs_arr[0]->b_meta_write[index].start_address + temp_len,
 				       hs_arr[0]->lpass_wrdma_start,
-				       wrdma_periodic_length_bytes - temp_len);
+				       write_len - temp_len);
+				tail = hs_arr[0]->lpass_wrdma_start + (write_len - temp_len);
 			} else {
 				memcpy(hs_arr[0]->b_meta_write[index].start_address,
-				       tail, wrdma_periodic_length_bytes);
+				       tail, write_len);
+				tail += write_len;
 			}
 			hs_arr[0]->b_meta_write[index].data_ready = 1;
+			index = (index + 1) % METADATA_SIZE;
 
 			/* Notify event read */
 			wake_up_interruptible(&hs_arr[0]->wq_wrdma);
 
-			hs_arr[0]->meta_index_write =
-			(hs_arr[0]->meta_index_write + 1) % METADATA_SIZE;
+			/* Update write index */
+			hs_arr[0]->meta_index_write = index;
 
 			/* Update tail */
-			if (hs_arr[0]->mode) {
+			if (hs_arr[0]->mode == NORMAL) {
 				hs_arr[0]->write_buffer->tail +=
 				wrdma_periodic_length_bytes;
 			} else {
+				/* To eliminate boundary error */
 				curr_addr =
 				readl_relaxed(hs_arr[0]->wrdma_curr_addr);
 				hs_arr[0]->write_buffer->tail =
@@ -982,11 +1394,12 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 				(curr_addr -
 				 virt_to_phys(hs_arr[0]->lpass_wrdma_start));
 			}
+
+			/* Tail rollback at boundary */
 			if (hs_arr[0]->write_buffer->tail >=
 			    hs_arr[0]->lpass_wrdma_end)
 				hs_arr[0]->write_buffer->tail =
 				hs_arr[0]->lpass_wrdma_start;
-
 		}
 	}
 
@@ -994,8 +1407,16 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 		irq_stat = readl_relaxed(hs_arr[1]->irq_stat);
 		/* Periodic interrupt on read channel 1 */
 		if (irq_stat & IRQ_PER_RDDMA_CH1) {
-			clearbits(hs_arr[1]->i2s_ctl, I2S_SPKR_EN);
-			clearbits(hs_arr[1]->rddma_ctl, RDDMA_EN);
+			clearbits(hs_arr[1]->i2s_ctl, hsi2s_core->macro->bit_spkr_en);
+			/* Disable write channel for loopback mode */
+			if (hs_arr[1]->mode >= INTERNAL_LB) {
+				slave = hs_arr[1]->slave;
+				write_len = readl_relaxed(hs_arr[slave]->wrdma_per_len);
+				write_len *= BYTES_PER_SAMPLE;
+				clearbits(hs_arr[slave]->i2s_ctl, hsi2s_core->macro->bit_mic_en);
+				clearbits(hs_arr[slave]->wrdma_ctl, hsi2s_core->macro->bit_wrdma_en);
+			}
+			clearbits(hs_arr[1]->rddma_ctl, hsi2s_core->macro->bit_rddma_en);
 			setbits(hs_arr[1]->irq_clear, IRQ_PER_RDDMA_CH1);
 			hs_arr[1]->rddma_busy = 0;
 			wake_up_interruptible(&hs_arr[1]->wq_rddma);
@@ -1008,32 +1429,58 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 
 			index = hs_arr[1]->meta_index_write;
 			tail = hs_arr[1]->write_buffer->tail;
-			/* Boundary condition on write buffer */
-			if (hs_arr[1]->lpass_wrdma_end - tail <
-				wrdma_periodic_length_bytes) {
+
+			while (write_len > wrdma_periodic_length_bytes) {
+				/* Boundary condition on write buffer */
+				if ((hs_arr[1]->lpass_wrdma_end - tail) <
+				    wrdma_periodic_length_bytes) {
+					pr_warn("[HSI2S] End of DMA buffer at %d bytes", DEFAULT_BUFF_LEN_BYTES);
+					temp_len = hs_arr[1]->lpass_wrdma_end - tail;
+					memcpy(hs_arr[1]->b_meta_write[index].start_address,
+					       tail, temp_len);
+					memcpy(hs_arr[1]->b_meta_write[index].start_address + temp_len,
+					       hs_arr[1]->lpass_wrdma_start,
+					       wrdma_periodic_length_bytes - temp_len);
+					tail = hs_arr[1]->lpass_wrdma_start +
+					       (wrdma_periodic_length_bytes - temp_len);
+				} else {
+					memcpy(hs_arr[1]->b_meta_write[index].start_address,
+					       tail, wrdma_periodic_length_bytes);
+					tail +=	wrdma_periodic_length_bytes;
+				}
+				write_len -= wrdma_periodic_length_bytes;
+				hs_arr[1]->b_meta_write[index].data_ready = 1;
+				index = (index + 1) % METADATA_SIZE;
+			}
+
+			if ((hs_arr[1]->lpass_wrdma_end - tail) < write_len) {
 				temp_len = hs_arr[1]->lpass_wrdma_end - tail;
 				memcpy(hs_arr[1]->b_meta_write[index].start_address,
 				       tail, temp_len);
 				memcpy(hs_arr[1]->b_meta_write[index].start_address + temp_len,
 				       hs_arr[1]->lpass_wrdma_start,
-				       wrdma_periodic_length_bytes - temp_len);
+				       write_len - temp_len);
+				tail = hs_arr[1]->lpass_wrdma_start + (write_len - temp_len);
 			} else {
 				memcpy(hs_arr[1]->b_meta_write[index].start_address,
-				       tail, wrdma_periodic_length_bytes);
+				       tail, write_len);
+				tail += write_len;
 			}
 			hs_arr[1]->b_meta_write[index].data_ready = 1;
+			index = (index + 1) % METADATA_SIZE;
 
 			/* Notify event read */
 			wake_up_interruptible(&hs_arr[1]->wq_wrdma);
 
-			hs_arr[1]->meta_index_write =
-			(hs_arr[1]->meta_index_write + 1) % METADATA_SIZE;
+			/* Update write index */
+			hs_arr[1]->meta_index_write = index;
 
 			/* Update tail */
-			if (hs_arr[1]->mode) {
+			if (hs_arr[1]->mode == NORMAL) {
 				hs_arr[1]->write_buffer->tail +=
 				wrdma_periodic_length_bytes;
 			} else {
+				/* To eliminate boundary error */
 				curr_addr =
 				readl_relaxed(hs_arr[1]->wrdma_curr_addr);
 				hs_arr[1]->write_buffer->tail =
@@ -1041,10 +1488,106 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 				(curr_addr -
 				 virt_to_phys(hs_arr[1]->lpass_wrdma_start));
 			}
+
+			/* Tail rollback at boundary */
 			if (hs_arr[1]->write_buffer->tail >=
 			    hs_arr[1]->lpass_wrdma_end)
 				hs_arr[1]->write_buffer->tail =
 				hs_arr[1]->lpass_wrdma_start;
+		}
+	}
+
+	if (hs_arr[2]) {
+		irq_stat = readl_relaxed(hs_arr[2]->irq_stat);
+		/* Periodic interrupt on read channel 2 */
+		if (irq_stat & IRQ_PER_RDDMA_CH2) {
+			clearbits(hs_arr[2]->i2s_ctl, hsi2s_core->macro->bit_spkr_en);
+			/* Disable write channel for loopback mode */
+			if (hs_arr[2]->mode >= INTERNAL_LB) {
+				slave = hs_arr[2]->slave;
+				write_len = readl_relaxed(hs_arr[slave]->wrdma_per_len);
+				write_len *= BYTES_PER_SAMPLE;
+				clearbits(hs_arr[slave]->i2s_ctl, hsi2s_core->macro->bit_mic_en);
+				clearbits(hs_arr[slave]->wrdma_ctl, hsi2s_core->macro->bit_wrdma_en);
+			}
+			clearbits(hs_arr[2]->rddma_ctl, hsi2s_core->macro->bit_rddma_en);
+			setbits(hs_arr[2]->irq_clear, IRQ_PER_RDDMA_CH2);
+			hs_arr[2]->rddma_busy = 0;
+			wake_up_interruptible(&hs_arr[2]->wq_rddma);
+		}
+
+		irq_stat = readl_relaxed(hs_arr[2]->irq_stat);
+		/* Periodic interrupt on write channel 2 */
+		if (irq_stat & IRQ_PER_WRDMA_CH2) {
+			setbits(hs_arr[2]->irq_clear, IRQ_PER_WRDMA_CH2);
+
+			index = hs_arr[2]->meta_index_write;
+			tail = hs_arr[2]->write_buffer->tail;
+
+			while (write_len > wrdma_periodic_length_bytes) {
+				/* Boundary condition on write buffer */
+				if ((hs_arr[2]->lpass_wrdma_end - tail) <
+				    wrdma_periodic_length_bytes) {
+					pr_warn("[HSI2S] End of DMA buffer at %d bytes", DEFAULT_BUFF_LEN_BYTES);
+					temp_len = hs_arr[2]->lpass_wrdma_end - tail;
+					memcpy(hs_arr[2]->b_meta_write[index].start_address,
+					       tail, temp_len);
+					memcpy(hs_arr[2]->b_meta_write[index].start_address + temp_len,
+					       hs_arr[2]->lpass_wrdma_start,
+					       wrdma_periodic_length_bytes - temp_len);
+					tail = hs_arr[2]->lpass_wrdma_start +
+					       (wrdma_periodic_length_bytes - temp_len);
+				} else {
+					memcpy(hs_arr[2]->b_meta_write[index].start_address,
+					       tail, wrdma_periodic_length_bytes);
+					tail +=	wrdma_periodic_length_bytes;
+				}
+				write_len -= wrdma_periodic_length_bytes;
+				hs_arr[2]->b_meta_write[index].data_ready = 1;
+				index = (index + 1) % METADATA_SIZE;
+			}
+
+			if ((hs_arr[2]->lpass_wrdma_end - tail) < write_len) {
+				temp_len = hs_arr[2]->lpass_wrdma_end - tail;
+				memcpy(hs_arr[2]->b_meta_write[index].start_address,
+				       tail, temp_len);
+				memcpy(hs_arr[2]->b_meta_write[index].start_address + temp_len,
+				       hs_arr[2]->lpass_wrdma_start,
+				       write_len - temp_len);
+				tail = hs_arr[2]->lpass_wrdma_start + (write_len - temp_len);
+			} else {
+				memcpy(hs_arr[2]->b_meta_write[index].start_address,
+				       tail, write_len);
+				tail += write_len;
+			}
+			hs_arr[2]->b_meta_write[index].data_ready = 1;
+			index = (index + 1) % METADATA_SIZE;
+
+			/* Notify event read */
+			wake_up_interruptible(&hs_arr[2]->wq_wrdma);
+
+			/* Update write index */
+			hs_arr[2]->meta_index_write = index;
+
+			/* Update tail */
+			if (hs_arr[2]->mode == NORMAL) {
+				hs_arr[2]->write_buffer->tail +=
+				wrdma_periodic_length_bytes;
+			} else {
+				/* To eliminate boundary error */
+				curr_addr =
+				readl_relaxed(hs_arr[2]->wrdma_curr_addr);
+				hs_arr[2]->write_buffer->tail =
+				hs_arr[2]->lpass_wrdma_start +
+				(curr_addr -
+				 virt_to_phys(hs_arr[2]->lpass_wrdma_start));
+			}
+
+			/* Tail rollback at boundary */
+			if (hs_arr[2]->write_buffer->tail >=
+			    hs_arr[2]->lpass_wrdma_end)
+				hs_arr[2]->write_buffer->tail =
+				hs_arr[2]->lpass_wrdma_start;
 		}
 	}
 
@@ -1071,14 +1614,13 @@ static ssize_t device_read(struct file *file, char *buffer,
 	int bytes_read = 0;
 	int ret = 0;
 	int index;
-	u32 periodic_len;
 
 	hs_dev = (struct hsi2s_device *)file->private_data;
+	temp_length = wrdma_periodic_length * BYTES_PER_SAMPLE;
 
-	periodic_len = readl_relaxed(hs_dev->wrdma_per_len);
-	temp_length = periodic_len * BYTES_PER_SAMPLE;
-	while (length > 0) {
+	while (length > temp_length) {
 		index = hs_dev->user_read_index;
+
 		wait_event_interruptible(hs_dev->wq_wrdma,
 					 hs_dev->b_meta_write[index].data_ready == 1);
 
@@ -1099,6 +1641,23 @@ static ssize_t device_read(struct file *file, char *buffer,
 						METADATA_SIZE;
 	}
 
+	index = hs_dev->user_read_index;
+	wait_event_interruptible(hs_dev->wq_wrdma,
+				 hs_dev->b_meta_write[index].data_ready == 1);
+	hs_dev->b_meta_write[index].data_ready = 0;
+
+	/* Copy periodic length at a time */
+	ret = copy_to_user(buffer + bytes_read,
+			   hs_dev->b_meta_write[index].start_address,
+			   length);
+	if (ret) {
+		pr_err("[HSI2S] Error copying data to userspace");
+		return -ret;
+	}
+	bytes_read += length;
+	hs_dev->user_read_index = (hs_dev->user_read_index + 1) %
+					METADATA_SIZE;
+
 	return bytes_read;
 }
 
@@ -1109,27 +1668,28 @@ static ssize_t device_write(struct file *file, const char *buffer,
 	struct hsi2s_device *hs_dev;
 	int write_index;
 
+	if (length >= DEFAULT_BUFF_LEN_BYTES) {
+		pr_err("[HSI2S] Size exceeds DMA limit %d bytes", DEFAULT_BUFF_LEN_BYTES);
+		return -EINVAL;
+	}
+
 	hs_dev = (struct hsi2s_device *)file->private_data;
 
-	/* Enter critical section */
-	spin_lock(&hs_dev->metacount_lock);
-
 	write_index = hs_dev->meta_index_read;
-	hs_dev->meta_index_read = (hs_dev->meta_index_read + 1) %
-					METADATA_SIZE;
-
-	/* Exit critical section */
-	spin_unlock(&hs_dev->metacount_lock);
 
 	hs_dev->b_meta_read[write_index].start_address =
-			kzalloc(length, GFP_KERNEL | GFP_DMA);
+	kzalloc(length, GFP_ATOMIC | GFP_DMA);
 	if (!hs_dev->b_meta_read[write_index].start_address)
 		return -ENOMEM;
 
 	copy_from_user(hs_dev->b_meta_read[write_index].start_address,
 		       buffer, length);
+	msleep(500);
 	hs_dev->b_meta_read[write_index].length = length;
 	hs_dev->b_meta_read[write_index].data_ready = 1;
+
+	hs_dev->meta_index_read = (hs_dev->meta_index_read + 1) %
+					METADATA_SIZE;
 
 	return length;
 }
@@ -1183,6 +1743,7 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	struct hsi2s_device *hs_dev;
 	int minor;
+	int i;
 
 	hs_dev = (struct hsi2s_device *)file->private_data;
 	minor = hs_dev->minor_num;
@@ -1190,16 +1751,105 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	switch (cmd) {
 	case I2S_NORMAL_MODE:
 		pr_warn("[HSI2S] Triggering normal operation");
-		if (hs_dev->client_count == 1)
+		if (hs_dev->client_count == 1) {
 			configure_normal_mode(hs_dev, minor);
+			hs_dev->slave = minor;
+		}
 		else
 			pr_warn("[HSI2S] Mode already set by previous client");
 		break;
 
 	case I2S_INTERNAL_LOOPBACK:
 		pr_warn("[HSI2S] Triggering internal loopback");
+		if (hs_dev->client_count == 1) {
+			configure_int_loopback_mode(hs_dev, minor);
+			hs_dev->slave = minor;
+		}
+		else
+			pr_warn("[HSI2S] Mode already set by previous client");
+		break;
+
+	case I2S_EXTERNAL_LOOPBACK:
+		if (hsi2s_core->target == 6155) {
+			pr_warn("[HSI2S] Mode not supported by target");
+			return -EINVAL;
+		}
+		pr_warn("[HSI2S] Triggering external loopback on master");
+		if (hs_dev->client_count == 1) {
+			configure_ext_loopback_mode(hs_dev, minor);
+			hs_dev->slave = minor;
+		}
+		else
+			pr_warn("[HSI2S] Mode already set by previous client");
+		break;
+
+	case I2S_MUXMODE:
+		if (hsi2s_core->target == 6155) {
+			pr_warn("[HSI2S] Mode not supported by target");
+			return -EINVAL;
+		}
+		pr_warn("[HSI2S] Setting master/slave muxmode configuration");
 		if (hs_dev->client_count == 1)
-			configure_loopback_mode(hs_dev, minor);
+			configure_muxmode(hs_dev, arg);
+		else
+			pr_warn("[HSI2S] Mode already set by previous client");
+		break;
+
+	case I2S_SPEAKER:
+		pr_warn("[HSI2S] Configuring hs%d as speaker",hs_dev->minor_num);
+		if (hs_dev->client_count == 1) {
+			configure_i2s_spkr(hs_dev);
+			configure_rddma(hs_dev, minor);
+		}
+		else
+			pr_warn("[HSI2S] Mode already set by previous client");
+		break;
+
+	case I2S_MIC:
+		pr_warn("[HSI2S] Configuring hs%d as mic",hs_dev->minor_num);
+		if (hs_dev->client_count == 1) {
+			configure_i2s_mic(hs_dev);
+			configure_wrdma(hs_dev, minor);
+		}
+		else
+			pr_warn("[HSI2S] Mode already set by previous client");
+		break;
+
+	case I2S_SET_SLAVE:
+		if (hsi2s_core->target == 6155) {
+			pr_warn("[HSI2S] Mode not supported by target");
+			return -EINVAL;
+		}
+		pr_warn("[HSI2S] Triggering external loopback with hs%d master and hs%d slave", hs_dev->minor_num, arg);
+		if (hs_dev->client_count == 1) {
+			hs_dev->slave = arg;
+			hs_dev->mode = EXTERNAL_LB_MASTER_SLAVE;
+		}
+		else
+			pr_warn("[HSI2S] Mode already set by previous client");
+		break;
+
+	case I2S_RESET:
+		if (hs_dev->client_count == 1) {
+			pr_warn("[HSI2S] Resetting I2S control register");
+			reg_clear(hs_dev->i2s_ctl);
+			pr_warn("[HSI2S] Resetting DMA registers");
+			reset_rddma_registers(hs_dev);
+			reset_wrdma_registers(hs_dev);
+			/* Clear IRQs */
+			clear_irqs(hs_dev);
+			/* Reset metadata counters */
+			for (i = 0; i < METADATA_SIZE; i++) {
+				hs_dev->b_meta_read[i].data_ready = 0;
+				hs_dev->b_meta_write[i].data_ready = 0;
+			}
+			hs_dev->meta_index_read = 0;
+			hs_dev->meta_index_write = 0;
+			hs_dev->user_read_index = 0;
+			/* Reset buffer pointers */
+			hs_dev->write_buffer->head = hs_dev->lpass_wrdma_start;
+			hs_dev->write_buffer->tail = hs_dev->lpass_wrdma_start;
+		}
 		else
 			pr_warn("[HSI2S] Mode already set by previous client");
 		break;
@@ -1233,6 +1883,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct hsi2s_device *hs_dev;
+	char *devname;
 	int minor = 0;
 	int ret = 0;
 
@@ -1255,6 +1906,9 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 
 	/* Set the hsi2s device structure as platform data */
 	platform_set_drvdata(pdev, hs_dev);
+
+	/* Store the device pointer */
+	hs_dev->dev = dev;
 
 	/* Store the minor number */
 	hs_dev->minor_num = minor;
@@ -1283,10 +1937,12 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 		}
 	}
 
-	/* Enable the interface clocks */
-	ret = hsi2s_enable_intf_clks(pdev);
-	if (ret)
-		goto err_free_smmu;
+	if (hsi2s_core->target == 6155) {
+		/* Enable the interface clocks */
+		ret = hsi2s_enable_intf_clks(pdev);
+		if (ret)
+			goto err_free_smmu;
+	}
 
 	/* Start the read DMA scheduler */
 	hs_dev->rddma_thread = kthread_create(rddma_schedule, hs_dev,
@@ -1303,7 +1959,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	if (operation_mode)
 		configure_normal_mode(hs_dev, minor);
 	else
-		configure_loopback_mode(hs_dev, minor);
+		configure_int_loopback_mode(hs_dev, minor);
 
 	/* Create device file for the interface */
 	hs_dev->cdev_sdr = kzalloc(sizeof(*hs_dev->cdev_sdr),
@@ -1323,8 +1979,15 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 		goto err_free_cdev;
 	}
 
+	if (!minor)
+		devname = SDR0;
+	else if (minor == 1)
+		devname = SDR1;
+	else if (minor == 2)
+		devname = SDR2;
+
 	hs_dev->class_sdr = class_create(THIS_MODULE,
-					 (minor ? SDR1 : SDR0));
+					 devname);
 	if (!hs_dev->class_sdr) {
 		pr_err("[HSI2S] Failed to create device class %d"
 		       , minor);
@@ -1353,7 +2016,8 @@ err_free_cdev:
 err_stop_thread:
 	kthread_stop(hs_dev->rddma_thread);
 err_disable_intf_clock:
-	hsi2s_disable_intf_clks(pdev);
+	if (hsi2s_core->target == 6155)
+		hsi2s_disable_intf_clks(pdev);
 err_free_smmu:
 	/* Detach and release iommu mapping */
 	if (hs_dev->hsi2s_smmu_ctx->valid) {
@@ -1376,7 +2040,7 @@ err_deinit_default:
 	hsi2s_core->hsi2s_arr[minor] = NULL;
 err_out:
 	/* Enable the IRQ line */
-	if (minor) {
+	if (minor == (hsi2s_core->i_count - 1)) {
 		if (hsi2s_core->irq0 > 0) {
 			hsi2s_core->desc = irq_to_desc(hsi2s_core->irq0);
 			if (hsi2s_core->desc->core_internal_state__do_not_mess_with_it & 0x00000200) {
@@ -1396,6 +2060,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct resource *resource = NULL;
 	int interface_count = 0;
+	u32 target;
 	int ret = 0;
 
 	if (of_device_is_compatible(pdev->dev.of_node, "qcom,hsi2s-interface"))
@@ -1408,20 +2073,50 @@ static int hsi2s_probe(struct platform_device *pdev)
 	/* Set the hsi2s_core structure as platform data */
 	platform_set_drvdata(pdev, hsi2s_core);
 
+	/* Read the target property */
+	if (of_device_is_compatible(pdev->dev.of_node, "qcom,sa6155-hsi2s"))
+		target = 6155;
+	else if (of_device_is_compatible(pdev->dev.of_node, "qcom,sa8155-hsi2s"))
+		target = 8155;
+	else {
+		pr_err("[HSI2S] Uncompatible target");
+		goto err_free_core;
+	}
+
+	/* Allocate target macro structure */
+	hsi2s_core->macro = kzalloc(sizeof(struct hsi2s_macros), GFP_KERNEL);
+	if (!hsi2s_core->macro)
+		return -ENOMEM;
+
+	/* Assign target specific macros */
+	if (target == 6155) {
+		pr_warn("[HSI2S] Talos target detected");
+		t_assign_macros();
+	}
+	else if (target == 8155) {
+		pr_warn("[HSI2S] Hana target detected");
+		h_assign_macros();
+	}
+
+	hsi2s_core->target = target;
+
 	/* Read the number of HS-I2S interfaces */
 	ret = of_property_read_u32(dev->of_node, "number-of-interfaces",
 				   &interface_count);
 	if (ret) {
 		pr_err("[HSI2S] Resource 'number-of-interfaces' unavailable in dtsi");
-		goto err_free_core;
+		goto err_free_macro;
 	}
+
+	/* Store the interface count */
+	hsi2s_core->i_count = interface_count;
 
 	/* Register the character device numbers */
 	ret = alloc_chrdev_region(&devid, 0, interface_count,
 				  "hsi2s_dev");
 	if (ret < 0) {
 		pr_err("[HSI2S] Major number allocation failed");
-		goto err_free_core;
+		goto err_free_macro;
 	}
 
 	/* Allocate hsi2s_dev structure pointers */
@@ -1430,9 +2125,15 @@ static int hsi2s_probe(struct platform_device *pdev)
 					GFP_KERNEL);
 
 	/* Enable the core clocks */
-	ret = hsi2s_enable_core_clks(pdev);
-	if (ret)
-		goto err_free_core;
+	if (target == 6155) {
+		ret = hsi2s_enable_core_clks(pdev);
+		if (ret)
+			goto err_free_macro;
+	}
+	else if (target == 8155) {
+		h_modify_core_clks(1);
+		h_modify_interface_clks(1);
+	}
 
 	/* Initialize the IRQ mutex */
 	mutex_init(&hsi2s_core->irqlock);
@@ -1454,12 +2155,32 @@ static int hsi2s_probe(struct platform_device *pdev)
 		goto err_disable_core_clocks;
 	}
 
+	if (target == 8155) {
+		resource = platform_get_resource_byname(pdev, IORESOURCE_MEM,
+						"lpass_tcsr");
+		if (!resource) {
+			pr_err("[HSI2S] get lpass_tcsr resource failed");
+			ret = -ENODEV;
+			goto err_iounmap_lpaif;
+		}
+
+		hsi2s_core->lpass_tcsr_base_va =
+		devm_ioremap_resource(&pdev->dev, resource);
+
+		if (IS_ERR(hsi2s_core->lpass_tcsr_base_va)) {
+			pr_err("[HSI2S] ioremap failed");
+			ret = PTR_ERR(hsi2s_core->lpass_tcsr_base_va);
+			goto err_iounmap_lpaif;
+		}
+
+	}
+
 	/* Enable the interrupt line 0 */
 	hsi2s_core->irq0 = platform_get_irq(pdev, 0);
 	if (hsi2s_core->irq0 < 0) {
 		pr_err("[HSI2S] Err getting IRQ0");
 		ret = hsi2s_core->irq0;
-		goto err_iounmap;
+		goto err_iounmap_lpass_tcsr;
 	}
 
 	ret =
@@ -1472,7 +2193,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 	if (ret) {
 		pr_err("[HSI2S] Request_irq failed:%d: err:%d\n",
 		       hsi2s_core->irq0, ret);
-		goto err_iounmap;
+		goto err_iounmap_lpass_tcsr;
 	}
 
 	/* Disable the irq line until child devices are probed */
@@ -1487,10 +2208,16 @@ static int hsi2s_probe(struct platform_device *pdev)
 
 	return ret;
 
-err_iounmap:
+err_iounmap_lpass_tcsr:
+	iounmap(hsi2s_core->lpass_tcsr_base_va);
+err_iounmap_lpaif:
 	iounmap(hsi2s_core->lpaif_base_va);
 err_disable_core_clocks:
-	hsi2s_disable_core_clks(pdev);
+	if (target == 6155)
+		hsi2s_disable_core_clks(pdev);
+err_free_macro:
+	kfree(hsi2s_core->macro);
+	hsi2s_core->macro = NULL;
 err_free_core:
 	kfree(hsi2s_core);
 	hsi2s_core = NULL;
@@ -1508,6 +2235,9 @@ static int hsi2s_interface_remove(struct platform_device *pdev)
 
 	hs_dev = (struct hsi2s_device *)platform_get_drvdata(pdev);
 	minor = hs_dev->minor_num;
+
+	/* Reset the interface registers */
+	reset_registers(hs_dev);
 	/* Remove the device file */
 	device_destroy(hs_dev->class_sdr, hs_dev->curr_devid);
 	class_destroy(hs_dev->class_sdr);
@@ -1517,7 +2247,8 @@ static int hsi2s_interface_remove(struct platform_device *pdev)
 	/* Stop the DMA scheduler thread */
 	kthread_stop(hs_dev->rddma_thread);
 	/* Disable the interface clocks */
-	hsi2s_disable_intf_clks(pdev);
+	if (hsi2s_core->target == 6155)
+		hsi2s_disable_intf_clks(pdev);
 	/* Detach and release iommu mapping */
 	if (hs_dev->hsi2s_smmu_ctx->valid) {
 		if (hs_dev->hsi2s_smmu_ctx->smmu_pdev)
@@ -1532,8 +2263,7 @@ static int hsi2s_interface_remove(struct platform_device *pdev)
 	}
 	kfree(hs_dev->hsi2s_smmu_ctx);
 	hs_dev->hsi2s_smmu_ctx = NULL;
-	/* Reset the interface registers */
-	reset_registers(hs_dev);
+
 	/* Free the allocated buffers and device data structures */
 	if (hs_dev) {
 		hsi2s_buffer_free(hs_dev);
@@ -1566,15 +2296,20 @@ static int hsi2s_remove(struct platform_device *pdev)
 	hs_core = (struct hsi2s_core *)platform_get_drvdata(pdev);
 	/* Free IRQ */
 	devm_free_irq(&pdev->dev, hs_core->irq0, hs_core);
-	/* Unmap the register memory region */
-	iounmap(hsi2s_core->lpaif_base_va);
 	/* Disable the core clocks */
-	hsi2s_disable_core_clks(pdev);
+	if (hs_core->target == 6155)
+		hsi2s_disable_core_clks(pdev);
+	else if (hs_core->target == 8155) {
+		h_modify_interface_clks(0);
+		h_modify_core_clks(0);
+	}
 	/* Unregister the device numbers */
 	unregister_chrdev_region(devid, 1);
 	/* Free the core data structure */
 	kfree(hs_core->hsi2s_arr);
 	hs_core->hsi2s_arr = NULL;
+	kfree(hs_core->macro);
+	hs_core->macro = NULL;
 	kfree(hs_core);
 	hs_core = NULL;
 	hsi2s_core = NULL;
@@ -1590,10 +2325,16 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 	if (of_device_is_compatible(pdev->dev.of_node,
 				    "qcom,hsi2s-interface")) {
 		/* Suspend the interface clocks */
-		hsi2s_suspend_intf_clks(pdev);
+		if (hsi2s_core->target == 6155)
+			hsi2s_suspend_intf_clks(pdev);
 	} else {
 		/* Suspend the core clocks */
-		hsi2s_suspend_core_clks(pdev);
+		if (hsi2s_core->target == 6155)
+			hsi2s_suspend_core_clks(pdev);
+		else if (hsi2s_core->target == 8155) {
+			h_modify_interface_clks(0);
+			h_modify_core_clks(0);
+		}
 	}
 
 	pr_warn("[HSI2S] Device entering suspend state");
@@ -1609,17 +2350,24 @@ static int hsi2s_resume(struct platform_device *pdev)
 	if (of_device_is_compatible(pdev->dev.of_node,
 				    "qcom,hsi2s-interface")) {
 		/* Resume the interface clocks */
-		ret = hsi2s_resume_intf_clks(pdev);
-		if (ret) {
-			pr_warn("[HSI2S] Failed to resume interface clocks");
-			return ret;
+		if (hsi2s_core->target == 6155) {
+			ret = hsi2s_resume_intf_clks(pdev);
+			if (ret) {
+				pr_warn("[HSI2S] Failed to resume interface clocks");
+				return ret;
+			}
 		}
 	} else {
 		/* Resume the core clocks */
-		ret = hsi2s_resume_core_clks(pdev);
-		if (ret) {
-			pr_warn("[HSI2S] Failed to resume core clocks");
-			return ret;
+		if (hsi2s_core->target == 6155) {
+			ret = hsi2s_resume_core_clks(pdev);
+			if (ret) {
+				pr_warn("[HSI2S] Failed to resume core clocks");
+				return ret;
+			}
+		} else if (hsi2s_core->target == 8155) {
+			h_modify_core_clks(1);
+			h_modify_interface_clks(1);
 		}
 	}
 

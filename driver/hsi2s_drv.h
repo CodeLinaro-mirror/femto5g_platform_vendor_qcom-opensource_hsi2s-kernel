@@ -43,43 +43,77 @@
 #include <asm/dma-iommu.h>
 
 /* Register offsets */
-#define LPAIF_I2S_CTL				0x1000
-#define LPAIF_PCM_I2S_SEL			0x1200
-#define LPAIF_IRQ_EN				0x9000
-#define LPAIF_IRQ_STAT				0x9004
-#define LPAIF_IRQ_CLEAR				0x900C
-#define LPAIF_RDDMA_CTL				0xC000
-#define LPAIF_RDDMA_BASE			0xC004
-#define LPAIF_RDDMA_BUFF_LEN			0xC008
-#define LPAIF_RDDMA_CURR_ADDR			0xC00C
-#define LPAIF_RDDMA_PER_LEN			0xC010
-#define LPAIF_WRDMA_CTL				0x18000
-#define LPAIF_WRDMA_BASE			0x18004
-#define LPAIF_WRDMA_BUFF_LEN			0x18008
-#define LPAIF_WRDMA_CURR_ADDR			0x1800C
-#define LPAIF_WRDMA_PER_LEN			0x18010
+#define T_LPAIF_I2S_CTL				0x1000
+#define T_LPAIF_PCM_I2S_SEL			0x1200
+#define T_LPAIF_IRQ_EN				0x9000
+#define T_LPAIF_IRQ_STAT			0x9004
+#define T_LPAIF_IRQ_CLEAR			0x900C
+#define T_LPAIF_RDDMA_CTL			0xC000
+#define T_LPAIF_RDDMA_BASE			0xC004
+#define T_LPAIF_RDDMA_BUFF_LEN			0xC008
+#define T_LPAIF_RDDMA_CURR_ADDR			0xC00C
+#define T_LPAIF_RDDMA_PER_LEN			0xC010
+#define T_LPAIF_WRDMA_CTL			0x18000
+#define T_LPAIF_WRDMA_BASE			0x18004
+#define T_LPAIF_WRDMA_BUFF_LEN			0x18008
+#define T_LPAIF_WRDMA_CURR_ADDR			0x1800C
+#define T_LPAIF_WRDMA_PER_LEN			0x18010
+
+#define H_LPAIF_I2S_CTL				0x1000
+#define H_LPAIF_PCM_I2S_SEL			0x1B00
+#define H_LPAIF_IRQ_EN				0xA000
+#define H_LPAIF_IRQ_STAT			0xA004
+#define H_LPAIF_IRQ_CLEAR			0xA00C
+#define H_LPAIF_RDDMA_CTL			0xD000
+#define H_LPAIF_RDDMA_BASE			0xD004
+#define H_LPAIF_RDDMA_BUFF_LEN			0xD008
+#define H_LPAIF_RDDMA_CURR_ADDR			0xD00C
+#define H_LPAIF_RDDMA_PER_LEN			0xD010
+#define H_LPAIF_WRDMA_CTL			0x13000
+#define H_LPAIF_WRDMA_BASE			0x13004
+#define H_LPAIF_WRDMA_BUFF_LEN			0x13008
+#define H_LPAIF_WRDMA_CURR_ADDR			0x1300C
+#define H_LPAIF_WRDMA_PER_LEN			0x13010
+#define H_LPAIF_MUXMODE				0xB000
 
 /* Bits for I2S control register */
-#define I2S_WS_SRC				BIT(2)
-#define I2S_MIC_EN				BIT(9)
-#define I2S_SPKR_EN				BIT(16)
-#define I2S_LOOPBACK				BIT(17)
-#define I2S_RESET				BIT(31)
+#define T_I2S_WS_SRC				BIT(2)
+#define T_I2S_MIC_EN				BIT(9)
+#define T_I2S_SPKR_EN				BIT(16)
+#define T_I2S_LOOPBACK				BIT(17)
+#define T_I2S_RESET				BIT(31)
+
+#define H_I2S_WS_SRC				BIT(2)
+#define H_I2S_MIC_EN				BIT(8)
+#define H_I2S_SPKR_EN				BIT(14)
+#define H_I2S_LOOPBACK				BIT(15)
+#define H_I2S_RESET				BIT(31)
 
 /* Bits for I2S select register */
-#define I2S_SEL					BIT(0)
+#define T_I2S_SEL				BIT(0)
+#define H_I2S_SEL				BIT(0)
 
 /* Bits for read DMA control register */
-#define RDDMA_EN				BIT(0)
-#define RDDMA_BURST_EN				BIT(20)
-#define RDDMA_DYN_CLK				BIT(21)
-#define RDDMA_RESET				BIT(31)
+#define T_RDDMA_EN				BIT(0)
+#define T_RDDMA_BURST_EN			BIT(20)
+#define T_RDDMA_DYN_CLK				BIT(21)
+#define T_RDDMA_RESET				BIT(31)
+
+#define H_RDDMA_EN				BIT(0)
+#define H_RDDMA_BURST_EN			BIT(17)
+#define H_RDDMA_DYN_CLK				BIT(18)
+#define H_RDDMA_RESET				BIT(31)
 
 /* Bits for write DMA control register */
-#define WRDMA_EN				BIT(0)
-#define WRDMA_BURST_EN				BIT(21)
-#define WRDMA_DYN_CLK				BIT(22)
-#define WRDMA_RESET				BIT(31)
+#define T_WRDMA_EN				BIT(0)
+#define T_WRDMA_BURST_EN			BIT(21)
+#define T_WRDMA_DYN_CLK				BIT(22)
+#define T_WRDMA_RESET				BIT(31)
+
+#define H_WRDMA_EN				BIT(0)
+#define H_WRDMA_BURST_EN			BIT(19)
+#define H_WRDMA_DYN_CLK				BIT(20)
+#define H_WRDMA_RESET				BIT(31)
 
 /* Bits for interrupt register */
 #define IRQ_PER_RDDMA_CH0			BIT(0)
@@ -118,11 +152,21 @@
 /* IOCTLs */
 #define I2S_NORMAL_MODE _IOWR('i', 0, int)
 #define I2S_INTERNAL_LOOPBACK _IOWR('i', 1, int)
+#define I2S_EXTERNAL_LOOPBACK _IOWR('i', 2, int)
+#define I2S_MUXMODE _IOWR('i', 3, int)
+#define I2S_SPEAKER _IOWR('i', 4, int)
+#define I2S_MIC _IOWR('i', 5, int)
+#define I2S_SET_SLAVE _IOWR('i', 6, int)
+#define I2S_RESET _IOWR('i', 7, int)
 
 /* Additional macros */
 #define DEVICE_NAME "hsi2s_driver"
 #define SDR0 "hs0_i2s"
 #define SDR1 "hs1_i2s"
+#define SDR2 "hs2_i2s"
+#define HS0_I2S 0
+#define HS1_I2S 1
+#define HS2_I2S 2
 #define BYTES_PER_SAMPLE 4
 #define DEFAULT_BUFF_LEN_BYTES   (4 * 1024 * 1024)
 #define DEFAULT_BUFF_LEN_WORDS   ((DEFAULT_BUFF_LEN_BYTES / 4) - 1)
@@ -130,21 +174,57 @@
 #define DEFAULT_NUM_BYTES (DEFAULT_NUM_WORDS * 4)
 #define METADATA_SIZE 256
 
-#define I2S_LONG_RATE 0x3C0000
-#define I2S_SPKR_MODE_QUAD01 0x2800
-#define I2S_MIC_MODE_QUAD01 0x50
-#define I2S_BIT_WIDTH_32 0x2
-#define RDDMA_WPSCNT_TWO 0x10000
-#define RDDMA_PRI_AUDIO_INTF 0x1000
-#define RDDMA_SEC_AUDIO_INTF 0x2000
-#define RDDMA_FIFO_WM_8 0xE
-#define WRDMA_WPSCNT_TWO 0x20000
-#define WRDMA_WPSCNT_FOUR 0x60000
-#define WRDMA_PRI_AUDIO_INTF 0x1000
-#define WRDMA_LOOPBACK_CH0 0x9000
-#define WRDMA_LOOPBACK_CH1 0xA000
-#define WRDMA_SEC_AUDIO_INTF 0x2000
-#define WRDMA_FIFO_WM_8 0xE
+#define T_I2S_LONG_RATE_15 0x3C0000
+#define T_I2S_SPKR_MODE_SD0 0x800
+#define T_I2S_SPKR_MODE_QUAD01 0x2800
+#define T_I2S_SPKR_MONO 0x400
+#define T_I2S_MIC_MODE_SD1 0x20
+#define T_I2S_MIC_MODE_QUAD01 0x50
+#define T_I2S_MIC_MONO 0x8
+#define T_I2S_BIT_WIDTH_16 0x0
+#define T_I2S_BIT_WIDTH_32 0x2
+#define T_RDDMA_WPSCNT_TWO 0x10000
+#define T_RDDMA_PRI_AUDIO_INTF 0x1000
+#define T_RDDMA_SEC_AUDIO_INTF 0x2000
+#define T_RDDMA_FIFO_WM_8 0xE
+#define T_WRDMA_WPSCNT_TWO 0x20000
+#define T_WRDMA_WPSCNT_FOUR 0x60000
+#define T_WRDMA_PRI_AUDIO_INTF 0x1000
+#define T_WRDMA_LOOPBACK_CH0 0x9000
+#define T_WRDMA_LOOPBACK_CH1 0xA000
+#define T_WRDMA_SEC_AUDIO_INTF 0x2000
+#define T_WRDMA_FIFO_WM_8 0xE
+
+#define H_I2S_LONG_RATE_15 0xF0000
+#define H_I2S_SPKR_MODE_SD0 0x400
+#define H_I2S_SPKR_MODE_QUAD01 0x1400
+#define H_I2S_SPKR_MONO 0x200
+#define H_I2S_MIC_MODE_SD1 0x20
+#define H_I2S_MIC_MODE_QUAD01 0x50
+#define H_I2S_MIC_MONO 0x8
+#define H_I2S_BIT_WIDTH_16 0x0
+#define H_I2S_BIT_WIDTH_32 0x2
+#define H_RDDMA_WPSCNT_TWO 0x4000
+#define H_RDDMA_PRI_AUDIO_INTF 0x400
+#define H_RDDMA_SEC_AUDIO_INTF 0x800
+#define H_RDDMA_TER_AUDIO_INTF 0xC00
+#define H_RDDMA_FIFO_WM_8 0xE
+#define H_WRDMA_WPSCNT_TWO 0x10000
+#define H_WRDMA_WPSCNT_FOUR 0x30000
+#define H_WRDMA_PRI_AUDIO_INTF 0x1000
+#define H_WRDMA_SEC_AUDIO_INTF 0x2000
+#define H_WRDMA_TER_AUDIO_INTF 0x3000
+#define H_WRDMA_LOOPBACK_CH0 0x9000
+#define H_WRDMA_LOOPBACK_CH1 0xA000
+#define H_WRDMA_LOOPBACK_CH2 0xB000
+#define H_WRDMA_FIFO_WM_8 0xE
+
+enum operation_mode {
+	NORMAL,
+	INTERNAL_LB,
+	EXTERNAL_LB_MASTER,
+	EXTERNAL_LB_MASTER_SLAVE
+};
 
 /* Structure prototypes */
 
@@ -155,6 +235,7 @@ struct hsi2s_core {
 
 	/* Memory mapping */
 	void __iomem *lpaif_base_va;
+	void __iomem *lpass_tcsr_base_va;
 
 	/* IRQ */
 	struct irq_desc *desc;
@@ -169,10 +250,22 @@ struct hsi2s_core {
 
 	/* Locks */
 	struct mutex irqlock;
+
+	/* Target */
+	u32 target;
+
+	/* Target macros */
+	struct hsi2s_macros *macro;
+
+	/* Interface count */
+	int i_count;
 };
 
 /* LPAIF HS-I2S device structure */
 struct hsi2s_device {
+	/* Device pointer */
+	struct device *dev;
+
 	/* Configuration registers */
 	void __iomem *i2s_ctl;
 	void __iomem *i2s_sel;
@@ -189,6 +282,7 @@ struct hsi2s_device {
 	void __iomem *irq_en;
 	void __iomem *irq_stat;
 	void __iomem *irq_clear;
+	void __iomem *lpaif_muxmode;
 
 	/* GPIOs */
 	bool is_pinctrl_names;
@@ -223,9 +317,6 @@ struct hsi2s_device {
 	/* SMMU context */
 	struct hsi2s_smmu_cb_ctx *hsi2s_smmu_ctx;
 
-	/* Spinlocks */
-	spinlock_t metacount_lock;
-
 	/* Wait queues */
 	wait_queue_head_t wq_rddma;
 	wait_queue_head_t wq_wrdma;
@@ -234,7 +325,10 @@ struct hsi2s_device {
 	int minor_num;
 
 	/* Operational mode */
-	int mode;
+	enum operation_mode mode;
+
+	/* Slave info */
+	int slave;
 
 	/* Number of clients */
 	int client_count;
@@ -270,6 +364,68 @@ struct hsi2s_smmu_cb_ctx {
 	u32 va_start;
 	u32 va_size;
 	int ret;
+};
+
+/* Target specific macros */
+struct hsi2s_macros {
+	/* Offsets */
+	u32 offset_i2s_ctl;
+	u32 offset_i2s_sel;
+	u32 offset_irq_en;
+	u32 offset_irq_stat;
+	u32 offset_irq_clear;
+	u32 offset_rddma_ctl;
+	u32 offset_rddma_base;
+	u32 offset_rddma_buff_len;
+	u32 offset_rddma_curr_addr;
+	u32 offset_rddma_per_len;
+	u32 offset_wrdma_ctl;
+	u32 offset_wrdma_base;
+	u32 offset_wrdma_buff_len;
+	u32 offset_wrdma_curr_addr;
+	u32 offset_wrdma_per_len;
+
+	/* Bit fields */
+	u32 bit_ws_src;
+	u32 bit_mic_en;
+	u32 bit_spkr_en;
+	u32 bit_loopback;
+	u32 bit_i2s_reset;
+	u32 bit_i2s_sel;
+	u32 bit_rddma_en;
+	u32 bit_rddma_burst_en;
+	u32 bit_rddma_dyn_clk;
+	u32 bit_rddma_reset;
+	u32 bit_wrdma_en;
+	u32 bit_wrdma_burst_en;
+	u32 bit_wrdma_dyn_clk;
+	u32 bit_wrdma_reset;
+
+	/* Register fields */
+	u32 regfield_i2s_lrate15;
+	u32 regfield_spkr_mode_sd0;
+	u32 regfield_spkr_mode_quad01;
+	u32 regfield_spkr_mono;
+	u32 regfield_mic_mode_sd1;
+	u32 regfield_mic_mode_quad01;
+	u32 regfield_mic_mono;
+	u32 regfield_bit_width16;
+	u32 regfield_bit_width32;
+	u32 regfield_rddma_wpscnt_two;
+	u32 regfield_rddma_pri_audio_intf;
+	u32 regfield_rddma_sec_audio_intf;
+	u32 regfield_rddma_ter_audio_intf;
+	u32 regfield_rddma_fifo_wm8;
+	u32 regfield_wrdma_wpscnt_one;
+	u32 regfield_wrdma_wpscnt_two;
+	u32 regfield_wrdma_wpscnt_four;
+	u32 regfield_wrdma_pri_audio_intf;
+	u32 regfield_wrdma_sec_audio_intf;
+	u32 regfield_wrdma_ter_audio_intf;
+	u32 regfield_wrdma_loopback_ch0;
+	u32 regfield_wrdma_loopback_ch1;
+	u32 regfield_wrdma_loopback_ch2;
+	u32 regfield_wrdma_fifo_wm8;
 };
 
 /* Function prototypes */
