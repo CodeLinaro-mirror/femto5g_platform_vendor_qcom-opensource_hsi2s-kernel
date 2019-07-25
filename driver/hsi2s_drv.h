@@ -295,12 +295,10 @@ struct hsi2s_device {
 
 	/* Buffer metadata */
 	struct buffer_metadata *b_meta_read;
-	struct buffer_metadata *b_meta_write;
 
 	/* Buffer indices */
 	int meta_index_read;
-	int meta_index_write;
-	int user_read_index;
+	int free_index_read;
 
 	/* DMA thread */
 	struct task_struct *rddma_thread;
@@ -341,10 +339,12 @@ struct hsi2s_device {
 
 /* FIFO for holding HSI2S data in the kernel space */
 struct hsi2s_buffer {
-	s32 *buffer;
+	void *buffer;
 	void *head;
 	void *tail;
 	int size;
+	bool data_ready;
+	dma_addr_t handle;
 };
 
 /* Buffer metadata */
@@ -352,6 +352,7 @@ struct buffer_metadata {
 	void *start_address;
 	u32 length;
 	int data_ready;
+	dma_addr_t handle;
 };
 
 /* SMMU related */

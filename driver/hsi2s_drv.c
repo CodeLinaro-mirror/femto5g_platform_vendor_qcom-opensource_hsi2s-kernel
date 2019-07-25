@@ -15,17 +15,31 @@
 /* Device number */
 static dev_t devid;
 
+/* Buffer length in words */
+static u32 wrdma_buffer_length_words;
+
+/* Periodic length in words */
+static u32 wrdma_periodic_length;
+
 /* HS-I2S core structure */
 static struct hsi2s_core *hsi2s_core;
 
 /* Module parameters */
-static u32 wrdma_periodic_length;
-module_param(wrdma_periodic_length, uint, 0644);
-MODULE_PARM_DESC(wrdma_periodic_length, "Periodic length for write channel in KB");
-
 static int operation_mode = 1;
 module_param(operation_mode, int, 0644);
 MODULE_PARM_DESC(operation_mode, "Default operation mode");
+
+static u32 bit_clock_hz;
+module_param(bit_clock_hz, uint, 0644);
+MODULE_PARM_DESC(bit_clock_hz, "Bit clock frequency in Hz");
+
+static u32 interrupt_interval_ms;
+module_param(interrupt_interval_ms, uint, 0644);
+MODULE_PARM_DESC(interrupt_interval_ms, "Interrupt interval in ms");
+
+static u32 wrdma_buffer_length;
+module_param(wrdma_buffer_length, uint, 0644);
+MODULE_PARM_DESC(wrdma_buffer_length, "Write DMA buffer length in MB");
 
 /* Macro callbacks */
 
@@ -339,7 +353,7 @@ static void configure_wrdma(struct hsi2s_device *hs_dev, int intf)
 {
 	writel_relaxed(virt_to_phys(hs_dev->lpass_wrdma_start),
 		       hs_dev->wrdma_base);
-	writel_relaxed(DEFAULT_BUFF_LEN_WORDS, hs_dev->wrdma_buff_len);
+	writel_relaxed(wrdma_buffer_length_words, hs_dev->wrdma_buff_len);
 
 	if (hs_dev->mode == NORMAL)
 		writel_relaxed(wrdma_periodic_length, hs_dev->wrdma_per_len);
@@ -430,7 +444,7 @@ static void configure_wrdma_int_lb(struct hsi2s_device *hs_dev, int intf)
 {
 	writel_relaxed(virt_to_phys(hs_dev->lpass_wrdma_start),
 		       hs_dev->wrdma_base);
-	writel_relaxed(DEFAULT_BUFF_LEN_WORDS, hs_dev->wrdma_buff_len);
+	writel_relaxed(wrdma_buffer_length_words, hs_dev->wrdma_buff_len);
 
 	if (intf == HS0_I2S) {
 		setbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_dyn_clk |
@@ -505,8 +519,7 @@ static void configure_normal_mode(struct hsi2s_device *hs_dev, int intf)
 	setbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_mic_en);
 	/* Reset metadata counters */
 	hs_dev->meta_index_read = 0;
-	hs_dev->meta_index_write = 0;
-	hs_dev->user_read_index = 0;
+	hs_dev->free_index_read = -1;
 	/* Reset buffer pointers */
 	hs_dev->write_buffer->head = hs_dev->lpass_wrdma_start;
 	hs_dev->write_buffer->tail = hs_dev->lpass_wrdma_start;
@@ -534,8 +547,7 @@ static void configure_int_loopback_mode(struct hsi2s_device *hs_dev, int intf)
 	clear_irqs(hs_dev);
 	/* Reset metadata counters */
 	hs_dev->meta_index_read = 0;
-	hs_dev->meta_index_write = 0;
-	hs_dev->user_read_index = 0;
+	hs_dev->free_index_read = -1;
 	/* Reset buffer pointers */
 	hs_dev->write_buffer->head = hs_dev->lpass_wrdma_start;
 	hs_dev->write_buffer->tail = hs_dev->lpass_wrdma_start;
@@ -563,8 +575,7 @@ static void configure_ext_loopback_mode(struct hsi2s_device *hs_dev, int intf)
 	clear_irqs(hs_dev);
 	/* Reset metadata counters */
 	hs_dev->meta_index_read = 0;
-	hs_dev->meta_index_write = 0;
-	hs_dev->user_read_index = 0;
+	hs_dev->free_index_read = -1;
 	/* Reset buffer pointers */
 	hs_dev->write_buffer->head = hs_dev->lpass_wrdma_start;
 	hs_dev->write_buffer->tail = hs_dev->lpass_wrdma_start;
@@ -594,7 +605,6 @@ static int hsi2s_buffer_init(struct hsi2s_device *hs_dev)
 {
 	int ret = 0;
 	int i;
-	u32 wrdma_periodic_length_bytes = wrdma_periodic_length * 4;
 
 	pr_warn("[HSI2S] Allocating metadata structure for read DMA");
 
@@ -602,77 +612,63 @@ static int hsi2s_buffer_init(struct hsi2s_device *hs_dev)
 	hs_dev->b_meta_read = kcalloc(METADATA_SIZE,
 				      sizeof(struct buffer_metadata),
 				      GFP_KERNEL);
-	if (!hs_dev->b_meta_read)
+	if (!hs_dev->b_meta_read) {
+		ret = -ENOMEM;
 		goto err_read_meta;
+	}
 
 	for (i = 0; i < METADATA_SIZE; i++)
 		hs_dev->b_meta_read[i].data_ready = 0;
 
-	pr_warn("[HSI2S] Allocated buffer size:%d", wrdma_periodic_length_bytes);
-
 	hs_dev->rddma_busy = 0;
 	hs_dev->meta_index_read = 0;
+	hs_dev->free_index_read = -1;
 
 	pr_warn("[HSI2S] Allocating kernel buffers for write DMA");
 
 	/* Allocate write buffer */
 	hs_dev->write_buffer = kzalloc(sizeof(*hs_dev->write_buffer),
 				       GFP_KERNEL);
-	if (!hs_dev->write_buffer)
+	if (!hs_dev->write_buffer) {
+		ret = -ENOMEM;
 		goto err_write_buffer;
+	}
 
 	hs_dev->write_buffer->buffer = kzalloc(sizeof(int32_t) *
-				DEFAULT_BUFF_LEN_WORDS, GFP_KERNEL | GFP_DMA);
-	if (!hs_dev->write_buffer->buffer)
-		goto err_write_buffer;
+				wrdma_buffer_length_words, GFP_KERNEL | GFP_DMA);
+	if (!hs_dev->write_buffer->buffer) {
+		ret = -ENOMEM;
+		goto err_write_dma_buffer;
+	}
 
-	hs_dev->lpass_wrdma_start = (void *)hs_dev->write_buffer->buffer;
+	hs_dev->write_buffer->handle = dma_map_single(hs_dev->dev, hs_dev->write_buffer->buffer, wrdma_buffer_length, DMA_FROM_DEVICE);
+        if (dma_mapping_error(hs_dev->dev, hs_dev->write_buffer->handle)) {
+                pr_err("[HSI2S] Failed to perform dma_map_single");
+                ret = -EINVAL;
+                goto err_write_dma_map;
+        }
+
+	hs_dev->lpass_wrdma_start = hs_dev->write_buffer->buffer;
 	hs_dev->lpass_wrdma_end = hs_dev->lpass_wrdma_start +
-					DEFAULT_BUFF_LEN_BYTES;
+					wrdma_buffer_length;
 
 	hs_dev->write_buffer->head = hs_dev->lpass_wrdma_start;
 	hs_dev->write_buffer->tail = hs_dev->lpass_wrdma_start;
-
-	pr_warn("[HSI2S] Allocating metadata structure for write DMA");
-
-	/* Allocate write metadata */
-	hs_dev->b_meta_write = kcalloc(METADATA_SIZE,
-				       sizeof(struct buffer_metadata),
-					GFP_KERNEL);
-	if (!hs_dev->b_meta_write)
-		goto err_write_meta;
-
-	for (i = 0; i < METADATA_SIZE; i++) {
-		hs_dev->b_meta_write[i].start_address =
-		kzalloc(wrdma_periodic_length_bytes, GFP_KERNEL | GFP_DMA);
-		if (!hs_dev->b_meta_write[i].start_address)
-			goto err_write_meta;
-		hs_dev->b_meta_write[i].length = wrdma_periodic_length_bytes;
-		hs_dev->b_meta_write[i].data_ready = 0;
-	}
-	hs_dev->meta_index_write = 0;
-	hs_dev->user_read_index = 0;
+	hs_dev->write_buffer->data_ready = 0;
 
 	return ret;
 
-err_write_meta:
-	if (hs_dev->b_meta_write) {
-		for (i = 0; i < METADATA_SIZE; i++) {
-			kfree(hs_dev->b_meta_write[i].start_address);
-			hs_dev->b_meta_write[i].start_address = NULL;
-		}
-		kfree(hs_dev->b_meta_write);
-		hs_dev->b_meta_write = NULL;
-	}
-
-err_write_buffer:
-	if (hs_dev->write_buffer) {
+err_write_dma_map:
+	if (hs_dev->write_buffer->buffer) {
 		kfree(hs_dev->write_buffer->buffer);
 		hs_dev->write_buffer->buffer = NULL;
+	}
+err_write_dma_buffer:
+	if (hs_dev->write_buffer) {
 		kfree(hs_dev->write_buffer);
 		hs_dev->write_buffer = NULL;
 	}
-
+err_write_buffer:
 	if (hs_dev->b_meta_read) {
 		for (i = 0; i < METADATA_SIZE; i++) {
 			kfree(hs_dev->b_meta_read[i].start_address);
@@ -681,9 +677,8 @@ err_write_buffer:
 		kfree(hs_dev->b_meta_read);
 		hs_dev->b_meta_read = NULL;
 	}
-
 err_read_meta:
-	return -ENOMEM;
+	return ret;
 }
 
 /* Function to free allocated buffers and metadata structures */
@@ -691,20 +686,14 @@ static void hsi2s_buffer_free(struct hsi2s_device *hs_dev)
 {
 	int i;
 
-	/* Freeing metadata structure for write DMA */
-	if (hs_dev->b_meta_write) {
-		for (i = 0; i < METADATA_SIZE; i++) {
-			kfree(hs_dev->b_meta_write[i].start_address);
-			hs_dev->b_meta_write[i].start_address = NULL;
-		}
-		kfree(hs_dev->b_meta_write);
-		hs_dev->b_meta_write = NULL;
-	}
-
 	/* Freeing write DMA buffer */
 	if (hs_dev->write_buffer) {
-		kfree(hs_dev->write_buffer->buffer);
-		hs_dev->write_buffer->buffer = NULL;
+		if (hs_dev->write_buffer->buffer) {
+			dma_unmap_single(hs_dev->dev, hs_dev->write_buffer->handle,
+					 wrdma_buffer_length, DMA_FROM_DEVICE);
+			kfree(hs_dev->write_buffer->buffer);
+			hs_dev->write_buffer->buffer = NULL;
+		}
 		kfree(hs_dev->write_buffer);
 		hs_dev->write_buffer = NULL;
 	}
@@ -712,12 +701,30 @@ static void hsi2s_buffer_free(struct hsi2s_device *hs_dev)
 	/* Freeing metadata structure for read DMA */
 	if (hs_dev->b_meta_read) {
 		for (i = 0; i < METADATA_SIZE; i++) {
-			kfree(hs_dev->b_meta_read[i].start_address);
-			hs_dev->b_meta_read[i].start_address = NULL;
+			if (hs_dev->b_meta_read[i].start_address) {
+				dma_unmap_single(hs_dev->dev, hs_dev->b_meta_read[i].handle,
+						 hs_dev->b_meta_read[i].length, DMA_TO_DEVICE);
+				kfree(hs_dev->b_meta_read[i].start_address);
+				hs_dev->b_meta_read[i].start_address = NULL;
+			}
 		}
 		kfree(hs_dev->b_meta_read);
 		hs_dev->b_meta_read = NULL;
 	}
+}
+
+/* Function to calculate periodic interrupt length */
+static u32 set_periodic_length(u32 bit_clk, u32 interval)
+{
+	/*
+	 * Formula to calculate
+	 * Bit clock -> 'm' Hz
+	 * Bits per sec  = m
+	 * Bits per msec = m * (10^(-3))
+	 * Bytes per msec = (m * (10^(-3))) / 8 = m / 8000
+	 * Bytes per 'k' msec = k * (m / 8000)
+	 */
+	return (interval * (bit_clk / 8000));
 }
 
 /* Function to call register mapping and buffer management callbacks */
@@ -731,7 +738,7 @@ static int init_default(struct hsi2s_device *hs_dev, int intf)
 	reset_registers(hs_dev);
 
 	/* Allocate kernel buffers */
-	hsi2s_buffer_init(hs_dev);
+	ret = hsi2s_buffer_init(hs_dev);
 	if (ret < 0) {
 		pr_err("[HSI2S] Buffer allocation failed");
 		return ret;
@@ -744,6 +751,7 @@ static int init_default(struct hsi2s_device *hs_dev, int intf)
 	return ret;
 }
 
+#ifndef CONFIG_QTI_GVM
 /* SMMU functions */
 
 /* Function to init smmu */
@@ -821,6 +829,7 @@ err_smmu_probe:
 	hs_dev->hsi2s_smmu_ctx->ret = ret;
 	return ret;
 }
+#endif
 
 /* GPIO management functions */
 
@@ -1254,7 +1263,8 @@ static int rddma_schedule(void *data)
 			pr_warn("[HSI2S] RDDMA scheduler asked to exit...");
 			break;
 		}
-
+		/* Adding delay to avoid watchdog bite in LA-GVM */
+		msleep(1);
 		if (hs_dev->b_meta_read[i].data_ready) {
 			pr_warn("[HSI2S] DMA to be scheduled on hs%d interface",hs_dev->minor_num);
 			/* Wait until any pending DMA is complete */
@@ -1295,22 +1305,22 @@ static int rddma_schedule(void *data)
 static irq_handler_t irq_thread_fn(int irq, void *devid)
 {
 	u32 temp_len;
-	u32 wrdma_periodic_length_bytes = wrdma_periodic_length * 4;
+	u32 wrdma_periodic_length_bytes = wrdma_periodic_length * BYTES_PER_SAMPLE;
 	u32 write_len = wrdma_periodic_length_bytes;
 	u32 irq_stat;
-	u32 curr_addr;
 	struct hsi2s_device **hs_arr;
-	int index;
 	int slave;
 	void *tail;
 
 	hs_arr = hsi2s_core->hsi2s_arr;
 	mutex_lock(&hsi2s_core->irqlock);
 
+	/* Checking for read DMA interrupt on HS0 interface */
 	if (hs_arr[0]) {
 		irq_stat = readl_relaxed(hs_arr[0]->irq_stat);
 		/* Periodic interrupt on read channel 0 */
 		if (irq_stat & IRQ_PER_RDDMA_CH0) {
+			setbits(hs_arr[0]->irq_clear, IRQ_PER_RDDMA_CH0);
 			clearbits(hs_arr[0]->i2s_ctl, hsi2s_core->macro->bit_spkr_en);
 			/* Disable write channel for loopback mode */
 			if (hs_arr[0]->mode >= INTERNAL_LB) {
@@ -1321,88 +1331,17 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 				clearbits(hs_arr[slave]->wrdma_ctl, hsi2s_core->macro->bit_wrdma_en);
 			}
 			clearbits(hs_arr[0]->rddma_ctl, hsi2s_core->macro->bit_rddma_en);
-			setbits(hs_arr[0]->irq_clear, IRQ_PER_RDDMA_CH0);
 			hs_arr[0]->rddma_busy = 0;
 			wake_up_interruptible(&hs_arr[0]->wq_rddma);
-		}
-
-		irq_stat = readl_relaxed(hs_arr[0]->irq_stat);
-		/* Periodic interrupt on write channel 0 */
-		if (irq_stat & IRQ_PER_WRDMA_CH0) {
-			setbits(hs_arr[0]->irq_clear, IRQ_PER_WRDMA_CH0);
-
-			index = hs_arr[0]->meta_index_write;
-			tail = hs_arr[0]->write_buffer->tail;
-
-			while (write_len > wrdma_periodic_length_bytes) {
-				/* Boundary condition on write buffer */
-				if ((hs_arr[0]->lpass_wrdma_end - tail) <
-				    wrdma_periodic_length_bytes) {
-					pr_warn("[HSI2S] End of DMA buffer at %d bytes", DEFAULT_BUFF_LEN_BYTES);
-					temp_len = hs_arr[0]->lpass_wrdma_end - tail;
-					memcpy(hs_arr[0]->b_meta_write[index].start_address,
-					       tail, temp_len);
-					memcpy(hs_arr[0]->b_meta_write[index].start_address + temp_len,
-					       hs_arr[0]->lpass_wrdma_start,
-					       wrdma_periodic_length_bytes - temp_len);
-					tail = hs_arr[0]->lpass_wrdma_start +
-					       (wrdma_periodic_length_bytes - temp_len);
-				} else {
-					memcpy(hs_arr[0]->b_meta_write[index].start_address,
-					       tail, wrdma_periodic_length_bytes);
-					tail +=	wrdma_periodic_length_bytes;
-				}
-				write_len -= wrdma_periodic_length_bytes;
-				hs_arr[0]->b_meta_write[index].data_ready = 1;
-				index = (index + 1) % METADATA_SIZE;
-				/* Notify event read */
-				wake_up_interruptible(&hs_arr[0]->wq_wrdma);
-			}
-
-			if ((hs_arr[0]->lpass_wrdma_end - tail) < write_len) {
-				temp_len = hs_arr[0]->lpass_wrdma_end - tail;
-				memcpy(hs_arr[0]->b_meta_write[index].start_address,
-				       tail, temp_len);
-				memcpy(hs_arr[0]->b_meta_write[index].start_address + temp_len,
-				       hs_arr[0]->lpass_wrdma_start,
-				       write_len - temp_len);
-				tail = hs_arr[0]->lpass_wrdma_start + (write_len - temp_len);
-			} else {
-				memcpy(hs_arr[0]->b_meta_write[index].start_address,
-				       tail, write_len);
-				tail += write_len;
-			}
-			hs_arr[0]->b_meta_write[index].data_ready = 1;
-			index = (index + 1) % METADATA_SIZE;
-
-			/* Notify event read */
-			wake_up_interruptible(&hs_arr[0]->wq_wrdma);
-
-			/* Update write index */
-			hs_arr[0]->meta_index_write = index;
-
-			/* Update tail */
-			if (hs_arr[0]->mode == NORMAL) {
-				hs_arr[0]->write_buffer->tail +=
-				wrdma_periodic_length_bytes;
-			} else {
-				/* To eliminate boundary error */
-				curr_addr =
-				readl_relaxed(hs_arr[0]->wrdma_curr_addr);
-				hs_arr[0]->write_buffer->tail =
-				hs_arr[0]->lpass_wrdma_start +
-				(curr_addr -
-				 virt_to_phys(hs_arr[0]->lpass_wrdma_start));
-			}
-
-			/* Tail rollback at boundary */
-			if (hs_arr[0]->write_buffer->tail >=
-			    hs_arr[0]->lpass_wrdma_end)
-				hs_arr[0]->write_buffer->tail =
-				hs_arr[0]->lpass_wrdma_start;
+			hs_arr[0]->free_index_read = (hs_arr[0]->free_index_read + 1) % METADATA_SIZE;
+			dma_unmap_single(hs_arr[0]->dev, hs_arr[0]->b_meta_read[hs_arr[0]->free_index_read].handle,
+					 hs_arr[0]->b_meta_read[hs_arr[0]->free_index_read].length, DMA_TO_DEVICE);
+			kfree(hs_arr[0]->b_meta_read[hs_arr[0]->free_index_read].start_address);
+			hs_arr[0]->b_meta_read[hs_arr[0]->free_index_read].start_address = NULL;
 		}
 	}
 
+	/* Checking for read DMA interrupt on HS1 interface */
 	if (hs_arr[1]) {
 		irq_stat = readl_relaxed(hs_arr[1]->irq_stat);
 		/* Periodic interrupt on read channel 1 */
@@ -1420,83 +1359,15 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 			setbits(hs_arr[1]->irq_clear, IRQ_PER_RDDMA_CH1);
 			hs_arr[1]->rddma_busy = 0;
 			wake_up_interruptible(&hs_arr[1]->wq_rddma);
-		}
-
-		irq_stat = readl_relaxed(hs_arr[1]->irq_stat);
-		/* Periodic interrupt on write channel 1 */
-		if (irq_stat & IRQ_PER_WRDMA_CH1) {
-			setbits(hs_arr[1]->irq_clear, IRQ_PER_WRDMA_CH1);
-
-			index = hs_arr[1]->meta_index_write;
-			tail = hs_arr[1]->write_buffer->tail;
-
-			while (write_len > wrdma_periodic_length_bytes) {
-				/* Boundary condition on write buffer */
-				if ((hs_arr[1]->lpass_wrdma_end - tail) <
-				    wrdma_periodic_length_bytes) {
-					pr_warn("[HSI2S] End of DMA buffer at %d bytes", DEFAULT_BUFF_LEN_BYTES);
-					temp_len = hs_arr[1]->lpass_wrdma_end - tail;
-					memcpy(hs_arr[1]->b_meta_write[index].start_address,
-					       tail, temp_len);
-					memcpy(hs_arr[1]->b_meta_write[index].start_address + temp_len,
-					       hs_arr[1]->lpass_wrdma_start,
-					       wrdma_periodic_length_bytes - temp_len);
-					tail = hs_arr[1]->lpass_wrdma_start +
-					       (wrdma_periodic_length_bytes - temp_len);
-				} else {
-					memcpy(hs_arr[1]->b_meta_write[index].start_address,
-					       tail, wrdma_periodic_length_bytes);
-					tail +=	wrdma_periodic_length_bytes;
-				}
-				write_len -= wrdma_periodic_length_bytes;
-				hs_arr[1]->b_meta_write[index].data_ready = 1;
-				index = (index + 1) % METADATA_SIZE;
-			}
-
-			if ((hs_arr[1]->lpass_wrdma_end - tail) < write_len) {
-				temp_len = hs_arr[1]->lpass_wrdma_end - tail;
-				memcpy(hs_arr[1]->b_meta_write[index].start_address,
-				       tail, temp_len);
-				memcpy(hs_arr[1]->b_meta_write[index].start_address + temp_len,
-				       hs_arr[1]->lpass_wrdma_start,
-				       write_len - temp_len);
-				tail = hs_arr[1]->lpass_wrdma_start + (write_len - temp_len);
-			} else {
-				memcpy(hs_arr[1]->b_meta_write[index].start_address,
-				       tail, write_len);
-				tail += write_len;
-			}
-			hs_arr[1]->b_meta_write[index].data_ready = 1;
-			index = (index + 1) % METADATA_SIZE;
-
-			/* Notify event read */
-			wake_up_interruptible(&hs_arr[1]->wq_wrdma);
-
-			/* Update write index */
-			hs_arr[1]->meta_index_write = index;
-
-			/* Update tail */
-			if (hs_arr[1]->mode == NORMAL) {
-				hs_arr[1]->write_buffer->tail +=
-				wrdma_periodic_length_bytes;
-			} else {
-				/* To eliminate boundary error */
-				curr_addr =
-				readl_relaxed(hs_arr[1]->wrdma_curr_addr);
-				hs_arr[1]->write_buffer->tail =
-				hs_arr[1]->lpass_wrdma_start +
-				(curr_addr -
-				 virt_to_phys(hs_arr[1]->lpass_wrdma_start));
-			}
-
-			/* Tail rollback at boundary */
-			if (hs_arr[1]->write_buffer->tail >=
-			    hs_arr[1]->lpass_wrdma_end)
-				hs_arr[1]->write_buffer->tail =
-				hs_arr[1]->lpass_wrdma_start;
+			hs_arr[1]->free_index_read = (hs_arr[1]->free_index_read + 1) % METADATA_SIZE;
+			dma_unmap_single(hs_arr[1]->dev, hs_arr[1]->b_meta_read[hs_arr[1]->free_index_read].handle,
+					 hs_arr[1]->b_meta_read[hs_arr[1]->free_index_read].length, DMA_TO_DEVICE);
+			kfree(hs_arr[1]->b_meta_read[hs_arr[1]->free_index_read].start_address);
+			hs_arr[1]->b_meta_read[hs_arr[1]->free_index_read].start_address = NULL;
 		}
 	}
 
+	/* Checking for read DMA interrupt on HS2 interface */
 	if (hs_arr[2]) {
 		irq_stat = readl_relaxed(hs_arr[2]->irq_stat);
 		/* Periodic interrupt on read channel 2 */
@@ -1514,80 +1385,74 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 			setbits(hs_arr[2]->irq_clear, IRQ_PER_RDDMA_CH2);
 			hs_arr[2]->rddma_busy = 0;
 			wake_up_interruptible(&hs_arr[2]->wq_rddma);
+			hs_arr[2]->free_index_read = (hs_arr[2]->free_index_read + 1) % METADATA_SIZE;
+			dma_unmap_single(hs_arr[2]->dev, hs_arr[2]->b_meta_read[hs_arr[2]->free_index_read].handle,
+					 hs_arr[2]->b_meta_read[hs_arr[2]->free_index_read].length, DMA_TO_DEVICE);
+			kfree(hs_arr[2]->b_meta_read[hs_arr[2]->free_index_read].start_address);
+			hs_arr[2]->b_meta_read[hs_arr[2]->free_index_read].start_address = NULL;
 		}
+	}
 
+	/* Checking for write DMA interrupt on HS0 interface */
+	if (hs_arr[0]) {
+		irq_stat = readl_relaxed(hs_arr[0]->irq_stat);
+		/* Periodic interrupt on write channel 0 */
+		if (irq_stat & IRQ_PER_WRDMA_CH0) {
+			setbits(hs_arr[0]->irq_clear, IRQ_PER_WRDMA_CH0);
+
+			tail = hs_arr[0]->write_buffer->tail;
+			if (tail + write_len >= hs_arr[0]->lpass_wrdma_end) {
+				temp_len = hs_arr[0]->lpass_wrdma_end - tail;
+				tail = hs_arr[0]->lpass_wrdma_start + (write_len - temp_len);
+			}
+			else
+				tail += write_len;
+			hs_arr[0]->write_buffer->tail = tail;
+			hs_arr[0]->write_buffer->data_ready = 1;
+			/* Notify event read */
+			wake_up_interruptible(&hs_arr[0]->wq_wrdma);
+		}
+	}
+
+	/* Checking for write DMA interrupt on HS1 interface */
+	if (hs_arr[1]) {
+		irq_stat = readl_relaxed(hs_arr[1]->irq_stat);
+		/* Periodic interrupt on write channel 1 */
+		if (irq_stat & IRQ_PER_WRDMA_CH1) {
+			setbits(hs_arr[1]->irq_clear, IRQ_PER_WRDMA_CH1);
+
+			tail = hs_arr[1]->write_buffer->tail;
+			if (tail + write_len >= hs_arr[1]->lpass_wrdma_end) {
+				temp_len = hs_arr[1]->lpass_wrdma_end - tail;
+				tail = hs_arr[1]->lpass_wrdma_start + (write_len - temp_len);
+			}
+			else
+				tail += write_len;
+			hs_arr[1]->write_buffer->tail = tail;
+			hs_arr[1]->write_buffer->data_ready = 1;
+			/* Notify event read */
+			wake_up_interruptible(&hs_arr[1]->wq_wrdma);
+		}
+	}
+
+	/* Checking for write DMA interrupt on HS2 interface */
+	if (hs_arr[2]) {
 		irq_stat = readl_relaxed(hs_arr[2]->irq_stat);
 		/* Periodic interrupt on write channel 2 */
 		if (irq_stat & IRQ_PER_WRDMA_CH2) {
 			setbits(hs_arr[2]->irq_clear, IRQ_PER_WRDMA_CH2);
 
-			index = hs_arr[2]->meta_index_write;
 			tail = hs_arr[2]->write_buffer->tail;
-
-			while (write_len > wrdma_periodic_length_bytes) {
-				/* Boundary condition on write buffer */
-				if ((hs_arr[2]->lpass_wrdma_end - tail) <
-				    wrdma_periodic_length_bytes) {
-					pr_warn("[HSI2S] End of DMA buffer at %d bytes", DEFAULT_BUFF_LEN_BYTES);
-					temp_len = hs_arr[2]->lpass_wrdma_end - tail;
-					memcpy(hs_arr[2]->b_meta_write[index].start_address,
-					       tail, temp_len);
-					memcpy(hs_arr[2]->b_meta_write[index].start_address + temp_len,
-					       hs_arr[2]->lpass_wrdma_start,
-					       wrdma_periodic_length_bytes - temp_len);
-					tail = hs_arr[2]->lpass_wrdma_start +
-					       (wrdma_periodic_length_bytes - temp_len);
-				} else {
-					memcpy(hs_arr[2]->b_meta_write[index].start_address,
-					       tail, wrdma_periodic_length_bytes);
-					tail +=	wrdma_periodic_length_bytes;
-				}
-				write_len -= wrdma_periodic_length_bytes;
-				hs_arr[2]->b_meta_write[index].data_ready = 1;
-				index = (index + 1) % METADATA_SIZE;
-			}
-
-			if ((hs_arr[2]->lpass_wrdma_end - tail) < write_len) {
+			if (tail + write_len >= hs_arr[2]->lpass_wrdma_end) {
 				temp_len = hs_arr[2]->lpass_wrdma_end - tail;
-				memcpy(hs_arr[2]->b_meta_write[index].start_address,
-				       tail, temp_len);
-				memcpy(hs_arr[2]->b_meta_write[index].start_address + temp_len,
-				       hs_arr[2]->lpass_wrdma_start,
-				       write_len - temp_len);
 				tail = hs_arr[2]->lpass_wrdma_start + (write_len - temp_len);
-			} else {
-				memcpy(hs_arr[2]->b_meta_write[index].start_address,
-				       tail, write_len);
-				tail += write_len;
 			}
-			hs_arr[2]->b_meta_write[index].data_ready = 1;
-			index = (index + 1) % METADATA_SIZE;
-
+			else
+				tail += write_len;
+			hs_arr[2]->write_buffer->tail = tail;
+			hs_arr[2]->write_buffer->data_ready = 1;
 			/* Notify event read */
 			wake_up_interruptible(&hs_arr[2]->wq_wrdma);
-
-			/* Update write index */
-			hs_arr[2]->meta_index_write = index;
-
-			/* Update tail */
-			if (hs_arr[2]->mode == NORMAL) {
-				hs_arr[2]->write_buffer->tail +=
-				wrdma_periodic_length_bytes;
-			} else {
-				/* To eliminate boundary error */
-				curr_addr =
-				readl_relaxed(hs_arr[2]->wrdma_curr_addr);
-				hs_arr[2]->write_buffer->tail =
-				hs_arr[2]->lpass_wrdma_start +
-				(curr_addr -
-				 virt_to_phys(hs_arr[2]->lpass_wrdma_start));
-			}
-
-			/* Tail rollback at boundary */
-			if (hs_arr[2]->write_buffer->tail >=
-			    hs_arr[2]->lpass_wrdma_end)
-				hs_arr[2]->write_buffer->tail =
-				hs_arr[2]->lpass_wrdma_start;
 		}
 	}
 
@@ -1611,52 +1476,100 @@ static ssize_t device_read(struct file *file, char *buffer,
 {
 	struct hsi2s_device *hs_dev;
 	int temp_length;
+	int copy_len;
 	int bytes_read = 0;
 	int ret = 0;
-	int index;
+	void *head;
 
 	hs_dev = (struct hsi2s_device *)file->private_data;
+	head = hs_dev->write_buffer->head;
 	temp_length = wrdma_periodic_length * BYTES_PER_SAMPLE;
 
 	while (length > temp_length) {
-		index = hs_dev->user_read_index;
+		if (head == hs_dev->write_buffer->tail) {
+			wait_event_interruptible(hs_dev->wq_wrdma,
+			hs_dev->write_buffer->data_ready == 1);
+		}
 
+		hs_dev->write_buffer->data_ready = 0;
+
+		if (head + temp_length > hs_dev->lpass_wrdma_end) {
+			msleep(10);
+			dma_sync_single_for_cpu(hs_dev->dev, hs_dev->write_buffer->handle, wrdma_buffer_length, DMA_FROM_DEVICE);
+			copy_len = hs_dev->lpass_wrdma_end - head;
+			ret = copy_to_user(buffer + bytes_read,
+				   hs_dev->write_buffer->head,
+				   copy_len);
+			if (ret) {
+				pr_err("[HSI2S] Error copying data to userspace");
+				return -ret;
+			}
+			ret = copy_to_user(buffer + bytes_read,
+				   hs_dev->lpass_wrdma_start,
+				   temp_length - copy_len);
+			if (ret) {
+				pr_err("[HSI2S] Error copying data to userspace");
+				return -ret;
+			}
+			head = hs_dev->lpass_wrdma_start + (temp_length - copy_len);
+		} else  {
+			msleep(10);
+			dma_sync_single_for_cpu(hs_dev->dev, hs_dev->write_buffer->handle, wrdma_buffer_length, DMA_FROM_DEVICE);
+			ret = copy_to_user(buffer + bytes_read,
+					   head,
+					   temp_length);
+			if (ret) {
+				pr_err("[HSI2S] Error copying data to userspace");
+				return -ret;
+			}
+			head += temp_length;
+		}
+		hs_dev->write_buffer->head = head;
+		length -= temp_length;
+		bytes_read += temp_length;
+	}
+
+	if (hs_dev->write_buffer->head == hs_dev->write_buffer->tail) {
 		wait_event_interruptible(hs_dev->wq_wrdma,
-					 hs_dev->b_meta_write[index].data_ready == 1);
+		hs_dev->write_buffer->data_ready == 1);
+	}
 
-		hs_dev->b_meta_write[index].data_ready = 0;
+	hs_dev->write_buffer->data_ready = 0;
 
-		/* Copy periodic length at a time */
+	if (head + length > hs_dev->lpass_wrdma_end) {
+		msleep(10);
+		dma_sync_single_for_cpu(hs_dev->dev, hs_dev->write_buffer->handle, wrdma_buffer_length, DMA_FROM_DEVICE);
+		copy_len = hs_dev->lpass_wrdma_end - head;
 		ret = copy_to_user(buffer + bytes_read,
-				   hs_dev->b_meta_write[index].start_address,
-				   temp_length);
+			   hs_dev->write_buffer->head,
+			   copy_len);
 		if (ret) {
 			pr_err("[HSI2S] Error copying data to userspace");
 			return -ret;
 		}
-
-		length -= temp_length;
-		bytes_read += temp_length;
-		hs_dev->user_read_index = (hs_dev->user_read_index + 1) %
-						METADATA_SIZE;
+		ret = copy_to_user(buffer + bytes_read,
+			   hs_dev->lpass_wrdma_start,
+			   length - copy_len);
+		if (ret) {
+			pr_err("[HSI2S] Error copying data to userspace");
+			return -ret;
+		}
+		head = hs_dev->lpass_wrdma_start + (length - copy_len);
+	} else  {
+		msleep(10);
+		if (!hs_dev->minor_num)
+			dma_sync_single_for_cpu(hs_dev->dev, hs_dev->write_buffer->handle, wrdma_buffer_length, DMA_FROM_DEVICE);
+		ret = copy_to_user(buffer + bytes_read,
+				   head,
+				   length);
+		if (ret) {
+			pr_err("[HSI2S] Error copying data to userspace");
+			return -ret;
+		}
+		head += length;
 	}
-
-	index = hs_dev->user_read_index;
-	wait_event_interruptible(hs_dev->wq_wrdma,
-				 hs_dev->b_meta_write[index].data_ready == 1);
-	hs_dev->b_meta_write[index].data_ready = 0;
-
-	/* Copy periodic length at a time */
-	ret = copy_to_user(buffer + bytes_read,
-			   hs_dev->b_meta_write[index].start_address,
-			   length);
-	if (ret) {
-		pr_err("[HSI2S] Error copying data to userspace");
-		return -ret;
-	}
+	hs_dev->write_buffer->head = head;
 	bytes_read += length;
-	hs_dev->user_read_index = (hs_dev->user_read_index + 1) %
-					METADATA_SIZE;
 
 	return bytes_read;
 }
@@ -1668,8 +1581,8 @@ static ssize_t device_write(struct file *file, const char *buffer,
 	struct hsi2s_device *hs_dev;
 	int write_index;
 
-	if (length >= DEFAULT_BUFF_LEN_BYTES) {
-		pr_err("[HSI2S] Size exceeds DMA limit %d bytes", DEFAULT_BUFF_LEN_BYTES);
+	if (length >= wrdma_buffer_length) {
+		pr_err("[HSI2S] Size exceeds DMA limit %d bytes", wrdma_buffer_length);
 		return -EINVAL;
 	}
 
@@ -1678,18 +1591,26 @@ static ssize_t device_write(struct file *file, const char *buffer,
 	write_index = hs_dev->meta_index_read;
 
 	hs_dev->b_meta_read[write_index].start_address =
-	kzalloc(length, GFP_ATOMIC | GFP_DMA);
+	kzalloc(length, GFP_KERNEL | GFP_DMA);
 	if (!hs_dev->b_meta_read[write_index].start_address)
 		return -ENOMEM;
 
+	hs_dev->b_meta_read[write_index].handle = dma_map_single(hs_dev->dev, hs_dev->b_meta_read[write_index].start_address,
+								 length, DMA_TO_DEVICE);
+        if (dma_mapping_error(hs_dev->dev, hs_dev->b_meta_read[write_index].handle)) {
+                pr_err("[HSI2S] Failed to perform dma_map_single");
+                return -EINVAL;
+        }
+
 	copy_from_user(hs_dev->b_meta_read[write_index].start_address,
 		       buffer, length);
-	msleep(500);
+
+	dma_sync_single_for_device(hs_dev->dev, hs_dev->b_meta_read[write_index].handle, length, DMA_TO_DEVICE);
+
 	hs_dev->b_meta_read[write_index].length = length;
 	hs_dev->b_meta_read[write_index].data_ready = 1;
 
-	hs_dev->meta_index_read = (hs_dev->meta_index_read + 1) %
-					METADATA_SIZE;
+	hs_dev->meta_index_read = (hs_dev->meta_index_read + 1) % METADATA_SIZE;
 
 	return length;
 }
@@ -1776,6 +1697,7 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		}
 		pr_warn("[HSI2S] Triggering external loopback on master");
 		if (hs_dev->client_count == 1) {
+			configure_muxmode(hs_dev, 0);
 			configure_ext_loopback_mode(hs_dev, minor);
 			hs_dev->slave = minor;
 		}
@@ -1839,16 +1761,17 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			/* Clear IRQs */
 			clear_irqs(hs_dev);
 			/* Reset metadata counters */
-			for (i = 0; i < METADATA_SIZE; i++) {
+			for (i = 0; i < METADATA_SIZE; i++)
 				hs_dev->b_meta_read[i].data_ready = 0;
-				hs_dev->b_meta_write[i].data_ready = 0;
-			}
+
 			hs_dev->meta_index_read = 0;
-			hs_dev->meta_index_write = 0;
-			hs_dev->user_read_index = 0;
+			hs_dev->free_index_read = -1;
+
 			/* Reset buffer pointers */
+			memset(hs_dev->write_buffer->buffer, 0, wrdma_buffer_length);
 			hs_dev->write_buffer->head = hs_dev->lpass_wrdma_start;
 			hs_dev->write_buffer->tail = hs_dev->lpass_wrdma_start;
+			hs_dev->write_buffer->data_ready = 0;
 		}
 		else
 			pr_warn("[HSI2S] Mode already set by previous client");
@@ -1920,12 +1843,14 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 		goto err_deinit_default;
 	}
 
+	#ifndef CONFIG_QTI_GVM
 	/* Configure SMMU */
 	ret = hsi2s_smmu_init(pdev, minor);
 	if (ret) {
 		pr_err("[HSI2S] Failed to init smmu");
 		goto err_free_smmu;
 	}
+	#endif
 
 	/* Configure the gpios */
 	if (of_property_read_bool(pdev->dev.of_node, "pinctrl-names")) {
@@ -2019,6 +1944,7 @@ err_disable_intf_clock:
 	if (hsi2s_core->target == 6155)
 		hsi2s_disable_intf_clks(pdev);
 err_free_smmu:
+	#ifndef CONFIG_QTI_GVM
 	/* Detach and release iommu mapping */
 	if (hs_dev->hsi2s_smmu_ctx->valid) {
 		if (hs_dev->hsi2s_smmu_ctx->smmu_pdev)
@@ -2033,6 +1959,7 @@ err_free_smmu:
 	}
 	kfree(hs_dev->hsi2s_smmu_ctx);
 	hs_dev->hsi2s_smmu_ctx = NULL;
+	#endif
 err_deinit_default:
 	hsi2s_buffer_free(hs_dev);
 	kfree(hs_dev);
@@ -2061,6 +1988,8 @@ static int hsi2s_probe(struct platform_device *pdev)
 	struct resource *resource = NULL;
 	int interface_count = 0;
 	u32 target;
+	u32 bit_clk;
+	u32 interrupt_interval;
 	int ret = 0;
 
 	if (of_device_is_compatible(pdev->dev.of_node, "qcom,hsi2s-interface"))
@@ -2110,6 +2039,42 @@ static int hsi2s_probe(struct platform_device *pdev)
 
 	/* Store the interface count */
 	hsi2s_core->i_count = interface_count;
+
+	/* Set the write DMA buffer length */
+	if (wrdma_buffer_length < 1 || wrdma_buffer_length > 4) {
+		pr_warn("[HSI2S] No valid buffer length entered. Setting to default");
+		wrdma_buffer_length = DEFAULT_BUFF_LEN_BYTES;
+	} else {
+		/* Converting into bytes */
+		wrdma_buffer_length *= (1024 * 1024);
+	}
+	pr_warn("[HSI2S] Write DMA buffer length set to %u bytes", wrdma_buffer_length);
+
+	wrdma_buffer_length_words = ((wrdma_buffer_length / 4) - 1);
+
+	/* Read the default bit clock and interrupt interval values */
+	ret = of_property_read_u32(dev->of_node, "bit-clock-hz",
+				   &bit_clk);
+	if (ret) {
+		pr_err("[HSI2S] Resource 'bit-clock-hz' unavailable in dtsi");
+		goto err_free_macro;
+	}
+
+	ret = of_property_read_u32(dev->of_node, "interrupt-interval-ms",
+				   &interrupt_interval);
+	if (ret) {
+		pr_err("[HSI2S] Resource 'interrupt-interval-ms' unavailable in dtsi");
+		goto err_free_macro;
+	}
+
+	/* Set the periodic length */
+	if (!bit_clock_hz)
+		bit_clock_hz = bit_clk;
+	if (!interrupt_interval_ms)
+		interrupt_interval_ms = interrupt_interval;
+	/* Store the periodic length in words */
+	wrdma_periodic_length = (set_periodic_length(bit_clock_hz, interrupt_interval_ms)) / BYTES_PER_SAMPLE;
+	pr_warn("[HSI2S] Periodic length configured as %u words", wrdma_periodic_length);
 
 	/* Register the character device numbers */
 	ret = alloc_chrdev_region(&devid, 0, interface_count,
@@ -2250,6 +2215,7 @@ static int hsi2s_interface_remove(struct platform_device *pdev)
 	if (hsi2s_core->target == 6155)
 		hsi2s_disable_intf_clks(pdev);
 	/* Detach and release iommu mapping */
+	#ifndef CONFIG_QTI_GVM
 	if (hs_dev->hsi2s_smmu_ctx->valid) {
 		if (hs_dev->hsi2s_smmu_ctx->smmu_pdev)
 			arm_iommu_detach_device(&hs_dev->hsi2s_smmu_ctx->smmu_pdev->dev);
@@ -2263,6 +2229,7 @@ static int hsi2s_interface_remove(struct platform_device *pdev)
 	}
 	kfree(hs_dev->hsi2s_smmu_ctx);
 	hs_dev->hsi2s_smmu_ctx = NULL;
+	#endif
 
 	/* Free the allocated buffers and device data structures */
 	if (hs_dev) {
@@ -2393,14 +2360,6 @@ static struct platform_driver hsi2s_driver = {
 static int __init hsi2s_init_module(void)
 {
 	int ret = 0;
-
-	if (!wrdma_periodic_length)
-		wrdma_periodic_length = DEFAULT_NUM_WORDS;
-	else {
-		/* Convert the periodic length from KB to words */
-		wrdma_periodic_length = (wrdma_periodic_length * 1024) /
-					BYTES_PER_SAMPLE;
-	}
 
 	ret = platform_driver_register(&hsi2s_driver);
 	if (ret < 0) {
