@@ -58,6 +58,18 @@
 #define T_LPAIF_WRDMA_BUFF_LEN			0x18008
 #define T_LPAIF_WRDMA_CURR_ADDR			0x1800C
 #define T_LPAIF_WRDMA_PER_LEN			0x18010
+#define T_LPAIF_PRI_RATE_DET_CONFIG		0x22000
+#define T_LPAIF_PRI_RATE_DET_TARGET1_CONFIG	0x22004
+#define T_LPAIF_PRI_RATE_DET_TARGET2_CONFIG	0x22008
+#define T_LPAIF_PRI_RATE_BIN			0x2200C
+#define T_LPAIF_PRI_STC_DIFF			0x22010
+#define T_LPAIF_PRI_RATE_DET_SEL		0x22014
+#define T_LPAIF_SEC_RATE_DET_CONFIG		0x23000
+#define T_LPAIF_SEC_RATE_DET_TARGET1_CONFIG	0x23004
+#define T_LPAIF_SEC_RATE_DET_TARGET2_CONFIG	0x23008
+#define T_LPAIF_SEC_RATE_BIN			0x2300C
+#define T_LPAIF_SEC_STC_DIFF			0x23010
+#define T_LPAIF_SEC_RATE_DET_SEL		0x23014
 
 #define H_LPAIF_I2S_CTL				0x1000
 #define H_LPAIF_PCM_I2S_SEL			0x1B00
@@ -74,6 +86,16 @@
 #define H_LPAIF_WRDMA_BUFF_LEN			0x13008
 #define H_LPAIF_WRDMA_CURR_ADDR			0x1300C
 #define H_LPAIF_WRDMA_PER_LEN			0x13010
+#define H_LPAIF_PRI_RATE_DET_CONFIG		0x19000
+#define H_LPAIF_PRI_RATE_DET_TARGET1_CONFIG	0x19004
+#define H_LPAIF_PRI_RATE_DET_TARGET2_CONFIG	0x19008
+#define H_LPAIF_PRI_RATE_BIN			0x1900C
+#define H_LPAIF_PRI_STC_DIFF			0x19010
+#define H_LPAIF_SEC_RATE_DET_CONFIG		0x1A000
+#define H_LPAIF_SEC_RATE_DET_TARGET1_CONFIG	0x1A004
+#define H_LPAIF_SEC_RATE_DET_TARGET2_CONFIG	0x1A008
+#define H_LPAIF_SEC_RATE_BIN			0x1A00C
+#define H_LPAIF_SEC_STC_DIFF			0x1A010
 #define H_LPAIF_MUXMODE				0xB000
 
 /* Bits for I2S control register */
@@ -114,6 +136,13 @@
 #define H_WRDMA_BURST_EN			BIT(19)
 #define H_WRDMA_DYN_CLK				BIT(20)
 #define H_WRDMA_RESET				BIT(31)
+
+/* Bits for rate detection */
+#define T_RATE_DET_EN				BIT(0)
+#define T_RATE_DET_RESET			BIT(31)
+
+#define H_RATE_DET_EN				BIT(0)
+#define H_RATE_DET_RESET			BIT(31)
 
 /* Bits for interrupt register */
 #define IRQ_PER_RDDMA_CH0			BIT(0)
@@ -173,6 +202,10 @@
 #define DEFAULT_NUM_WORDS 1024
 #define DEFAULT_NUM_BYTES (DEFAULT_NUM_WORDS * 4)
 #define METADATA_SIZE 256
+#define SPKR_STEREO 0x0
+#define MIC_STEREO 0x0
+#define PRI_RATE_DET 0
+#define SEC_RATE_DET 1
 
 #define T_I2S_LONG_RATE_15 0x3C0000
 #define T_I2S_SPKR_MODE_SD0 0x800
@@ -182,18 +215,37 @@
 #define T_I2S_MIC_MODE_QUAD01 0x50
 #define T_I2S_MIC_MONO 0x8
 #define T_I2S_BIT_WIDTH_16 0x0
+#define T_I2S_BIT_WIDTH_24 0x1
 #define T_I2S_BIT_WIDTH_32 0x2
+#define T_I2S_BIT_WIDTH_25 0x3
+#define T_RDDMA_WPSCNT_ONE 0x0
 #define T_RDDMA_WPSCNT_TWO 0x10000
 #define T_RDDMA_PRI_AUDIO_INTF 0x1000
 #define T_RDDMA_SEC_AUDIO_INTF 0x2000
 #define T_RDDMA_FIFO_WM_8 0xE
+#define T_WRDMA_WPSCNT_ONE 0x0
 #define T_WRDMA_WPSCNT_TWO 0x20000
-#define T_WRDMA_WPSCNT_FOUR 0x60000
 #define T_WRDMA_PRI_AUDIO_INTF 0x1000
 #define T_WRDMA_LOOPBACK_CH0 0x9000
 #define T_WRDMA_LOOPBACK_CH1 0xA000
 #define T_WRDMA_SEC_AUDIO_INTF 0x2000
 #define T_WRDMA_FIFO_WM_8 0xE
+#define T_RATE_NUM_FS_1 0x0
+#define T_RATE_NUM_FS_8 0x70
+#define T_RATE_VAR_192_176P4_FS1 0x2800000
+#define T_RATE_VAR_128_44P1_FS1 0x28000
+#define T_RATE_VAR_32_8_FS1 0x280
+#define T_RATE_TARGET128_FS1 0x960000
+#define T_RATE_TARGET176P4_FS1 0x6D
+#define T_RATE_TARGET192_FS1 0x64
+#define T_RATE_VAR_192_176P4_FS8 0x11800000
+#define T_RATE_VAR_128_44P1_FS8 0x238000
+#define T_RATE_VAR_32_8_FS8 0x7F80
+#define T_RATE_TARGET128_FS8 0x4B00000
+#define T_RATE_TARGET176P4_FS8 0x367
+#define T_RATE_TARGET192_FS8 0x320
+#define T_SYNC_SEL_PRI 0x1
+#define T_SYNC_SEL_SEC 0x2
 
 #define H_I2S_LONG_RATE_15 0xF0000
 #define H_I2S_SPKR_MODE_SD0 0x400
@@ -203,14 +255,17 @@
 #define H_I2S_MIC_MODE_QUAD01 0x50
 #define H_I2S_MIC_MONO 0x8
 #define H_I2S_BIT_WIDTH_16 0x0
+#define H_I2S_BIT_WIDTH_24 0x1
 #define H_I2S_BIT_WIDTH_32 0x2
+#define H_I2S_BIT_WIDTH_25 0x3
+#define H_RDDMA_WPSCNT_ONE 0x0
 #define H_RDDMA_WPSCNT_TWO 0x4000
 #define H_RDDMA_PRI_AUDIO_INTF 0x400
 #define H_RDDMA_SEC_AUDIO_INTF 0x800
 #define H_RDDMA_TER_AUDIO_INTF 0xC00
 #define H_RDDMA_FIFO_WM_8 0xE
+#define H_WRDMA_WPSCNT_ONE 0x0
 #define H_WRDMA_WPSCNT_TWO 0x10000
-#define H_WRDMA_WPSCNT_FOUR 0x30000
 #define H_WRDMA_PRI_AUDIO_INTF 0x1000
 #define H_WRDMA_SEC_AUDIO_INTF 0x2000
 #define H_WRDMA_TER_AUDIO_INTF 0x3000
@@ -218,6 +273,23 @@
 #define H_WRDMA_LOOPBACK_CH1 0xA000
 #define H_WRDMA_LOOPBACK_CH2 0xB000
 #define H_WRDMA_FIFO_WM_8 0xE
+#define H_RATE_NUM_FS_1 0x0
+#define H_RATE_NUM_FS_8 0x70
+#define H_RATE_VAR_192_176P4_FS1 0x2800000
+#define H_RATE_VAR_128_44P1_FS1 0x28000
+#define H_RATE_VAR_32_8_FS1 0x280
+#define H_RATE_TARGET128_FS1 0x960000
+#define H_RATE_TARGET176P4_FS1 0x6D
+#define H_RATE_TARGET192_FS1 0x64
+#define H_RATE_VAR_192_176P4_FS8 0x11800000
+#define H_RATE_VAR_128_44P1_FS8 0x238000
+#define H_RATE_VAR_32_8_FS8 0x7F80
+#define H_RATE_TARGET128_FS8 0x4B00000
+#define H_RATE_TARGET176P4_FS8 0x367
+#define H_RATE_TARGET192_FS8 0x320
+#define H_SYNC_SEL_PRI 0x2
+#define H_SYNC_SEL_SEC 0x4
+#define H_SYNC_SEL_TER 0x6
 
 enum operation_mode {
 	NORMAL,
@@ -240,6 +312,29 @@ struct hsi2s_core {
 	/* IRQ */
 	struct irq_desc *desc;
 	int irq0;
+	bool is_irq_enabled;
+	void __iomem *irq_en;
+	void __iomem *irq_stat;
+	void __iomem *irq_clear;
+
+	/* Rate detection registers */
+	bool is_rate_enabled;
+	u32 pri_ws_rate;
+	u32 sec_ws_rate;
+	int pri_rate_interface;
+	int sec_rate_interface;
+	void __iomem *pri_rate_config;
+	void __iomem *pri_rate_target1_config;
+	void __iomem *pri_rate_target2_config;
+	void __iomem *pri_rate_bin;
+	void __iomem *pri_rate_stc_diff;
+	void __iomem *pri_rate_sel;
+	void __iomem *sec_rate_config;
+	void __iomem *sec_rate_target1_config;
+	void __iomem *sec_rate_target2_config;
+	void __iomem *sec_rate_bin;
+	void __iomem *sec_rate_stc_diff;
+	void __iomem *sec_rate_sel;
 
 	/* Clocks */
 	struct clk *core_clk;
@@ -279,9 +374,6 @@ struct hsi2s_device {
 	void __iomem *wrdma_buff_len;
 	void __iomem *wrdma_curr_addr;
 	void __iomem *wrdma_per_len;
-	void __iomem *irq_en;
-	void __iomem *irq_stat;
-	void __iomem *irq_clear;
 	void __iomem *lpaif_muxmode;
 
 	/* GPIOs */
@@ -330,6 +422,20 @@ struct hsi2s_device {
 
 	/* Number of clients */
 	int client_count;
+
+	/* I2S configurations */
+	/* Register fields */
+	u32 mic_channel_count;
+	u32 spkr_channel_count;
+	u32 bit_depth;
+	u32 wpscnt_rddma;
+	u32 wpscnt_wrdma;
+	/* Absolute values */
+	u32 data_buffer_ms_val;
+	u32 bit_depth_val;
+	u32 mic_ch_count_val;
+	u32 wrdma_periodic_length;
+	u32 wrdma_periodic_length_bytes;
 
 	/* Device file attributes */
 	dev_t curr_devid;
@@ -385,6 +491,18 @@ struct hsi2s_macros {
 	u32 offset_wrdma_buff_len;
 	u32 offset_wrdma_curr_addr;
 	u32 offset_wrdma_per_len;
+	u32 offset_pri_rate_det_config;
+	u32 offset_pri_rate_det_target1_config;
+	u32 offset_pri_rate_det_target2_config;
+	u32 offset_pri_rate_bin;
+	u32 offset_pri_stc_diff;
+	u32 offset_pri_rate_det_sel;
+	u32 offset_sec_rate_det_config;
+	u32 offset_sec_rate_det_target1_config;
+	u32 offset_sec_rate_det_target2_config;
+	u32 offset_sec_rate_bin;
+	u32 offset_sec_stc_diff;
+	u32 offset_sec_rate_det_sel;
 
 	/* Bit fields */
 	u32 bit_ws_src;
@@ -401,6 +519,8 @@ struct hsi2s_macros {
 	u32 bit_wrdma_burst_en;
 	u32 bit_wrdma_dyn_clk;
 	u32 bit_wrdma_reset;
+	u32 bit_rate_en;
+	u32 bit_rate_reset;
 
 	/* Register fields */
 	u32 regfield_i2s_lrate15;
@@ -411,7 +531,10 @@ struct hsi2s_macros {
 	u32 regfield_mic_mode_quad01;
 	u32 regfield_mic_mono;
 	u32 regfield_bit_width16;
+	u32 regfield_bit_width24;
 	u32 regfield_bit_width32;
+	u32 regfield_bit_width25;
+	u32 regfield_rddma_wpscnt_one;
 	u32 regfield_rddma_wpscnt_two;
 	u32 regfield_rddma_pri_audio_intf;
 	u32 regfield_rddma_sec_audio_intf;
@@ -419,7 +542,6 @@ struct hsi2s_macros {
 	u32 regfield_rddma_fifo_wm8;
 	u32 regfield_wrdma_wpscnt_one;
 	u32 regfield_wrdma_wpscnt_two;
-	u32 regfield_wrdma_wpscnt_four;
 	u32 regfield_wrdma_pri_audio_intf;
 	u32 regfield_wrdma_sec_audio_intf;
 	u32 regfield_wrdma_ter_audio_intf;
@@ -427,6 +549,23 @@ struct hsi2s_macros {
 	u32 regfield_wrdma_loopback_ch1;
 	u32 regfield_wrdma_loopback_ch2;
 	u32 regfield_wrdma_fifo_wm8;
+	u32 regfield_rate_num_fs_1;
+	u32 regfield_rate_num_fs_8;
+	u32 regfield_rate_var_192_176p4_fs1;
+	u32 regfield_rate_var_128_44p1_fs1;
+	u32 regfield_rate_var_32_8_fs1;
+	u32 regfield_rate_target128_fs1;
+	u32 regfield_rate_target_176p4_fs1;
+	u32 regfield_rate_target_192_fs1;
+	u32 regfield_rate_var_192_176p4_fs8;
+	u32 regfield_rate_var_128_44p1_fs8;
+	u32 regfield_rate_var_32_8_fs8;
+	u32 regfield_rate_target128_fs8;
+	u32 regfield_rate_target_176p4_fs8;
+	u32 regfield_rate_target_192_fs8;
+	u32 regfield_rate_sync_sel_pri;
+	u32 regfield_rate_sync_sel_sec;
+	u32 regfield_rate_sync_sel_ter;
 };
 
 /* Function prototypes */
