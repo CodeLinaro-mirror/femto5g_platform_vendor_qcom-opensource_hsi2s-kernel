@@ -37,8 +37,8 @@
 #define READ_LENGTH_KB 4
 #define READ_LENGTH_WORDS (READ_LENGTH_KB * 1024) / BYTES_PER_WORD
 #define READ_LIMIT 1024*1024*1024
-#define WRITE_LENGTH 4096
-#define WRITE_LENGTH_WORDS WRITE_LENGTH/BYTES_PER_WORD
+#define WRITE_LENGTH_KB 4
+#define WRITE_LENGTH_WORDS (WRITE_LENGTH_KB * 1024) /BYTES_PER_WORD
 
 enum operation_mode {
 	NORMAL,
@@ -257,7 +257,7 @@ int main(int argc, char **argv)
 		no_words = wav_samples/BYTES_PER_WORD;
 		printf("File size BYTES: %ld WORDS %ld \n",wav_samples,no_words);
 		read_limit = wav_samples;
-		write_length = WRITE_LENGTH;
+		write_length = WRITE_LENGTH_KB * 1024;
 		write_length_words = WRITE_LENGTH_WORDS;
 
 		if (arg < argc) {
@@ -277,10 +277,6 @@ int main(int argc, char **argv)
 		printf("Setting normal mode \n");
 		if (ioctl(fd_master, I2S_RESET) < 0) {
 			printf("Failed to reset the hsi2s device\n");
-			exit(0);
-		}
-		if (ioctl(fd_master, I2S_MUXMODE, 1) < 0) {
-			printf("Failed to set slave mode\n");
 			exit(0);
 		}
 		if (ioctl(fd_master, I2S_NORMAL_MODE) < 0) {
