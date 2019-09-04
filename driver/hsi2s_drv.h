@@ -186,7 +186,9 @@
 #define I2S_SPEAKER _IOWR('i', 4, int)
 #define I2S_MIC _IOWR('i', 5, int)
 #define I2S_SET_SLAVE _IOWR('i', 6, int)
-#define I2S_RESET _IOWR('i', 7, int)
+#define I2S_START_TX _IOWR('i', 7, int)
+#define I2S_STOP_TX _IOWR('i', 8, int)
+#define I2S_RESET _IOWR('i', 9, int)
 
 /* Additional macros */
 #define DEVICE_NAME "hsi2s_driver"
@@ -201,7 +203,6 @@
 #define DEFAULT_BUFF_LEN_WORDS   ((DEFAULT_BUFF_LEN_BYTES / 4) - 1)
 #define DEFAULT_NUM_WORDS 1024
 #define DEFAULT_NUM_BYTES (DEFAULT_NUM_WORDS * 4)
-#define METADATA_SIZE 256
 #define SPKR_STEREO 0x0
 #define MIC_STEREO 0x0
 #define PRI_RATE_DET 0
@@ -384,13 +385,7 @@ struct hsi2s_device {
 
 	/* Buffers */
 	struct hsi2s_buffer *write_buffer;
-
-	/* Buffer metadata */
-	struct buffer_metadata *b_meta_read;
-
-	/* Buffer indices */
-	int meta_index_read;
-	int free_index_read;
+	struct ping_pong *read_buffer;
 
 	/* DMA thread */
 	struct task_struct *rddma_thread;
@@ -402,7 +397,9 @@ struct hsi2s_device {
 	void *lpass_wrdma_end;
 
 	/* DMA flags */
-	int rddma_busy;
+	int rddma_xfer_busy;
+	int rddma_copy_busy;
+	int rddma_in_progress;
 
 	/* SMMU context */
 	struct hsi2s_smmu_cb_ctx *hsi2s_smmu_ctx;
@@ -410,6 +407,7 @@ struct hsi2s_device {
 	/* Wait queues */
 	wait_queue_head_t wq_rddma;
 	wait_queue_head_t wq_wrdma;
+	wait_queue_head_t wq_copy;
 
 	/* Minor number */
 	int minor_num;
@@ -453,11 +451,14 @@ struct hsi2s_buffer {
 	dma_addr_t handle;
 };
 
-/* Buffer metadata */
-struct buffer_metadata {
-	void *start_address;
+/* Ping pong buffer for Tx */
+struct ping_pong {
+	void *buffer;
+	void *ping_start;
+	void *pong_start;
 	u32 length;
-	int data_ready;
+	int last_xfer;
+	int last_copy;
 	dma_addr_t handle;
 };
 
