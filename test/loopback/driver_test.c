@@ -31,14 +31,14 @@
 #define I2S_SPEAKER _IOWR('i', 4, int)
 #define I2S_MIC _IOWR('i', 5, int)
 #define I2S_SET_SLAVE _IOWR('i', 6, int)
-#define I2S_RESET _IOWR('i', 7, int)
+#define I2S_START_TX _IOWR('i', 7, int)
+#define I2S_STOP_TX _IOWR('i', 8, int)
+#define I2S_RESET _IOWR('i', 9, int)
 
 #define BYTES_PER_WORD 4
-#define READ_LENGTH_KB 4
-#define READ_LENGTH_WORDS (READ_LENGTH_KB * 1024) / BYTES_PER_WORD
+#define READ_LENGTH_MB 2
+#define READ_LENGTH_WORDS (READ_LENGTH_MB * 1024 * 1024) / BYTES_PER_WORD
 #define READ_LIMIT 1024*1024*1024
-#define WRITE_LENGTH_KB 4
-#define WRITE_LENGTH_WORDS (WRITE_LENGTH_KB * 1024) /BYTES_PER_WORD
 
 enum operation_mode {
 	NORMAL,
@@ -55,8 +55,6 @@ FILE *fd_write_op;
 long read_length_bytes;
 long read_length_words;
 long read_limit;
-long write_length;
-long write_length_words;
 enum operation_mode mode;
 
 void help()
@@ -69,7 +67,7 @@ void help()
 	printf("[<muxmode>] : 0 - Master 1 - Slave\n");
 	printf("[<output file>] : To store the data read from the device file\n");
 	printf("[<input file>] : To be provided only for loopback modes\n");
-	printf("[<size>] : Read-write length (4KB by default)\n");
+	printf("[<size>] : DMA buffer length in MB (4MB by default)\n");
 }
 
 long get_size(FILE *fp)
@@ -93,25 +91,27 @@ void *user_read(void *arg)
 {
 	int i;
 	size_t transfer_length;
-	int32_t received_data[read_length_words];
+	int32_t *received_data;
 	int cnt = 0;
 	long r_limit = 0;
 	int boundary_read;
 
 	printf("Performing data read...\n");
 
+	received_data = (int32_t *) malloc(read_length_words * sizeof(int32_t));
+
 	while (r_limit < read_limit) {
 		if (mode != EXTERNAL_LB_MASTER_SLAVE)
-			transfer_length = read(fd_master, &received_data, read_length_bytes);
+			transfer_length = read(fd_master, received_data, read_length_bytes);
 		else
-			transfer_length = read(fd_slave, &received_data, read_length_bytes);
+			transfer_length = read(fd_slave, received_data, read_length_bytes);
 		printf("Bytes read: %zd\n", transfer_length);
 		if ((r_limit + transfer_length) > read_limit) {
 			boundary_read = (read_limit - r_limit);
-			fwrite(&received_data,boundary_read,1,fd_write_op);
+			fwrite(received_data,boundary_read,1,fd_write_op);
 		}
 		else
-			fwrite(&received_data,BYTES_PER_WORD,read_length_words,fd_write_op);
+			fwrite(received_data,BYTES_PER_WORD,read_length_words,fd_write_op);
 
 		r_limit = r_limit + transfer_length;
 	}
@@ -184,7 +184,7 @@ int main(int argc, char **argv)
 	}
 
 	/* Initializing to default macros and use the macros if no size specified by user*/
-	read_length_bytes = READ_LENGTH_KB * 1024;
+	read_length_bytes = READ_LENGTH_MB * 1024 * 1024;
 	read_length_words = READ_LENGTH_WORDS;
 
 	if (mode != NORMAL) {
@@ -257,21 +257,11 @@ int main(int argc, char **argv)
 		no_words = wav_samples/BYTES_PER_WORD;
 		printf("File size BYTES: %ld WORDS %ld \n",wav_samples,no_words);
 		read_limit = wav_samples;
-		write_length = WRITE_LENGTH_KB * 1024;
-		write_length_words = WRITE_LENGTH_WORDS;
 
 		if (arg < argc) {
 			/* Use the size provided by the user */
-			read_length_bytes = atoi(argv[arg++]) * 1024;
-			write_length = read_length_bytes;
-			write_length_words = write_length/BYTES_PER_WORD;
+			read_length_bytes = (atoi(argv[arg++]) * 1024 * 1024) / 2;
 			read_length_words = read_length_bytes/BYTES_PER_WORD;
-
-			printf("User Command Line\n");
-			printf("read_length_bytes: %ld\n", read_length_bytes);
-			printf("write_length: %ld\n", write_length);
-			printf("write_length_words: %ld\n", write_length_words);
-			printf("read_length_words: %ld\n", read_length_words);
 		}
 	} else {
 		printf("Setting normal mode \n");
@@ -288,12 +278,8 @@ int main(int argc, char **argv)
 
 		if (arg < argc) {
 			/* Use the size provided by the user */
-			read_length_bytes = atoi(argv[arg++]) * 1024;
+			read_length_bytes = (atoi(argv[arg++]) * 1024 * 1024) / 2;
 			read_length_words = read_length_bytes/BYTES_PER_WORD;
-
-			printf("User Command Line\n");
-			printf("read_length_bytes: %ld\n", read_length_bytes);
-			printf("read_length_words: %ld\n", read_length_words);
 		}
 	}
 
@@ -324,6 +310,14 @@ int main(int argc, char **argv)
 	printf("Joining threads\n");
 	pthread_join(tid,NULL);
 	printf("Threads joined \n");
+
+	if (mode != NORMAL) {
+		printf("Stopping TX\n");
+		if (ioctl(fd_master, I2S_STOP_TX) < 0) {
+			printf("Failed to stop Tx on hsi2s device\n");
+			exit(0);
+		}
+	}
 
 	printf("Closing Files \n");
 	if (mode != NORMAL) {
