@@ -48,7 +48,7 @@ MODULE_PARM_DESC(bit_depth, "Bit depth of the I2S interface");
 
 /* Macro callbacks */
 
-static void t_assign_macros()
+static void t_assign_macros(void)
 {
 
 	hsi2s_core->macro->offset_i2s_ctl = T_LPAIF_I2S_CTL;
@@ -107,11 +107,13 @@ static void t_assign_macros()
 	hsi2s_core->macro->regfield_bit_width25 = T_I2S_BIT_WIDTH_25;
 	hsi2s_core->macro->regfield_rddma_wpscnt_one = T_RDDMA_WPSCNT_ONE;
 	hsi2s_core->macro->regfield_rddma_wpscnt_two = T_RDDMA_WPSCNT_TWO;
+	hsi2s_core->macro->regfield_rddma_wpscnt_four = T_RDDMA_WPSCNT_FOUR;
 	hsi2s_core->macro->regfield_rddma_pri_audio_intf = T_RDDMA_PRI_AUDIO_INTF;
 	hsi2s_core->macro->regfield_rddma_sec_audio_intf = T_RDDMA_SEC_AUDIO_INTF;
 	hsi2s_core->macro->regfield_rddma_fifo_wm8 = T_RDDMA_FIFO_WM_8;
 	hsi2s_core->macro->regfield_wrdma_wpscnt_one = T_WRDMA_WPSCNT_ONE;
 	hsi2s_core->macro->regfield_wrdma_wpscnt_two = T_WRDMA_WPSCNT_TWO;
+	hsi2s_core->macro->regfield_wrdma_wpscnt_four = T_WRDMA_WPSCNT_FOUR;
 	hsi2s_core->macro->regfield_wrdma_pri_audio_intf = T_WRDMA_PRI_AUDIO_INTF;
 	hsi2s_core->macro->regfield_wrdma_sec_audio_intf = T_WRDMA_SEC_AUDIO_INTF;
 	hsi2s_core->macro->regfield_wrdma_loopback_ch0 = T_WRDMA_LOOPBACK_CH0;
@@ -135,7 +137,7 @@ static void t_assign_macros()
 	hsi2s_core->macro->regfield_rate_sync_sel_sec = T_SYNC_SEL_SEC;
 }
 
-static void h_assign_macros()
+static void h_assign_macros(void)
 {
 
 	hsi2s_core->macro->offset_i2s_ctl = H_LPAIF_I2S_CTL;
@@ -192,12 +194,14 @@ static void h_assign_macros()
 	hsi2s_core->macro->regfield_bit_width25 = H_I2S_BIT_WIDTH_25;
 	hsi2s_core->macro->regfield_rddma_wpscnt_one = H_RDDMA_WPSCNT_ONE;
 	hsi2s_core->macro->regfield_rddma_wpscnt_two = H_RDDMA_WPSCNT_TWO;
+	hsi2s_core->macro->regfield_rddma_wpscnt_four = H_RDDMA_WPSCNT_FOUR;
 	hsi2s_core->macro->regfield_rddma_pri_audio_intf = H_RDDMA_PRI_AUDIO_INTF;
 	hsi2s_core->macro->regfield_rddma_sec_audio_intf = H_RDDMA_SEC_AUDIO_INTF;
 	hsi2s_core->macro->regfield_rddma_ter_audio_intf = H_RDDMA_TER_AUDIO_INTF;
 	hsi2s_core->macro->regfield_rddma_fifo_wm8 = H_RDDMA_FIFO_WM_8;
 	hsi2s_core->macro->regfield_wrdma_wpscnt_one = H_WRDMA_WPSCNT_ONE;
 	hsi2s_core->macro->regfield_wrdma_wpscnt_two = H_WRDMA_WPSCNT_TWO;
+	hsi2s_core->macro->regfield_wrdma_wpscnt_four = H_WRDMA_WPSCNT_FOUR;
 	hsi2s_core->macro->regfield_wrdma_pri_audio_intf = H_WRDMA_PRI_AUDIO_INTF;
 	hsi2s_core->macro->regfield_wrdma_sec_audio_intf = H_WRDMA_SEC_AUDIO_INTF;
 	hsi2s_core->macro->regfield_wrdma_ter_audio_intf = H_WRDMA_TER_AUDIO_INTF;
@@ -227,72 +231,89 @@ static void h_assign_macros()
 /* Register callbacks */
 
 /* Map the register memory regions */
-static void map_registers(struct hsi2s_device *hs_dev, int intf)
+static int map_registers(struct hsi2s_device *hs_dev, int intf)
 {
-	hs_dev->i2s_ctl = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_i2s_ctl +
-				(0x1000 * intf);
-	hs_dev->i2s_sel = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_i2s_sel +
-				(0x1000 * intf);
-	hs_dev->rddma_ctl = hsi2s_core->lpaif_base_va +
-					     hsi2s_core->macro->offset_rddma_ctl +
-					     (0x1000 * intf);
-	hs_dev->rddma_base = hsi2s_core->lpaif_base_va +
-					     hsi2s_core->macro->offset_rddma_base +
-					     (0x1000 * intf);
-	hs_dev->rddma_buff_len = hsi2s_core->lpaif_base_va +
-					     hsi2s_core->macro->offset_rddma_buff_len +
-					     (0x1000 * intf);
-	hs_dev->rddma_curr_addr = hsi2s_core->lpaif_base_va +
-					     hsi2s_core->macro->offset_rddma_curr_addr +
-					     (0x1000 * intf);
-	hs_dev->rddma_per_len = hsi2s_core->lpaif_base_va +
-					     hsi2s_core->macro->offset_rddma_per_len +
-					     (0x1000 * intf);
-	hs_dev->wrdma_ctl = hsi2s_core->lpaif_base_va +
-					     hsi2s_core->macro->offset_wrdma_ctl +
-					     (0x1000 * intf);
-	hs_dev->wrdma_base = hsi2s_core->lpaif_base_va +
-					     hsi2s_core->macro->offset_wrdma_base +
-					     (0x1000 * intf);
-	hs_dev->wrdma_buff_len = hsi2s_core->lpaif_base_va +
-					     hsi2s_core->macro->offset_wrdma_buff_len +
-					     (0x1000 * intf);
-	hs_dev->wrdma_curr_addr = hsi2s_core->lpaif_base_va +
-					     hsi2s_core->macro->offset_wrdma_curr_addr +
-					     (0x1000 * intf);
-	hs_dev->wrdma_per_len = hsi2s_core->lpaif_base_va +
-					     hsi2s_core->macro->offset_wrdma_per_len +
-					     (0x1000 * intf);
+	int ret = 0;
 
-	if (hsi2s_core->target == 8155) {
-		hs_dev->lpaif_muxmode = hsi2s_core->lpass_tcsr_base_va +
-					H_LPAIF_MUXMODE + (0x4 * intf);
+	if (hsi2s_core->macro) {
+		hs_dev->i2s_ctl = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_i2s_ctl +
+						  (0x1000 * intf);
+		hs_dev->i2s_sel = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_i2s_sel +
+						  (0x1000 * intf);
+		hs_dev->rddma_ctl = hsi2s_core->lpaif_base_va +
+							hsi2s_core->macro->offset_rddma_ctl +
+							(0x1000 * intf);
+		hs_dev->rddma_base = hsi2s_core->lpaif_base_va +
+							 hsi2s_core->macro->offset_rddma_base +
+							 (0x1000 * intf);
+		hs_dev->rddma_buff_len = hsi2s_core->lpaif_base_va +
+								 hsi2s_core->macro->offset_rddma_buff_len +
+								 (0x1000 * intf);
+		hs_dev->rddma_curr_addr = hsi2s_core->lpaif_base_va +
+								  hsi2s_core->macro->offset_rddma_curr_addr +
+								  (0x1000 * intf);
+		hs_dev->rddma_per_len = hsi2s_core->lpaif_base_va +
+								hsi2s_core->macro->offset_rddma_per_len +
+								(0x1000 * intf);
+		hs_dev->wrdma_ctl = hsi2s_core->lpaif_base_va +
+							hsi2s_core->macro->offset_wrdma_ctl +
+							(0x1000 * intf);
+		hs_dev->wrdma_base = hsi2s_core->lpaif_base_va +
+							 hsi2s_core->macro->offset_wrdma_base +
+							 (0x1000 * intf);
+		hs_dev->wrdma_buff_len = hsi2s_core->lpaif_base_va +
+								 hsi2s_core->macro->offset_wrdma_buff_len +
+								 (0x1000 * intf);
+		hs_dev->wrdma_curr_addr = hsi2s_core->lpaif_base_va +
+								  hsi2s_core->macro->offset_wrdma_curr_addr +
+								  (0x1000 * intf);
+		hs_dev->wrdma_per_len = hsi2s_core->lpaif_base_va +
+								hsi2s_core->macro->offset_wrdma_per_len +
+								(0x1000 * intf);
+		if (hsi2s_core->target == 8155) {
+			hs_dev->lpaif_muxmode = hsi2s_core->lpass_tcsr_base_va +
+									H_LPAIF_MUXMODE + (0x4 * intf);
+		}
+	} else {
+		pr_err("[HSI2S] HS-I2S macro structure is NULL");
+		ret = -EINVAL;
 	}
+
+	return ret;
 }
 
 /* Map the irq registers */
-static void map_core_registers(void)
+static int map_core_registers(void)
 {
-	/* IRQ registers */
-	hsi2s_core->irq_en = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_irq_en;
-	hsi2s_core->irq_stat = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_irq_stat;
-	hsi2s_core->irq_clear = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_irq_clear;
+	int ret = 0;
 
-	/* Rate detection registers */
-	hsi2s_core->pri_rate_config = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_pri_rate_det_config;
-	hsi2s_core->pri_rate_target1_config = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_pri_rate_det_target1_config;
-	hsi2s_core->pri_rate_target2_config = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_pri_rate_det_target2_config;
-	hsi2s_core->pri_rate_bin = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_pri_rate_bin;
-	hsi2s_core->pri_rate_stc_diff = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_pri_stc_diff;
-	if (hsi2s_core->target == 6155)
-		hsi2s_core->pri_rate_sel = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_pri_rate_det_sel;
-	hsi2s_core->sec_rate_config = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_sec_rate_det_config;
-	hsi2s_core->sec_rate_target1_config = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_sec_rate_det_target1_config;
-	hsi2s_core->sec_rate_target2_config = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_sec_rate_det_target2_config;
-	hsi2s_core->sec_rate_bin = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_sec_rate_bin;
-	hsi2s_core->sec_rate_stc_diff = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_sec_stc_diff;
-	if (hsi2s_core->target == 6155)
-		hsi2s_core->sec_rate_sel = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_sec_rate_det_sel;
+	if (hsi2s_core->macro) {
+		/* IRQ registers */
+		hsi2s_core->irq_en = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_irq_en;
+		hsi2s_core->irq_stat = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_irq_stat;
+		hsi2s_core->irq_clear = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_irq_clear;
+
+		/* Rate detection registers */
+		hsi2s_core->pri_rate_config = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_pri_rate_det_config;
+		hsi2s_core->pri_rate_target1_config = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_pri_rate_det_target1_config;
+		hsi2s_core->pri_rate_target2_config = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_pri_rate_det_target2_config;
+		hsi2s_core->pri_rate_bin = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_pri_rate_bin;
+		hsi2s_core->pri_rate_stc_diff = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_pri_stc_diff;
+		if (hsi2s_core->target == 6155)
+			hsi2s_core->pri_rate_sel = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_pri_rate_det_sel;
+		hsi2s_core->sec_rate_config = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_sec_rate_det_config;
+		hsi2s_core->sec_rate_target1_config = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_sec_rate_det_target1_config;
+		hsi2s_core->sec_rate_target2_config = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_sec_rate_det_target2_config;
+		hsi2s_core->sec_rate_bin = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_sec_rate_bin;
+		hsi2s_core->sec_rate_stc_diff = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_sec_stc_diff;
+		if (hsi2s_core->target == 6155)
+			hsi2s_core->sec_rate_sel = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_sec_rate_det_sel;
+	} else {
+		pr_err("[HSI2S] HS-I2S macro structure is NULL");
+		ret = -EINVAL;
+	}
+
+	return ret;
 }
 
 /* Set specific register bits */
@@ -538,7 +559,7 @@ static u32 get_ws_rate(int block)
 /* Configure i2s control register for speaker operation */
 static void configure_i2s_spkr(struct hsi2s_device *hs_dev)
 {
-	setbits(hs_dev->i2s_ctl, hsi2s_core->macro->regfield_spkr_mode_sd0 |
+	setbits(hs_dev->i2s_ctl, hs_dev->spkr_mode |
 				 hs_dev->spkr_channel_count |
 				 hs_dev->bit_depth);
 	clearbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
@@ -549,7 +570,7 @@ static void configure_i2s_spkr(struct hsi2s_device *hs_dev)
 /* Configure i2s control register for mic operation */
 static void configure_i2s_mic(struct hsi2s_device *hs_dev)
 {
-	setbits(hs_dev->i2s_ctl, hsi2s_core->macro->regfield_mic_mode_sd1 |
+	setbits(hs_dev->i2s_ctl, hs_dev->mic_mode |
 				 hsi2s_core->macro->bit_ws_src |
 				 hs_dev->mic_channel_count |
 				 hs_dev->bit_depth);
@@ -656,8 +677,8 @@ static void configure_wrdma(struct hsi2s_device *hs_dev, int intf)
 /* Configure the I2S control register for internal loopback */
 static void configure_i2s_int_lb(struct hsi2s_device *hs_dev)
 {
-	setbits(hs_dev->i2s_ctl, hsi2s_core->macro->regfield_spkr_mode_sd0 |
-				 hsi2s_core->macro->regfield_mic_mode_sd1 |
+	setbits(hs_dev->i2s_ctl, hs_dev->spkr_mode |
+				 hs_dev->mic_mode |
 				 hs_dev->spkr_channel_count |
 				 hs_dev->mic_channel_count |
 				 hs_dev->bit_depth |
@@ -754,9 +775,9 @@ static void configure_wrdma_int_lb(struct hsi2s_device *hs_dev, int intf)
 /* Configure the I2S control register for external loopback */
 static void configure_i2s_ext_lb(struct hsi2s_device *hs_dev)
 {
-	setbits(hs_dev->i2s_ctl, hsi2s_core->macro->regfield_spkr_mode_sd0 |
+	setbits(hs_dev->i2s_ctl, hs_dev->spkr_mode |
 				 hs_dev->spkr_channel_count |
-				 hsi2s_core->macro->regfield_mic_mode_sd1 |
+				 hs_dev->mic_mode |
 				 hs_dev->mic_channel_count |
 				 hs_dev->bit_depth);
 	clearbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
@@ -1033,7 +1054,11 @@ static int init_default(struct hsi2s_device *hs_dev, int intf)
 	int ret = 0;
 
 	/* Map the hs-i2s registers */
-	map_registers(hs_dev, intf);
+	ret = map_registers(hs_dev, intf);
+	if (ret < 0) {
+		pr_err("[HSI2S] Unable to map device registers");
+		return ret;
+	}
 
 	reset_registers(hs_dev);
 
@@ -2268,6 +2293,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 		case 0:
 			pr_warn("[HSI2S] Defaulting to stereo configuration for speaker");
 			hs_dev->spkr_channel_count = SPKR_STEREO;
+			hs_dev->spkr_mode = hsi2s_core->macro->regfield_spkr_mode_sd0;
 			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
 				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_one;
 			else
@@ -2276,20 +2302,32 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 		case 1:
 			pr_warn("[HSI2S] Setting mono configuration for speaker");
 			hs_dev->spkr_channel_count = hsi2s_core->macro->regfield_spkr_mono;
+			hs_dev->spkr_mode = hsi2s_core->macro->regfield_spkr_mode_sd0;
 			hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_one;
 			break;
 		case 2:
 			pr_warn("[HSI2S] Setting stereo configuration for speaker");
 			hs_dev->spkr_channel_count = SPKR_STEREO;
+			hs_dev->spkr_mode = hsi2s_core->macro->regfield_spkr_mode_sd0;
 			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
 				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_one;
 			else
 				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_two;
 			break;
+		case 4:
+			pr_warn("[HSI2S] Setting quad configuration for speaker");
+			hs_dev->spkr_channel_count = SPKR_QUAD;
+			hs_dev->spkr_mode = hsi2s_core->macro->regfield_spkr_mode_quad01;
+			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
+				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_two;
+			else
+				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_four;
+			break;
 		default:
 			pr_warn("[HSI2S] Invalid number of channels entered");
 			pr_warn("[HSI2S] Defaulting to stereo configuration for speaker");
 			hs_dev->spkr_channel_count = SPKR_STEREO;
+			hs_dev->spkr_mode = hsi2s_core->macro->regfield_spkr_mode_sd0;
 			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
 				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_one;
 			else
@@ -2310,6 +2348,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 		case 0:
 			pr_warn("[HSI2S] Defaulting to stereo configuration for mic");
 			hs_dev->mic_channel_count = MIC_STEREO;
+			hs_dev->mic_mode = hsi2s_core->macro->regfield_mic_mode_sd1;
 			hs_dev->mic_ch_count_val = 2;
 			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
 				hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_one;
@@ -2319,22 +2358,35 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 		case 1:
 			pr_warn("[HSI2S] Setting mono configuration for mic");
 			hs_dev->mic_channel_count = hsi2s_core->macro->regfield_mic_mono;
+			hs_dev->mic_mode = hsi2s_core->macro->regfield_mic_mode_sd1;
 			hs_dev->mic_ch_count_val = 1;
 			hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_one;
 			break;
 		case 2:
 			pr_warn("[HSI2S] Setting stereo configuration for mic");
 			hs_dev->mic_channel_count = MIC_STEREO;
+			hs_dev->mic_mode = hsi2s_core->macro->regfield_mic_mode_sd1;
 			hs_dev->mic_ch_count_val = 2;
 			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
 				hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_one;
 			else
 				hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_two;
 			break;
+		case 4:
+			pr_warn("[HSI2S] Setting quad configuration for mic");
+			hs_dev->mic_channel_count = MIC_QUAD;
+			hs_dev->mic_mode = hsi2s_core->macro->regfield_mic_mode_quad01;
+			hs_dev->mic_ch_count_val = 4;
+			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
+				hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_two;
+			else
+				hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_four;
+			break;
 		default:
 			pr_warn("[HSI2S] Invalid number of channels entered");
 			pr_warn("[HSI2S] Defaulting to stereo configuration for mic");
 			hs_dev->mic_channel_count = MIC_STEREO;
+			hs_dev->mic_mode = hsi2s_core->macro->regfield_mic_mode_sd1;
 			hs_dev->mic_ch_count_val = 2;
 			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
 				hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_one;
@@ -2620,7 +2672,11 @@ static int hsi2s_probe(struct platform_device *pdev)
 	}
 
 	/* Map the core registers */
-	map_core_registers();
+	ret = map_core_registers();
+	if (ret < 0) {
+		pr_err("[HSI2S] Unable to map core registers");
+		goto err_iounmap_lpass_tcsr;
+	}
 
 	ret = of_property_read_u32(dev->of_node, "number-of-rate-detectors",
 				   &rate_detector_count);

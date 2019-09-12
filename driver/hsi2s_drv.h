@@ -205,6 +205,8 @@
 #define DEFAULT_NUM_BYTES (DEFAULT_NUM_WORDS * 4)
 #define SPKR_STEREO 0x0
 #define MIC_STEREO 0x0
+#define SPKR_QUAD 0x0
+#define MIC_QUAD 0x0
 #define PRI_RATE_DET 0
 #define SEC_RATE_DET 1
 
@@ -221,11 +223,13 @@
 #define T_I2S_BIT_WIDTH_25 0x3
 #define T_RDDMA_WPSCNT_ONE 0x0
 #define T_RDDMA_WPSCNT_TWO 0x10000
+#define T_RDDMA_WPSCNT_FOUR 0x30000
 #define T_RDDMA_PRI_AUDIO_INTF 0x1000
 #define T_RDDMA_SEC_AUDIO_INTF 0x2000
 #define T_RDDMA_FIFO_WM_8 0xE
 #define T_WRDMA_WPSCNT_ONE 0x0
 #define T_WRDMA_WPSCNT_TWO 0x20000
+#define T_WRDMA_WPSCNT_FOUR 0x60000
 #define T_WRDMA_PRI_AUDIO_INTF 0x1000
 #define T_WRDMA_LOOPBACK_CH0 0x9000
 #define T_WRDMA_LOOPBACK_CH1 0xA000
@@ -261,12 +265,14 @@
 #define H_I2S_BIT_WIDTH_25 0x3
 #define H_RDDMA_WPSCNT_ONE 0x0
 #define H_RDDMA_WPSCNT_TWO 0x4000
+#define H_RDDMA_WPSCNT_FOUR 0xC000
 #define H_RDDMA_PRI_AUDIO_INTF 0x400
 #define H_RDDMA_SEC_AUDIO_INTF 0x800
 #define H_RDDMA_TER_AUDIO_INTF 0xC00
 #define H_RDDMA_FIFO_WM_8 0xE
 #define H_WRDMA_WPSCNT_ONE 0x0
 #define H_WRDMA_WPSCNT_TWO 0x10000
+#define H_WRDMA_WPSCNT_FOUR 0x30000
 #define H_WRDMA_PRI_AUDIO_INTF 0x1000
 #define H_WRDMA_SEC_AUDIO_INTF 0x2000
 #define H_WRDMA_TER_AUDIO_INTF 0x3000
@@ -423,6 +429,8 @@ struct hsi2s_device {
 
 	/* I2S configurations */
 	/* Register fields */
+	u32 spkr_mode;
+	u32 mic_mode;
 	u32 mic_channel_count;
 	u32 spkr_channel_count;
 	u32 bit_depth;
@@ -537,12 +545,14 @@ struct hsi2s_macros {
 	u32 regfield_bit_width25;
 	u32 regfield_rddma_wpscnt_one;
 	u32 regfield_rddma_wpscnt_two;
+	u32 regfield_rddma_wpscnt_four;
 	u32 regfield_rddma_pri_audio_intf;
 	u32 regfield_rddma_sec_audio_intf;
 	u32 regfield_rddma_ter_audio_intf;
 	u32 regfield_rddma_fifo_wm8;
 	u32 regfield_wrdma_wpscnt_one;
 	u32 regfield_wrdma_wpscnt_two;
+	u32 regfield_wrdma_wpscnt_four;
 	u32 regfield_wrdma_pri_audio_intf;
 	u32 regfield_wrdma_sec_audio_intf;
 	u32 regfield_wrdma_ter_audio_intf;
