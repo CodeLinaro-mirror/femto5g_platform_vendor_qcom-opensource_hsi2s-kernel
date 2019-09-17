@@ -509,6 +509,38 @@ static void configure_rate_detection(int block)
 	}
 }
 
+/* Function to calculate periodic interrupt length */
+static u32 set_periodic_length(u32 bit_clk, u32 interval)
+{
+	/*
+	 * Formula to calculate
+	 * Bit clock -> 'm' Hz
+	 * Bits per sec  = m
+	 * Bits per msec = m * (10^(-3))
+	 * Bytes per msec = (m * (10^(-3))) / 8 = m / 8000
+	 * Bytes per 'k' msec = k * (m / 8000)
+	 */
+	return ((interval * bit_clk) / 8000);
+}
+
+/* Function to calculate bit rate */
+static u32 calculate_bit_rate(struct hsi2s_device *hs_dev, int mode)
+{
+	u32 b_depth;
+	u32 ch_count;
+	u32 b_rate;
+
+	b_depth = hs_dev->bit_depth_val;
+	ch_count = hs_dev->mic_ch_count_val;
+
+	if (mode == PRI_RATE_DET)
+		b_rate = b_depth * ch_count * hsi2s_core->pri_ws_rate;
+	else
+		b_rate = b_depth * ch_count * hsi2s_core->sec_ws_rate;
+
+	return b_rate;
+}
+
 /* Get the WS rate */
 static u32 get_ws_rate(int block)
 {
@@ -556,6 +588,168 @@ static u32 get_ws_rate(int block)
 
 }
 
+/* Configure bit depth */
+static void configure_bit_depth(struct hsi2s_device *hs_dev, u32 b_depth)
+{
+	if (b_depth <= 0) {
+		pr_warn("[HSI2S] Defaulting to 32 bit configuration");
+		hs_dev->bit_depth = hsi2s_core->macro->regfield_bit_width32;
+		hs_dev->bit_depth_val = 32;
+	} else if (b_depth <= 16) {
+		pr_warn("[HSI2S] Setting 16 bit configuration");
+		hs_dev->bit_depth = hsi2s_core->macro->regfield_bit_width16;
+		hs_dev->bit_depth_val = 16;
+	} else if (b_depth <= 24) {
+		pr_warn("[HSI2S] Setting 24 bit configuration");
+		hs_dev->bit_depth = hsi2s_core->macro->regfield_bit_width24;
+		hs_dev->bit_depth_val = 24;
+	} else if (b_depth == 25) {
+		pr_warn("[HSI2S] Setting 25 bit configuration");
+		hs_dev->bit_depth = hsi2s_core->macro->regfield_bit_width25;
+		hs_dev->bit_depth_val = 25;
+	} else if (b_depth <= 32) {
+		pr_warn("[HSI2S] Setting 32 bit configuration");
+		hs_dev->bit_depth = hsi2s_core->macro->regfield_bit_width32;
+		hs_dev->bit_depth_val = 32;
+	} else {
+		pr_warn("[HSI2S] Defaulting to 32 bit configuration");
+		hs_dev->bit_depth = hsi2s_core->macro->regfield_bit_width32;
+		hs_dev->bit_depth_val = 32;
+	}
+}
+
+/* Configure speaker channel */
+static void configure_spkr_channel(struct hsi2s_device *hs_dev, u32 ch_count)
+{
+	switch (ch_count) {
+		case 0:
+			pr_warn("[HSI2S] Defaulting to stereo configuration for speaker");
+			hs_dev->spkr_channel_count = SPKR_STEREO;
+			hs_dev->spkr_mode = hsi2s_core->macro->regfield_spkr_mode_sd0;
+			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
+				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_one;
+			else
+				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_two;
+			break;
+		case 1:
+			pr_warn("[HSI2S] Setting mono configuration for speaker");
+			hs_dev->spkr_channel_count = hsi2s_core->macro->regfield_spkr_mono;
+			hs_dev->spkr_mode = hsi2s_core->macro->regfield_spkr_mode_sd0;
+			hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_one;
+			break;
+		case 2:
+			pr_warn("[HSI2S] Setting stereo configuration for speaker");
+			hs_dev->spkr_channel_count = SPKR_STEREO;
+			hs_dev->spkr_mode = hsi2s_core->macro->regfield_spkr_mode_sd0;
+			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
+				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_one;
+			else
+				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_two;
+			break;
+		case 4:
+			pr_warn("[HSI2S] Setting quad configuration for speaker");
+			hs_dev->spkr_channel_count = SPKR_QUAD;
+			hs_dev->spkr_mode = hsi2s_core->macro->regfield_spkr_mode_quad01;
+			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
+				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_two;
+			else
+				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_four;
+			break;
+		default:
+			pr_warn("[HSI2S] Invalid number of channels entered");
+			pr_warn("[HSI2S] Defaulting to stereo configuration for speaker");
+			hs_dev->spkr_channel_count = SPKR_STEREO;
+			hs_dev->spkr_mode = hsi2s_core->macro->regfield_spkr_mode_sd0;
+			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
+				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_one;
+			else
+				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_two;
+			break;
+	}
+}
+
+/* Configure mic channel */
+static void configure_mic_channel(struct hsi2s_device *hs_dev, u32 ch_count)
+{
+	switch (ch_count) {
+		case 0:
+			pr_warn("[HSI2S] Defaulting to stereo configuration for mic");
+			hs_dev->mic_channel_count = MIC_STEREO;
+			hs_dev->mic_mode = hsi2s_core->macro->regfield_mic_mode_sd1;
+			hs_dev->mic_ch_count_val = 2;
+			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
+				hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_one;
+			else
+				hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_two;
+			break;
+		case 1:
+			pr_warn("[HSI2S] Setting mono configuration for mic");
+			hs_dev->mic_channel_count = hsi2s_core->macro->regfield_mic_mono;
+			hs_dev->mic_mode = hsi2s_core->macro->regfield_mic_mode_sd1;
+			hs_dev->mic_ch_count_val = 1;
+			hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_one;
+			break;
+		case 2:
+			pr_warn("[HSI2S] Setting stereo configuration for mic");
+			hs_dev->mic_channel_count = MIC_STEREO;
+			hs_dev->mic_mode = hsi2s_core->macro->regfield_mic_mode_sd1;
+			hs_dev->mic_ch_count_val = 2;
+			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
+				hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_one;
+			else
+				hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_two;
+			break;
+		case 4:
+			pr_warn("[HSI2S] Setting quad configuration for mic");
+			hs_dev->mic_channel_count = MIC_QUAD;
+			hs_dev->mic_mode = hsi2s_core->macro->regfield_mic_mode_quad01;
+			hs_dev->mic_ch_count_val = 4;
+			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
+				hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_two;
+			else
+				hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_four;
+			break;
+		default:
+			pr_warn("[HSI2S] Invalid number of channels entered");
+			pr_warn("[HSI2S] Defaulting to stereo configuration for mic");
+			hs_dev->mic_channel_count = MIC_STEREO;
+			hs_dev->mic_mode = hsi2s_core->macro->regfield_mic_mode_sd1;
+			hs_dev->mic_ch_count_val = 2;
+			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
+				hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_one;
+			else
+				hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_two;
+			break;
+	}
+}
+
+/* Configure I2S parameters based on user input */
+static int configure_i2s_params(struct hsi2s_device *hs_dev, struct hsi2s_params *params)
+{
+	int ret = 0;
+
+	if (params) {
+		/* Set the periodic length */
+		hs_dev->wrdma_periodic_length_bytes = set_periodic_length(params->bit_clk, params->buffer_ms);
+		hs_dev->wrdma_periodic_length = hs_dev->wrdma_periodic_length_bytes / BYTES_PER_SAMPLE;
+		pr_warn("[HSI2S] Periodic length configured as %u words", hs_dev->wrdma_periodic_length);
+		/* Bit depth */
+		configure_bit_depth(hs_dev, params->bit_depth);
+		pr_warn("[HSI2S] Bit depth configured as %u bits", params->bit_depth);
+		/* Speaker channel */
+		configure_spkr_channel(hs_dev, params->spkr_channel_count);
+		pr_warn("[HSI2S] Speaker channel count configured as %u", params->spkr_channel_count);
+		/* Mic channel */
+		configure_mic_channel(hs_dev, params->mic_channel_count);
+		pr_warn("[HSI2S] Mic channel count configured as %u", params->mic_channel_count);
+	} else {
+		pr_err("[HSI2S] Passed null hsi2s_params structure");
+		ret = -EINVAL;
+	}
+
+	return ret;
+}
+
 /* Configure i2s control register for speaker operation */
 static void configure_i2s_spkr(struct hsi2s_device *hs_dev)
 {
@@ -586,6 +780,7 @@ static void configure_rddma(struct hsi2s_device *hs_dev, int intf)
 	writel_relaxed(virt_to_phys(hs_dev->read_buffer->ping_start),
 		       hs_dev->rddma_base);
 	writel_relaxed(dma_buffer_length_words, hs_dev->rddma_buff_len);
+	/* Use ping/pong size as periodic length */
 	writel_relaxed((dma_buffer_length_words + 1) / 2, hs_dev->rddma_per_len);
 
 	if (intf == HS0_I2S) {
@@ -628,6 +823,11 @@ static void configure_wrdma(struct hsi2s_device *hs_dev, int intf)
 		       hs_dev->wrdma_base);
 	writel_relaxed(dma_buffer_length_words, hs_dev->wrdma_buff_len);
 
+	/*
+	 * Setting periodic length
+	 * Normal mode - use the calculated length as per bit clock
+	 * Loopback modes - use ping/pong size
+	 */
 	if (hs_dev->mode == NORMAL)
 		writel_relaxed(hs_dev->wrdma_periodic_length, hs_dev->wrdma_per_len);
 	else
@@ -694,6 +894,7 @@ static void configure_rddma_int_lb(struct hsi2s_device *hs_dev, int intf)
 	writel_relaxed(virt_to_phys(hs_dev->read_buffer->ping_start),
 		       hs_dev->rddma_base);
 	writel_relaxed(dma_buffer_length_words, hs_dev->rddma_buff_len);
+	/* Use ping/pong size as periodic length */
 	writel_relaxed((dma_buffer_length_words + 1) / 2, hs_dev->rddma_per_len);
 
 	if (intf == HS0_I2S) {
@@ -735,6 +936,7 @@ static void configure_wrdma_int_lb(struct hsi2s_device *hs_dev, int intf)
 	writel_relaxed(virt_to_phys(hs_dev->lpass_wrdma_start),
 		       hs_dev->wrdma_base);
 	writel_relaxed(dma_buffer_length_words, hs_dev->wrdma_buff_len);
+	/* Use ping/pong size as periodic length */
 	writel_relaxed((dma_buffer_length_words + 1) / 2, hs_dev->wrdma_per_len);
 
 	if (intf == HS0_I2S) {
@@ -1014,38 +1216,6 @@ static void hsi2s_buffer_free(struct hsi2s_device *hs_dev)
 		kfree(hs_dev->read_buffer);
 		hs_dev->read_buffer = NULL;
 	}
-}
-
-/* Function to calculate periodic interrupt length */
-static u32 set_periodic_length(u32 bit_clk, u32 interval)
-{
-	/*
-	 * Formula to calculate
-	 * Bit clock -> 'm' Hz
-	 * Bits per sec  = m
-	 * Bits per msec = m * (10^(-3))
-	 * Bytes per msec = (m * (10^(-3))) / 8 = m / 8000
-	 * Bytes per 'k' msec = k * (m / 8000)
-	 */
-	return ((interval * bit_clk) / 8000);
-}
-
-/* Function to calculate bit rate */
-static u32 calculate_bit_rate(struct hsi2s_device *hs_dev, int mode)
-{
-	u32 b_depth;
-	u32 ch_count;
-	u32 b_rate;
-
-	b_depth = hs_dev->bit_depth_val;
-	ch_count = hs_dev->mic_ch_count_val;
-
-	if (mode == PRI_RATE_DET)
-		b_rate = b_depth * ch_count * hsi2s_core->pri_ws_rate;
-	else
-		b_rate = b_depth * ch_count * hsi2s_core->sec_ws_rate;
-
-	return b_rate;
 }
 
 /* Function to call register mapping and buffer management callbacks */
@@ -1621,6 +1791,8 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 		if (irq_stat & IRQ_PER_RDDMA_CH0) {
 			setbits(hsi2s_core->irq_clear, IRQ_PER_RDDMA_CH0);
 			hs_arr[0]->read_buffer->last_xfer = !hs_arr[0]->read_buffer->last_xfer;
+			/* Notify event write */
+			wake_up_interruptible(&hs_arr[0]->wq_rddma);
 		}
 	}
 
@@ -1631,6 +1803,8 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 		if (irq_stat & IRQ_PER_RDDMA_CH1) {
 			setbits(hsi2s_core->irq_clear, IRQ_PER_RDDMA_CH1);
 			hs_arr[1]->read_buffer->last_xfer = !hs_arr[1]->read_buffer->last_xfer;
+			/* Notify event write */
+			wake_up_interruptible(&hs_arr[1]->wq_rddma);
 		}
 	}
 
@@ -1641,6 +1815,8 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 		if (irq_stat & IRQ_PER_RDDMA_CH2) {
 			setbits(hsi2s_core->irq_clear, IRQ_PER_RDDMA_CH2);
 			hs_arr[2]->read_buffer->last_xfer = !hs_arr[2]->read_buffer->last_xfer;
+			/* Notify event write */
+			wake_up_interruptible(&hs_arr[2]->wq_rddma);
 		}
 	}
 
@@ -1902,8 +2078,9 @@ static ssize_t device_write(struct file *file, const char *buffer,
 
 	while (length > temp_length) {
 		if (hs_dev->rddma_in_progress) {
-			while (!(hs_dev->read_buffer->last_copy ^ hs_dev->read_buffer->last_xfer))
-				msleep(1);
+			if (!(hs_dev->read_buffer->last_copy ^ hs_dev->read_buffer->last_xfer))
+				wait_event_interruptible(hs_dev->wq_rddma,
+							(hs_dev->read_buffer->last_copy ^ hs_dev->read_buffer->last_xfer) == 1);
 		}
 
 		if (hs_dev->read_buffer->last_copy) {
@@ -1928,8 +2105,9 @@ static ssize_t device_write(struct file *file, const char *buffer,
 	}
 
 	if (hs_dev->rddma_in_progress) {
-		while (!(hs_dev->read_buffer->last_copy ^ hs_dev->read_buffer->last_xfer))
-			msleep(1);
+		if (!(hs_dev->read_buffer->last_copy ^ hs_dev->read_buffer->last_xfer))
+			wait_event_interruptible(hs_dev->wq_rddma,
+						(hs_dev->read_buffer->last_copy ^ hs_dev->read_buffer->last_xfer) == 1);
 	}
 
 	if (hs_dev->read_buffer->last_copy) {
@@ -2003,7 +2181,9 @@ static int device_release(struct inode *inode, struct file *file)
 static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	struct hsi2s_device *hs_dev;
+	struct hsi2s_params *params;
 	int minor;
+	int ret = 0;
 
 	hs_dev = (struct hsi2s_device *)file->private_data;
 	minor = hs_dev->minor_num;
@@ -2095,20 +2275,52 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			pr_warn("[HSI2S] Mode already set by previous client");
 		break;
 
-	case I2S_START_TX:
+	case I2S_INIT_TX:
 		if (hs_dev->client_count == 1) {
-			hs_dev->rddma_copy_busy = 0;
+			hs_dev->rddma_copy_busy = 1;
+			/* Enable the DMA channel */
+			setbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_en);
+			/* Enable speaker */
+			setbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_spkr_en);
+			/* Set the RDDMA busy flags */
+			hs_dev->rddma_xfer_busy = 1;
 			hs_dev->rddma_in_progress = 1;
 		}
 		else
 			pr_warn("[HSI2S] Mode already set by previous client");
 		break;
-	case I2S_STOP_TX:
+	case I2S_DEINIT_TX:
 		if (hs_dev->client_count == 1) {
 			pr_warn("[HSI2S] Stopping rddma");
+			hs_dev->rddma_copy_busy = 1;
+			/* Disable speaker */
 			clearbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_spkr_en);
+			/* Disable the DMA channel */
 			clearbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_en);
+			/* Clear the RDDMA busy flags */
+			hs_dev->rddma_xfer_busy = 0;
 			hs_dev->rddma_in_progress = 0;
+		}
+		else
+			pr_warn("[HSI2S] Mode already set by previous client");
+		break;
+	case I2S_CONFIG_PARAMS:
+		if (hs_dev->client_count == 1) {
+			pr_warn("[HSI2S] Configuring I2S parameters from test application");
+			params = kzalloc(sizeof(params), GFP_KERNEL);
+			if (!params) {
+				pr_err("[HSI2S] Failed to allocate params structure");
+				ret = -ENOMEM;
+				break;
+			}
+			copy_from_user(params, (void *)arg, sizeof(struct hsi2s_params));
+			ret = configure_i2s_params(hs_dev, params);
+			if (ret < 0) {
+				pr_err("[HSI2S] Failed to configure I2S parameters");
+				ret = -EINVAL;
+			}
+			kfree(params);
+			params = NULL;
 		}
 		else
 			pr_warn("[HSI2S] Mode already set by previous client");
@@ -2139,7 +2351,7 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		return -EINVAL;
 	}
 
-	return 0;
+	return ret;
 }
 
 static const struct file_operations fops = {
@@ -2254,31 +2466,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	if (bit_depth)
 		b_depth = bit_depth;
 
-	if (b_depth <= 0) {
-		pr_warn("[HSI2S] Defaulting to 32 bit configuration");
-		hs_dev->bit_depth = hsi2s_core->macro->regfield_bit_width32;
-		hs_dev->bit_depth_val = 32;
-	} else if (b_depth <= 16) {
-		pr_warn("[HSI2S] Setting 16 bit configuration");
-		hs_dev->bit_depth = hsi2s_core->macro->regfield_bit_width16;
-		hs_dev->bit_depth_val = 16;
-	} else if (b_depth <= 24) {
-		pr_warn("[HSI2S] Setting 24 bit configuration");
-		hs_dev->bit_depth = hsi2s_core->macro->regfield_bit_width24;
-		hs_dev->bit_depth_val = 24;
-	} else if (b_depth == 25) {
-		pr_warn("[HSI2S] Setting 25 bit configuration");
-		hs_dev->bit_depth = hsi2s_core->macro->regfield_bit_width25;
-		hs_dev->bit_depth_val = 25;
-	} else if (b_depth <= 32) {
-		pr_warn("[HSI2S] Setting 32 bit configuration");
-		hs_dev->bit_depth = hsi2s_core->macro->regfield_bit_width32;
-		hs_dev->bit_depth_val = 32;
-	} else {
-		pr_warn("[HSI2S] Defaulting to 32 bit configuration");
-		hs_dev->bit_depth = hsi2s_core->macro->regfield_bit_width32;
-		hs_dev->bit_depth_val = 32;
-	}
+	configure_bit_depth(hs_dev, b_depth);
 
 	/* Speaker channel count */
 	ret = of_property_read_u32(dev->of_node, "spkr-channel-count",
@@ -2289,51 +2477,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	if (channel_count)
 		ch_count = channel_count;
 
-	switch (ch_count) {
-		case 0:
-			pr_warn("[HSI2S] Defaulting to stereo configuration for speaker");
-			hs_dev->spkr_channel_count = SPKR_STEREO;
-			hs_dev->spkr_mode = hsi2s_core->macro->regfield_spkr_mode_sd0;
-			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
-				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_one;
-			else
-				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_two;
-			break;
-		case 1:
-			pr_warn("[HSI2S] Setting mono configuration for speaker");
-			hs_dev->spkr_channel_count = hsi2s_core->macro->regfield_spkr_mono;
-			hs_dev->spkr_mode = hsi2s_core->macro->regfield_spkr_mode_sd0;
-			hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_one;
-			break;
-		case 2:
-			pr_warn("[HSI2S] Setting stereo configuration for speaker");
-			hs_dev->spkr_channel_count = SPKR_STEREO;
-			hs_dev->spkr_mode = hsi2s_core->macro->regfield_spkr_mode_sd0;
-			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
-				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_one;
-			else
-				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_two;
-			break;
-		case 4:
-			pr_warn("[HSI2S] Setting quad configuration for speaker");
-			hs_dev->spkr_channel_count = SPKR_QUAD;
-			hs_dev->spkr_mode = hsi2s_core->macro->regfield_spkr_mode_quad01;
-			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
-				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_two;
-			else
-				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_four;
-			break;
-		default:
-			pr_warn("[HSI2S] Invalid number of channels entered");
-			pr_warn("[HSI2S] Defaulting to stereo configuration for speaker");
-			hs_dev->spkr_channel_count = SPKR_STEREO;
-			hs_dev->spkr_mode = hsi2s_core->macro->regfield_spkr_mode_sd0;
-			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
-				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_one;
-			else
-				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_two;
-			break;
-	}
+	configure_spkr_channel(hs_dev, ch_count);
 
 	/* Mic channel count */
 	ret = of_property_read_u32(dev->of_node, "mic-channel-count",
@@ -2344,56 +2488,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	if (channel_count)
 		ch_count = channel_count;
 
-	switch (ch_count) {
-		case 0:
-			pr_warn("[HSI2S] Defaulting to stereo configuration for mic");
-			hs_dev->mic_channel_count = MIC_STEREO;
-			hs_dev->mic_mode = hsi2s_core->macro->regfield_mic_mode_sd1;
-			hs_dev->mic_ch_count_val = 2;
-			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
-				hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_one;
-			else
-				hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_two;
-			break;
-		case 1:
-			pr_warn("[HSI2S] Setting mono configuration for mic");
-			hs_dev->mic_channel_count = hsi2s_core->macro->regfield_mic_mono;
-			hs_dev->mic_mode = hsi2s_core->macro->regfield_mic_mode_sd1;
-			hs_dev->mic_ch_count_val = 1;
-			hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_one;
-			break;
-		case 2:
-			pr_warn("[HSI2S] Setting stereo configuration for mic");
-			hs_dev->mic_channel_count = MIC_STEREO;
-			hs_dev->mic_mode = hsi2s_core->macro->regfield_mic_mode_sd1;
-			hs_dev->mic_ch_count_val = 2;
-			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
-				hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_one;
-			else
-				hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_two;
-			break;
-		case 4:
-			pr_warn("[HSI2S] Setting quad configuration for mic");
-			hs_dev->mic_channel_count = MIC_QUAD;
-			hs_dev->mic_mode = hsi2s_core->macro->regfield_mic_mode_quad01;
-			hs_dev->mic_ch_count_val = 4;
-			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
-				hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_two;
-			else
-				hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_four;
-			break;
-		default:
-			pr_warn("[HSI2S] Invalid number of channels entered");
-			pr_warn("[HSI2S] Defaulting to stereo configuration for mic");
-			hs_dev->mic_channel_count = MIC_STEREO;
-			hs_dev->mic_mode = hsi2s_core->macro->regfield_mic_mode_sd1;
-			hs_dev->mic_ch_count_val = 2;
-			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
-				hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_one;
-			else
-				hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_two;
-			break;
-	}
+	configure_mic_channel(hs_dev, ch_count);
 
 	/* Map the interface registers */
 	ret = init_default(hs_dev, minor);

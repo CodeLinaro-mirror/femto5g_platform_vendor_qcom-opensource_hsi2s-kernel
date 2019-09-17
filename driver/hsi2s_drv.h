@@ -186,9 +186,10 @@
 #define I2S_SPEAKER _IOWR('i', 4, int)
 #define I2S_MIC _IOWR('i', 5, int)
 #define I2S_SET_SLAVE _IOWR('i', 6, int)
-#define I2S_START_TX _IOWR('i', 7, int)
-#define I2S_STOP_TX _IOWR('i', 8, int)
-#define I2S_RESET _IOWR('i', 9, int)
+#define I2S_INIT_TX _IOWR('i', 7, int)
+#define I2S_DEINIT_TX _IOWR('i', 8, int)
+#define I2S_CONFIG_PARAMS _IOWR('i', 9, int)
+#define I2S_RESET _IOWR('i', 10, int)
 
 /* Additional macros */
 #define DEVICE_NAME "hsi2s_driver"
@@ -447,6 +448,15 @@ struct hsi2s_device {
 	dev_t curr_devid;
 	struct cdev *cdev_sdr;
 	struct class *class_sdr;
+};
+
+/* I2S parameters */
+struct hsi2s_params {
+	u32 bit_clk;
+	u32 buffer_ms;
+	u32 bit_depth;
+	u32 spkr_channel_count;
+	u32 mic_channel_count;
 };
 
 /* FIFO for holding HSI2S data in the kernel space */
