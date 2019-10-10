@@ -186,7 +186,10 @@
 #define I2S_SPEAKER _IOWR('i', 4, int)
 #define I2S_MIC _IOWR('i', 5, int)
 #define I2S_SET_SLAVE _IOWR('i', 6, int)
-#define I2S_RESET _IOWR('i', 7, int)
+#define I2S_INIT_TX _IOWR('i', 7, int)
+#define I2S_DEINIT_TX _IOWR('i', 8, int)
+#define I2S_CONFIG_PARAMS _IOWR('i', 9, int)
+#define I2S_RESET _IOWR('i', 10, int)
 
 /* Additional macros */
 #define DEVICE_NAME "hsi2s_driver"
@@ -201,9 +204,10 @@
 #define DEFAULT_BUFF_LEN_WORDS   ((DEFAULT_BUFF_LEN_BYTES / 4) - 1)
 #define DEFAULT_NUM_WORDS 1024
 #define DEFAULT_NUM_BYTES (DEFAULT_NUM_WORDS * 4)
-#define METADATA_SIZE 256
 #define SPKR_STEREO 0x0
 #define MIC_STEREO 0x0
+#define SPKR_QUAD 0x0
+#define MIC_QUAD 0x0
 #define PRI_RATE_DET 0
 #define SEC_RATE_DET 1
 
@@ -220,11 +224,13 @@
 #define T_I2S_BIT_WIDTH_25 0x3
 #define T_RDDMA_WPSCNT_ONE 0x0
 #define T_RDDMA_WPSCNT_TWO 0x10000
+#define T_RDDMA_WPSCNT_FOUR 0x30000
 #define T_RDDMA_PRI_AUDIO_INTF 0x1000
 #define T_RDDMA_SEC_AUDIO_INTF 0x2000
 #define T_RDDMA_FIFO_WM_8 0xE
 #define T_WRDMA_WPSCNT_ONE 0x0
 #define T_WRDMA_WPSCNT_TWO 0x20000
+#define T_WRDMA_WPSCNT_FOUR 0x60000
 #define T_WRDMA_PRI_AUDIO_INTF 0x1000
 #define T_WRDMA_LOOPBACK_CH0 0x9000
 #define T_WRDMA_LOOPBACK_CH1 0xA000
@@ -260,12 +266,14 @@
 #define H_I2S_BIT_WIDTH_25 0x3
 #define H_RDDMA_WPSCNT_ONE 0x0
 #define H_RDDMA_WPSCNT_TWO 0x4000
+#define H_RDDMA_WPSCNT_FOUR 0xC000
 #define H_RDDMA_PRI_AUDIO_INTF 0x400
 #define H_RDDMA_SEC_AUDIO_INTF 0x800
 #define H_RDDMA_TER_AUDIO_INTF 0xC00
 #define H_RDDMA_FIFO_WM_8 0xE
 #define H_WRDMA_WPSCNT_ONE 0x0
 #define H_WRDMA_WPSCNT_TWO 0x10000
+#define H_WRDMA_WPSCNT_FOUR 0x30000
 #define H_WRDMA_PRI_AUDIO_INTF 0x1000
 #define H_WRDMA_SEC_AUDIO_INTF 0x2000
 #define H_WRDMA_TER_AUDIO_INTF 0x3000
@@ -384,13 +392,7 @@ struct hsi2s_device {
 
 	/* Buffers */
 	struct hsi2s_buffer *write_buffer;
-
-	/* Buffer metadata */
-	struct buffer_metadata *b_meta_read;
-
-	/* Buffer indices */
-	int meta_index_read;
-	int free_index_read;
+	struct ping_pong *read_buffer;
 
 	/* DMA thread */
 	struct task_struct *rddma_thread;
@@ -402,7 +404,9 @@ struct hsi2s_device {
 	void *lpass_wrdma_end;
 
 	/* DMA flags */
-	int rddma_busy;
+	int rddma_xfer_busy;
+	int rddma_copy_busy;
+	int rddma_in_progress;
 
 	/* SMMU context */
 	struct hsi2s_smmu_cb_ctx *hsi2s_smmu_ctx;
@@ -410,6 +414,7 @@ struct hsi2s_device {
 	/* Wait queues */
 	wait_queue_head_t wq_rddma;
 	wait_queue_head_t wq_wrdma;
+	wait_queue_head_t wq_copy;
 
 	/* Minor number */
 	int minor_num;
@@ -425,6 +430,8 @@ struct hsi2s_device {
 
 	/* I2S configurations */
 	/* Register fields */
+	u32 spkr_mode;
+	u32 mic_mode;
 	u32 mic_channel_count;
 	u32 spkr_channel_count;
 	u32 bit_depth;
@@ -443,6 +450,15 @@ struct hsi2s_device {
 	struct class *class_sdr;
 };
 
+/* I2S parameters */
+struct hsi2s_params {
+	u32 bit_clk;
+	u32 buffer_ms;
+	u32 bit_depth;
+	u32 spkr_channel_count;
+	u32 mic_channel_count;
+};
+
 /* FIFO for holding HSI2S data in the kernel space */
 struct hsi2s_buffer {
 	void *buffer;
@@ -453,11 +469,14 @@ struct hsi2s_buffer {
 	dma_addr_t handle;
 };
 
-/* Buffer metadata */
-struct buffer_metadata {
-	void *start_address;
+/* Ping pong buffer for Tx */
+struct ping_pong {
+	void *buffer;
+	void *ping_start;
+	void *pong_start;
 	u32 length;
-	int data_ready;
+	int last_xfer;
+	int last_copy;
 	dma_addr_t handle;
 };
 
@@ -536,12 +555,14 @@ struct hsi2s_macros {
 	u32 regfield_bit_width25;
 	u32 regfield_rddma_wpscnt_one;
 	u32 regfield_rddma_wpscnt_two;
+	u32 regfield_rddma_wpscnt_four;
 	u32 regfield_rddma_pri_audio_intf;
 	u32 regfield_rddma_sec_audio_intf;
 	u32 regfield_rddma_ter_audio_intf;
 	u32 regfield_rddma_fifo_wm8;
 	u32 regfield_wrdma_wpscnt_one;
 	u32 regfield_wrdma_wpscnt_two;
+	u32 regfield_wrdma_wpscnt_four;
 	u32 regfield_wrdma_pri_audio_intf;
 	u32 regfield_wrdma_sec_audio_intf;
 	u32 regfield_wrdma_ter_audio_intf;

@@ -31,21 +31,35 @@
 #define I2S_SPEAKER _IOWR('i', 4, int)
 #define I2S_MIC _IOWR('i', 5, int)
 #define I2S_SET_SLAVE _IOWR('i', 6, int)
-#define I2S_RESET _IOWR('i', 7, int)
+#define I2S_INIT_TX _IOWR('i', 7, int)
+#define I2S_DEINIT_TX _IOWR('i', 8, int)
+#define I2S_CONFIG_PARAMS _IOWR('i', 9, int)
+#define I2S_RESET _IOWR('i', 10, int)
 
+/* Macros */
 #define BYTES_PER_WORD 4
-#define READ_LENGTH_KB 4
-#define READ_LENGTH_WORDS (READ_LENGTH_KB * 1024) / BYTES_PER_WORD
+#define READ_LENGTH_MB 2
+#define READ_LENGTH_WORDS (READ_LENGTH_MB * 1024 * 1024) / BYTES_PER_WORD
 #define READ_LIMIT 1024*1024*1024
-#define WRITE_LENGTH_KB 4
-#define WRITE_LENGTH_WORDS (WRITE_LENGTH_KB * 1024) /BYTES_PER_WORD
 
+/* Operation mode of the test utility */
 enum operation_mode {
-	NORMAL,
+	NORMAL_RX,
+	NORMAL_TX,
 	INTERNAL_LB,
 	EXTERNAL_LB_MASTER,
 	EXTERNAL_LB_MASTER_SLAVE,
-	SET_MUXMODE
+	SET_MUXMODE,
+	CONFIG_PARAMS
+};
+
+/* I2S parameters */
+struct i2s_params {
+	unsigned int bit_clk;
+	unsigned int buffer_ms;
+	unsigned int bit_depth;
+	unsigned int spkr_channel_count;
+	unsigned int mic_channel_count;
 };
 
 int fd_master;
@@ -55,23 +69,46 @@ FILE *fd_write_op;
 long read_length_bytes;
 long read_length_words;
 long read_limit;
-long write_length;
-long write_length_words;
 enum operation_mode mode;
+struct i2s_params *params;
 
+/* Prints the usage information */
 void help()
 {
-	printf("Usage:\n");
-	printf("hsi2s_test <operational mode> <master device file> [<muxmode>] [<slave device file>] [<output file>] [<input file>] [<size>]\n");
-	printf("Arguments:\n");
-	printf("<operational mode> :\n 0 - Normal mode\n 1 - Internal loopback\n 2 - External loopback on master\n 3 - External loopback on master-slave\n 4 - Set muxmode\n");
+
+	printf("Operational modes:\n 0 - Normal Rx\n 1 - Normal Tx*\n 2 - Internal loopback\n 3 - External loopback on master*\n"
+	       " 4 - External loopback on master-slave*\n 5 - Set master/slave mode*\n 6 - Configure I2S parameters\n");
+	printf("* Supported only on SA8155\n\n");
+	printf("Usage for each operation mode:\n\n");
+	printf("NORMAL Rx:\n");
+	printf("hsi2s_test 0 <device file> <output file> [<size>]\n\n");
+	printf("NORMAL Tx:\n");
+	printf("hsi2s_test 1 <device file> <input file>\n\n");
+	printf("INTERNAL LOOPBACK:\n");
+	printf("hsi2s_test 2 <device file> <output file> <input file> [<size>]\n\n");
+	printf("EXTERNAL LOOPBACK ON MASTER:\n");
+	printf("hsi2s_test 3 <device file> <output file> <input file> [<size>]\n\n");
+	printf("EXTERNAL LOOPBACK BETWEEN MASTER AND SLAVE INTERFACES:\n");
+	printf("hsi2s_test 4 <master device file> <slave device file> <output file> <input file> [<size>]\n\n");
+	printf("SET MASTER/SLAVE MODE:\n");
+	printf("hsi2s_test 5 <device file> <muxmode>\n\n");
+	printf("CONFIGURE I2S PARAMETERS:\n");
+	printf("hsi2s_test 6 <device file> <bit clock in hertz> <data buffer in ms> <bit depth> <speaker channel count> <mic channel count>\n\n");
+	printf("Argument details:\n");
 	printf("<device file> : /dev/hs0_i2s | /dev/hs1_i2s | /dev/hs2_i2s\n");
-	printf("[<muxmode>] : 0 - Master 1 - Slave\n");
-	printf("[<output file>] : To store the data read from the device file\n");
-	printf("[<input file>] : To be provided only for loopback modes\n");
-	printf("[<size>] : Read-write length (4KB by default)\n");
+	printf("<muxmode> : 0 - Master 1 - Slave\n");
+	printf("<output file> : To store the data read from the device file\n");
+	printf("<input file> : To be written to the HS-I2S interface via device file\n");
+	printf("<size> : DMA buffer length in MB (4MB by default)\n");
+	printf("<bit clock in hertz> : Bit clock freqeuncy in Hertz\n");
+	printf("<data buffer in ms> : Periodic length of data buffer in milli seconds\n");
+	printf("<bit depth> : 16/24/25/32\n");
+	printf("<speaker channel count> : 1/2/4\n");
+	printf("<mic channel count> : 1/2/4\n");
+
 }
 
+/* Returns the size of input file in bytes */
 long get_size(FILE *fp)
 {
 	long n;
@@ -89,32 +126,37 @@ long get_size(FILE *fp)
 	return n;
 }
 
+/* Read thread */
 void *user_read(void *arg)
 {
 	int i;
 	size_t transfer_length;
-	int32_t received_data[read_length_words];
+	int32_t *received_data;
 	int cnt = 0;
 	long r_limit = 0;
 	int boundary_read;
 
 	printf("Performing data read...\n");
 
+	received_data = (int32_t *) malloc(read_length_words * sizeof(int32_t));
+
 	while (r_limit < read_limit) {
 		if (mode != EXTERNAL_LB_MASTER_SLAVE)
-			transfer_length = read(fd_master, &received_data, read_length_bytes);
+			transfer_length = read(fd_master, received_data, read_length_bytes);
 		else
-			transfer_length = read(fd_slave, &received_data, read_length_bytes);
+			transfer_length = read(fd_slave, received_data, read_length_bytes);
 		printf("Bytes read: %zd\n", transfer_length);
 		if ((r_limit + transfer_length) > read_limit) {
 			boundary_read = (read_limit - r_limit);
-			fwrite(&received_data,boundary_read,1,fd_write_op);
+			fwrite(received_data,boundary_read,1,fd_write_op);
 		}
 		else
-			fwrite(&received_data,BYTES_PER_WORD,read_length_words,fd_write_op);
+			fwrite(received_data,BYTES_PER_WORD,read_length_words,fd_write_op);
 
 		r_limit = r_limit + transfer_length;
 	}
+
+	free(received_data);
 
 	return NULL;
 }
@@ -140,7 +182,7 @@ int main(int argc, char **argv)
 
 	printf("Reading operation mode...\n");
 	mode = atoi(argv[arg++]);
-	if (mode > SET_MUXMODE) {
+	if (mode > CONFIG_PARAMS) {
 		printf("Undefined mode\n");
 		help();
 		exit(0);
@@ -154,6 +196,27 @@ int main(int argc, char **argv)
 		exit(0);
 	}
 
+	/* Operation mode : Configure I2S parameters */
+	if (mode == CONFIG_PARAMS) {
+		printf("Configuring I2S parameters\n");
+		if (argc < 8) {
+			help();
+			exit(0);
+		}
+		params = (struct i2s_params *) malloc(sizeof(struct i2s_params));
+		params->bit_clk = atoi(argv[arg++]);
+		params->buffer_ms = atoi(argv[arg++]);
+		params->bit_depth = atoi(argv[arg++]);
+		params->spkr_channel_count = atoi(argv[arg++]);
+		params->mic_channel_count = atoi(argv[arg++]);
+		if (ioctl(fd_master, I2S_CONFIG_PARAMS, params) < 0) {
+			printf("Failed to configure I2S parameters on target\n");
+			exit(0);
+		}
+		exit(0);
+	}
+
+	/* Operation mode : Set I2S interface as master/slave */
 	if (mode == SET_MUXMODE) {
 		mux = atoi(argv[arg++]);
 		printf("Setting muxmode\n");
@@ -164,7 +227,12 @@ int main(int argc, char **argv)
 		exit(0);
 	}
 
+	/* Operation mode : External loopback between master and slave interfaces */
 	if (mode == EXTERNAL_LB_MASTER_SLAVE) {
+		if (argc < 6) {
+			help();
+			exit(0);
+		}
 		fd_slave = open(argv[arg++], O_RDWR);
 		if(fd_slave < 0) {
 			printf("Cannot open slave device file\n");
@@ -175,21 +243,45 @@ int main(int argc, char **argv)
 		printf("Slave node is hs%d\n",slave);
 	}
 
-	printf("Opening o/p file...\n");
-	fd_write_op = fopen(argv[arg++], "w");
-	if (fd_write_op == NULL) {
-		printf("Cannot open output file\n");
-		help();
-		exit(0);
+	if (mode != NORMAL_TX) {
+		/* Open the output file to store received data */
+		printf("Opening o/p file...\n");
+		fd_write_op = fopen(argv[arg++], "w");
+		if (fd_write_op == NULL) {
+			printf("Cannot open output file\n");
+			help();
+			exit(0);
+		}
 	}
 
 	/* Initializing to default macros and use the macros if no size specified by user*/
-	read_length_bytes = READ_LENGTH_KB * 1024;
+	read_length_bytes = READ_LENGTH_MB * 1024 * 1024;
 	read_length_words = READ_LENGTH_WORDS;
 
-	if (mode != NORMAL) {
+	if (mode != NORMAL_RX) {
 		switch (mode) {
+		/* Operation mode : Normal Tx */
+		case NORMAL_TX:
+			printf("Setting Tx on master\n");
+			if (ioctl(fd_master, I2S_RESET) < 0) {
+				printf("Failed to reset the hsi2s device\n");
+				exit(0);
+			}
+			if (ioctl(fd_master, I2S_MUXMODE, 0) < 0) {
+				printf("Failed to set master mode\n");
+				exit(0);
+			}
+			if (ioctl(fd_master, I2S_SPEAKER) < 0) {
+				printf("Failed to configure speaker\n");
+				exit(0);
+			}
+			break;
+		/* Operation mode : Internal loopback */
 		case INTERNAL_LB:
+			if (argc < 5) {
+				help();
+				exit(0);
+			}
 			printf("Setting internal loopback operation \n");
 			if (ioctl(fd_master, I2S_RESET) < 0) {
 				printf("Failed to reset the hsi2s device\n");
@@ -200,7 +292,12 @@ int main(int argc, char **argv)
 				exit(0);
 			}
 			break;
+		/* Operation mode : External loopback on master interface */
 		case EXTERNAL_LB_MASTER:
+			if (argc < 5) {
+				help();
+				exit(0);
+			}
 			printf("Setting external loopback on master \n");
 			if (ioctl(fd_master, I2S_RESET) < 0) {
 				printf("Failed to reset the hsi2s device\n");
@@ -211,6 +308,7 @@ int main(int argc, char **argv)
 				exit(0);
 			}
 			break;
+		/* Operation mode : External loopback between master and slave interfaces */
 		case EXTERNAL_LB_MASTER_SLAVE:
 			printf("Setting external loopback on master/slave \n");
 			if (ioctl(fd_master, I2S_RESET) < 0) {
@@ -257,23 +355,14 @@ int main(int argc, char **argv)
 		no_words = wav_samples/BYTES_PER_WORD;
 		printf("File size BYTES: %ld WORDS %ld \n",wav_samples,no_words);
 		read_limit = wav_samples;
-		write_length = WRITE_LENGTH_KB * 1024;
-		write_length_words = WRITE_LENGTH_WORDS;
 
 		if (arg < argc) {
 			/* Use the size provided by the user */
-			read_length_bytes = atoi(argv[arg++]) * 1024;
-			write_length = read_length_bytes;
-			write_length_words = write_length/BYTES_PER_WORD;
+			read_length_bytes = (atoi(argv[arg++]) * 1024 * 1024) / 2;
 			read_length_words = read_length_bytes/BYTES_PER_WORD;
-
-			printf("User Command Line\n");
-			printf("read_length_bytes: %ld\n", read_length_bytes);
-			printf("write_length: %ld\n", write_length);
-			printf("write_length_words: %ld\n", write_length_words);
-			printf("read_length_words: %ld\n", read_length_words);
 		}
 	} else {
+		/* Operation mode : Normal mode data reception */
 		printf("Setting normal mode \n");
 		if (ioctl(fd_master, I2S_RESET) < 0) {
 			printf("Failed to reset the hsi2s device\n");
@@ -288,21 +377,21 @@ int main(int argc, char **argv)
 
 		if (arg < argc) {
 			/* Use the size provided by the user */
-			read_length_bytes = atoi(argv[arg++]) * 1024;
+			read_length_bytes = (atoi(argv[arg++]) * 1024 * 1024) / 2;
 			read_length_words = read_length_bytes/BYTES_PER_WORD;
-
-			printf("User Command Line\n");
-			printf("read_length_bytes: %ld\n", read_length_bytes);
-			printf("read_length_words: %ld\n", read_length_words);
 		}
 	}
 
-	printf("Creating read thread\n");
-	if (pthread_create(&tid, NULL, user_read, NULL)!=0) {
-		printf("Error creating reader thread\n");
+	if (mode != NORMAL_TX) {
+		/* Create thread to read the received data */
+		printf("Creating read thread\n");
+		if (pthread_create(&tid, NULL, user_read, NULL)!=0) {
+			printf("Error creating reader thread\n");
+		}
 	}
 
-	if (mode != NORMAL) {
+	/* Reading from input file only for loopback modes */
+	if (mode != NORMAL_RX) {
 		printf("Reading i/p file...\n");
 		wav_data = (int32_t *) malloc(no_words * sizeof(int32_t));
 
@@ -321,16 +410,28 @@ int main(int argc, char **argv)
 		}
 	}
 
-	printf("Joining threads\n");
-	pthread_join(tid,NULL);
-	printf("Threads joined \n");
+	if (mode != NORMAL_TX) {
+		printf("Joining threads\n");
+		pthread_join(tid,NULL);
+		printf("Threads joined \n");
+	}
+
+	/* Disable transmission */
+	if (mode != NORMAL_RX) {
+		printf("Disabling Tx on read DMA channel\n");
+		if (ioctl(fd_master, I2S_DEINIT_TX) < 0) {
+			printf("Failed to stop Tx on hsi2s device\n");
+			exit(0);
+		}
+	}
 
 	printf("Closing Files \n");
-	if (mode != NORMAL) {
+	if (mode != NORMAL_RX) {
 		free(wav_data);
 		fclose(fd_read_ip);
 	}
-	fclose(fd_write_op);
+	if (mode != NORMAL_TX)
+		fclose(fd_write_op);
 	if (mode == EXTERNAL_LB_MASTER_SLAVE)
 		close(fd_slave);
 	close(fd_master);
