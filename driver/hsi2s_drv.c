@@ -1380,20 +1380,23 @@ static void h_modify_core_clks(int enable)
 
 	if (enable) {
 		pr_warn("[HSI2S] Enable core clocks for 8155");
-		setbits(gcc_lpass_sway, 0x1);
-		clearbits(lpass_gdscr, 0x1);
-		setbits(lpass_core_cbcr, 0x1);
-		setbits(hs_rdmem, 0x1);
-		setbits(hs_wrmem, 0x1);
-		setbits(lpass_mport, 0x1);
+		if (!(readl_relaxed(gcc_lpass_sway) & 0x1))
+			setbits(gcc_lpass_sway, 0x1);
+		if ((readl_relaxed(gcc_lpass_sway) & 0x1))
+			clearbits(lpass_gdscr, 0x1);
+		if (!(readl_relaxed(lpass_core_cbcr) & 0x1))
+			setbits(lpass_core_cbcr, 0x1);
+		if (!(readl_relaxed(hs_rdmem) & 0x1))
+			setbits(hs_rdmem, 0x1);
+		if (!(readl_relaxed(hs_wrmem) & 0x1))
+			setbits(hs_wrmem, 0x1);
+		if (!(readl_relaxed(lpass_mport) & 0x1))
+			setbits(lpass_mport, 0x1);
 		pr_warn("[HSI2S] Core clocks enabled for 8155");
 	} else {
 		pr_warn("[HSI2S] Disable core clocks for 8155");
-		clearbits(lpass_mport, 0x1);
 		clearbits(hs_wrmem, 0x1);
 		clearbits(hs_rdmem, 0x1);
-		clearbits(lpass_core_cbcr, 0x1);
-		clearbits(gcc_lpass_sway, 0x1);
 		pr_warn("[HSI2S] Core clocks disabled for 8155");
 	}
 
