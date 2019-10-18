@@ -1382,7 +1382,7 @@ static void h_modify_core_clks(int enable)
 		pr_warn("[HSI2S] Enable core clocks for 8155");
 		if (!(readl_relaxed(gcc_lpass_sway) & 0x1))
 			setbits(gcc_lpass_sway, 0x1);
-		if ((readl_relaxed(gcc_lpass_sway) & 0x1))
+		if ((readl_relaxed(lpass_gdscr) & 0x1))
 			clearbits(lpass_gdscr, 0x1);
 		if (!(readl_relaxed(lpass_core_cbcr) & 0x1))
 			setbits(lpass_core_cbcr, 0x1);
