@@ -2185,6 +2185,8 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	struct hsi2s_device *hs_dev;
 	struct hsi2s_params *params;
+	void __iomem *clk_val_reg;
+	void __iomem *clk_update_reg;
 	int minor;
 	int ret = 0;
 
@@ -2327,6 +2329,44 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		}
 		else
 			pr_warn("[HSI2S] Mode already set by previous client");
+		break;
+	case I2S_SET_CLOCK:
+		if (hsi2s_core->target == 6155) {
+			pr_warn("[HSI2S] Master mode not supported by target");
+			return -EINVAL;
+		}
+
+		pr_warn("[HSI2S] Configuring master clock on HS%d interface", hs_dev->minor_num);
+
+		if (hs_dev->client_count == 1) {
+			if (hs_dev->minor_num == 0) {
+				clk_update_reg = ioremap(HS0_BITCLK_CMD,4);
+				clk_val_reg = ioremap(HS0_BITCLK_CFG,4);
+
+				clearbits(clk_val_reg, HS_BITCLK_RESET);
+				setbits(clk_val_reg, arg);
+				setbits(clk_update_reg, HS_BITCLK_UPDATE);
+			}
+			else if (hs_dev->minor_num == 1) {
+				clk_update_reg = ioremap(HS1_BITCLK_CMD,4);
+				clk_val_reg = ioremap(HS1_BITCLK_CFG,4);
+
+				clearbits(clk_val_reg, HS_BITCLK_RESET);
+				setbits(clk_val_reg, arg);
+				setbits(clk_update_reg, HS_BITCLK_UPDATE);
+			}
+			else {
+				clk_update_reg = ioremap(HS2_BITCLK_CMD,4);
+				clk_val_reg = ioremap(HS2_BITCLK_CFG,4);
+
+				clearbits(clk_val_reg, HS_BITCLK_RESET);
+				setbits(clk_val_reg, arg);
+				setbits(clk_update_reg, HS_BITCLK_UPDATE);
+			}
+			pr_warn("[HSI2S] Re-configured master clock");
+		}
+		else
+			pr_warn("[HSI2S] Clock already set by previous client");
 		break;
 	case I2S_RESET:
 		if (hs_dev->client_count == 1) {
