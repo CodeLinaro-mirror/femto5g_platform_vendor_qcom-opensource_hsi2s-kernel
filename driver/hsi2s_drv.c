@@ -1364,15 +1364,11 @@ static int hsi2s_configure_gpio_pins(struct platform_device *pdev)
 
 static void h_modify_core_clks(int enable)
 {
-	void __iomem *gcc_lpass_sway;
-	void __iomem *lpass_gdscr;
 	void __iomem *lpass_core_cbcr;
 	void __iomem *hs_rdmem;
 	void __iomem *hs_wrmem;
 	void __iomem *lpass_mport;
 
-	gcc_lpass_sway = ioremap(0x147004, 4);
-	lpass_gdscr = ioremap(0x1700B000, 4);
 	lpass_core_cbcr = ioremap(0x1701F000, 4);
 	hs_rdmem = ioremap(0x17049004, 4);
 	hs_wrmem = ioremap(0x17049000, 4);
@@ -1380,10 +1376,6 @@ static void h_modify_core_clks(int enable)
 
 	if (enable) {
 		pr_warn("[HSI2S] Enable core clocks for 8155");
-		if (!(readl_relaxed(gcc_lpass_sway) & 0x1))
-			setbits(gcc_lpass_sway, 0x1);
-		if ((readl_relaxed(lpass_gdscr) & 0x1))
-			clearbits(lpass_gdscr, 0x1);
 		if (!(readl_relaxed(lpass_core_cbcr) & 0x1))
 			setbits(lpass_core_cbcr, 0x1);
 		if (!(readl_relaxed(hs_rdmem) & 0x1))
@@ -1400,8 +1392,6 @@ static void h_modify_core_clks(int enable)
 		pr_warn("[HSI2S] Core clocks disabled for 8155");
 	}
 
-	iounmap(gcc_lpass_sway);
-	iounmap(lpass_gdscr);
 	iounmap(lpass_core_cbcr);
 	iounmap(hs_rdmem);
 	iounmap(hs_wrmem);
