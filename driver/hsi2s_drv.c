@@ -1158,6 +1158,7 @@ static int hsi2s_buffer_init(struct hsi2s_device *hs_dev)
 	hs_dev->write_buffer->head = hs_dev->lpass_wrdma_start;
 	hs_dev->write_buffer->tail = hs_dev->lpass_wrdma_start;
 	hs_dev->write_buffer->data_ready = 0;
+	hs_dev->write_buffer->pollin = 0;
 
 	return ret;
 
@@ -1832,6 +1833,7 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 				tail += write_len;
 			hs_arr[0]->write_buffer->tail = tail;
 			hs_arr[0]->write_buffer->data_ready = 1;
+			hs_arr[0]->write_buffer->pollin = 1;
 			/* Notify event read */
 			wake_up_interruptible(&hs_arr[0]->wq_wrdma);
 		}
@@ -1856,6 +1858,7 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 				tail += write_len;
 			hs_arr[1]->write_buffer->tail = tail;
 			hs_arr[1]->write_buffer->data_ready = 1;
+			hs_arr[1]->write_buffer->pollin = 1;
 			/* Notify event read */
 			wake_up_interruptible(&hs_arr[1]->wq_wrdma);
 		}
@@ -1880,6 +1883,7 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 				tail += write_len;
 			hs_arr[2]->write_buffer->tail = tail;
 			hs_arr[2]->write_buffer->data_ready = 1;
+			hs_arr[2]->write_buffer->pollin = 1;
 			/* Notify event read */
 			wake_up_interruptible(&hs_arr[2]->wq_wrdma);
 		}
@@ -2375,6 +2379,10 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			hs_dev->write_buffer->head = hs_dev->lpass_wrdma_start;
 			hs_dev->write_buffer->tail = hs_dev->lpass_wrdma_start;
 			hs_dev->write_buffer->data_ready = 0;
+			hs_dev->write_buffer->pollin = 0;
+			hs_dev->rddma_xfer_busy = 0;
+			hs_dev->rddma_copy_busy = 1;
+			hs_dev->rddma_in_progress = 0;
 		}
 		else
 			pr_warn("[HSI2S] Mode already set by previous client");
@@ -2387,12 +2395,56 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	return ret;
 }
 
+static unsigned int device_poll(struct file *file, poll_table *wait)
+{
+	struct hsi2s_device *hs_dev;
+	unsigned int mask = 0;
+
+	hs_dev = (struct hsi2s_device *)file->private_data;
+
+	poll_wait(file, &hs_dev->wq_wrdma, wait);
+
+	/* Check for periodic interrupt on write DMA channel */
+	if (hs_dev->write_buffer->pollin) {
+		hs_dev->write_buffer->pollin = 0;
+		mask |= POLLIN | POLLRDNORM;
+	}
+
+	return mask;
+}
+
+static int device_mmap(struct file *file, struct vm_area_struct *vma)
+{
+	struct hsi2s_device *hs_dev;
+	unsigned long pa;
+	unsigned long pfn;
+	unsigned long len = vma->vm_end - vma->vm_start;
+	int ret = 0;
+
+	hs_dev = (struct hsi2s_device *)file->private_data;
+	pa = virt_to_phys(hs_dev->write_buffer->buffer);
+	pfn = (pa >> PAGE_SHIFT) + vma->vm_pgoff;
+
+	if (len > dma_buffer_length) {
+		pr_err("[HSI2S] Size of map area exceeds DMA buffer length");
+		ret = -EINVAL;
+	} else {
+		ret = remap_pfn_range(vma, vma->vm_start, pfn, len, vma->vm_page_prot);
+		if (ret)
+			pr_err("[HSI2S] %s failed", __func__);
+	}
+
+	return ret;
+}
+
 static const struct file_operations fops = {
 	.read  = device_read,
 	.write = device_write,
 	.open  = device_open,
 	.release = device_release,
-	.unlocked_ioctl = device_ioctl
+	.unlocked_ioctl = device_ioctl,
+	.mmap = device_mmap,
+	.poll = device_poll
 };
 
 /* Module callbacks */

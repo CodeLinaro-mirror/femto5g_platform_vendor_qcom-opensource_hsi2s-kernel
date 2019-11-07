@@ -40,6 +40,7 @@
 #include <linux/iommu.h>
 #include <linux/irqdesc.h>
 #include <linux/io.h>
+#include <linux/poll.h>
 #include <asm/dma-iommu.h>
 
 /* Register offsets */
@@ -476,6 +477,7 @@ struct hsi2s_buffer {
 	void *tail;
 	int size;
 	bool data_ready;
+	bool pollin;
 	dma_addr_t handle;
 };
 
