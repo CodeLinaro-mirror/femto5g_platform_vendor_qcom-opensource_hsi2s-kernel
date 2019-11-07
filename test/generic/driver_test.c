@@ -22,6 +22,7 @@
 #include <sys/ioctl.h>
 #include <time.h>
 #include <pthread.h>
+#include <time.h>
 
 /* IOCTL commands copied from the i2s_driver header */
 /* Configures I2S and DMA registers for normal data transfer on the interface */
@@ -55,6 +56,7 @@
 #define READ_LENGTH_WORDS (READ_LENGTH_MB * 1024 * 1024) / BYTES_PER_WORD
 #define READ_LIMIT 1024*1024*1024
 #define SRC_DIGITAL_PLL 0x500
+#define BILLION 1000000000L
 
 /* Operation mode of the test utility */
 enum operation_mode {
@@ -86,6 +88,8 @@ long read_length_words;
 long read_limit;
 enum operation_mode mode;
 struct i2s_params *params;
+struct timespec nread_start;
+struct timespec nread_stop;
 
 /* Prints the usage information */
 void help()
@@ -154,17 +158,33 @@ void *user_read(void *arg)
 	int cnt = 0;
 	long r_limit = 0;
 	int boundary_read;
+	double thread_start;
+	double thread_stop;
+	double delta;
 
 	printf("Performing data read...\n");
 
 	received_data = (int32_t *) malloc(read_length_words * sizeof(int32_t));
 
+	clock_gettime(CLOCK_REALTIME, &nread_start);
+	thread_start = (nread_start.tv_sec * BILLION) + nread_start.tv_nsec;
+	printf("[READ] Starttime %lf\n", thread_start);
+
 	while (r_limit < read_limit) {
-		if (mode != EXTERNAL_LB_MASTER_SLAVE)
+		if (mode != EXTERNAL_LB_MASTER_SLAVE) {
+			clock_gettime(CLOCK_REALTIME, &nread_start);
 			transfer_length = read(fd_master, received_data, read_length_bytes);
-		else
+			clock_gettime(CLOCK_REALTIME, &nread_stop);
+		} else {
+			clock_gettime(CLOCK_REALTIME, &nread_start);
 			transfer_length = read(fd_slave, received_data, read_length_bytes);
-		printf("Bytes read: %zd\n", transfer_length);
+			clock_gettime(CLOCK_REALTIME, &nread_stop);
+		}
+		delta = ((nread_stop.tv_sec - nread_start.tv_sec) * BILLION) +
+			(nread_stop.tv_nsec - nread_start.tv_nsec);
+
+		printf("Bytes read: %zd in %lf nsecs\n", transfer_length, delta);
+
 		if ((r_limit + transfer_length) > read_limit) {
 			boundary_read = (read_limit - r_limit);
 			fwrite(received_data,boundary_read,1,fd_write_op);
@@ -174,6 +194,12 @@ void *user_read(void *arg)
 
 		r_limit = r_limit + transfer_length;
 	}
+
+	clock_gettime(CLOCK_REALTIME, &nread_stop);
+	thread_stop = (nread_stop.tv_sec * BILLION) + nread_stop.tv_nsec;
+	delta = (thread_stop - thread_start) / BILLION;
+	printf("[READ] Endtime %lf\n", thread_stop);
+	printf("[READ] Total thread execution time %lfs\n", delta);
 
 	free(received_data);
 
