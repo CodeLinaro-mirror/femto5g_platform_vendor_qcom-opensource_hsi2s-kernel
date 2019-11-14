@@ -96,8 +96,10 @@ static void t_assign_macros(void)
 	hsi2s_core->macro->bit_rate_reset = T_RATE_DET_RESET;
 	hsi2s_core->macro->regfield_i2s_lrate15 = T_I2S_LONG_RATE_15;
 	hsi2s_core->macro->regfield_spkr_mode_sd0 = T_I2S_SPKR_MODE_SD0;
+	hsi2s_core->macro->regfield_spkr_mode_sd1 = T_I2S_SPKR_MODE_SD1;
 	hsi2s_core->macro->regfield_spkr_mode_quad01 = T_I2S_SPKR_MODE_QUAD01;
 	hsi2s_core->macro->regfield_spkr_mono = T_I2S_SPKR_MONO;
+	hsi2s_core->macro->regfield_mic_mode_sd0 = T_I2S_MIC_MODE_SD0;
 	hsi2s_core->macro->regfield_mic_mode_sd1 = T_I2S_MIC_MODE_SD1;
 	hsi2s_core->macro->regfield_mic_mode_quad01 = T_I2S_MIC_MODE_QUAD01;
 	hsi2s_core->macro->regfield_mic_mono = T_I2S_MIC_MONO;
@@ -183,8 +185,10 @@ static void h_assign_macros(void)
 	hsi2s_core->macro->bit_rate_reset = H_RATE_DET_RESET;
 	hsi2s_core->macro->regfield_i2s_lrate15 = H_I2S_LONG_RATE_15;
 	hsi2s_core->macro->regfield_spkr_mode_sd0 = H_I2S_SPKR_MODE_SD0;
+	hsi2s_core->macro->regfield_spkr_mode_sd1 = H_I2S_SPKR_MODE_SD1;
 	hsi2s_core->macro->regfield_spkr_mode_quad01 = H_I2S_SPKR_MODE_QUAD01;
 	hsi2s_core->macro->regfield_spkr_mono = H_I2S_SPKR_MONO;
+	hsi2s_core->macro->regfield_mic_mode_sd0 = H_I2S_MIC_MODE_SD0;
 	hsi2s_core->macro->regfield_mic_mode_sd1 = H_I2S_MIC_MODE_SD1;
 	hsi2s_core->macro->regfield_mic_mode_quad01 = H_I2S_MIC_MODE_QUAD01;
 	hsi2s_core->macro->regfield_mic_mono = H_I2S_MIC_MONO;
@@ -520,7 +524,7 @@ static u32 set_periodic_length(u32 bit_clk, u32 interval)
 	 * Bytes per msec = (m * (10^(-3))) / 8 = m / 8000
 	 * Bytes per 'k' msec = k * (m / 8000)
 	 */
-	return ((interval * bit_clk) / 8000);
+	return (((unsigned long long)interval * bit_clk) / 8000);
 }
 
 /* Function to calculate bit rate */
@@ -625,7 +629,7 @@ static void configure_spkr_channel(struct hsi2s_device *hs_dev, u32 ch_count)
 		case 0:
 			pr_warn("[HSI2S] Defaulting to stereo configuration for speaker");
 			hs_dev->spkr_channel_count = SPKR_STEREO;
-			hs_dev->spkr_mode = hsi2s_core->macro->regfield_spkr_mode_sd0;
+			hs_dev->spkr_mode = hsi2s_core->macro->regfield_spkr_mode_sd1;
 			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
 				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_one;
 			else
@@ -634,13 +638,13 @@ static void configure_spkr_channel(struct hsi2s_device *hs_dev, u32 ch_count)
 		case 1:
 			pr_warn("[HSI2S] Setting mono configuration for speaker");
 			hs_dev->spkr_channel_count = hsi2s_core->macro->regfield_spkr_mono;
-			hs_dev->spkr_mode = hsi2s_core->macro->regfield_spkr_mode_sd0;
+			hs_dev->spkr_mode = hsi2s_core->macro->regfield_spkr_mode_sd1;
 			hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_one;
 			break;
 		case 2:
 			pr_warn("[HSI2S] Setting stereo configuration for speaker");
 			hs_dev->spkr_channel_count = SPKR_STEREO;
-			hs_dev->spkr_mode = hsi2s_core->macro->regfield_spkr_mode_sd0;
+			hs_dev->spkr_mode = hsi2s_core->macro->regfield_spkr_mode_sd1;
 			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
 				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_one;
 			else
@@ -659,7 +663,7 @@ static void configure_spkr_channel(struct hsi2s_device *hs_dev, u32 ch_count)
 			pr_warn("[HSI2S] Invalid number of channels entered");
 			pr_warn("[HSI2S] Defaulting to stereo configuration for speaker");
 			hs_dev->spkr_channel_count = SPKR_STEREO;
-			hs_dev->spkr_mode = hsi2s_core->macro->regfield_spkr_mode_sd0;
+			hs_dev->spkr_mode = hsi2s_core->macro->regfield_spkr_mode_sd1;
 			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
 				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_one;
 			else
@@ -675,7 +679,7 @@ static void configure_mic_channel(struct hsi2s_device *hs_dev, u32 ch_count)
 		case 0:
 			pr_warn("[HSI2S] Defaulting to stereo configuration for mic");
 			hs_dev->mic_channel_count = MIC_STEREO;
-			hs_dev->mic_mode = hsi2s_core->macro->regfield_mic_mode_sd1;
+			hs_dev->mic_mode = hsi2s_core->macro->regfield_mic_mode_sd0;
 			hs_dev->mic_ch_count_val = 2;
 			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
 				hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_one;
@@ -685,14 +689,14 @@ static void configure_mic_channel(struct hsi2s_device *hs_dev, u32 ch_count)
 		case 1:
 			pr_warn("[HSI2S] Setting mono configuration for mic");
 			hs_dev->mic_channel_count = hsi2s_core->macro->regfield_mic_mono;
-			hs_dev->mic_mode = hsi2s_core->macro->regfield_mic_mode_sd1;
+			hs_dev->mic_mode = hsi2s_core->macro->regfield_mic_mode_sd0;
 			hs_dev->mic_ch_count_val = 1;
 			hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_one;
 			break;
 		case 2:
 			pr_warn("[HSI2S] Setting stereo configuration for mic");
 			hs_dev->mic_channel_count = MIC_STEREO;
-			hs_dev->mic_mode = hsi2s_core->macro->regfield_mic_mode_sd1;
+			hs_dev->mic_mode = hsi2s_core->macro->regfield_mic_mode_sd0;
 			hs_dev->mic_ch_count_val = 2;
 			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
 				hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_one;
@@ -713,7 +717,7 @@ static void configure_mic_channel(struct hsi2s_device *hs_dev, u32 ch_count)
 			pr_warn("[HSI2S] Invalid number of channels entered");
 			pr_warn("[HSI2S] Defaulting to stereo configuration for mic");
 			hs_dev->mic_channel_count = MIC_STEREO;
-			hs_dev->mic_mode = hsi2s_core->macro->regfield_mic_mode_sd1;
+			hs_dev->mic_mode = hsi2s_core->macro->regfield_mic_mode_sd0;
 			hs_dev->mic_ch_count_val = 2;
 			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
 				hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_one;

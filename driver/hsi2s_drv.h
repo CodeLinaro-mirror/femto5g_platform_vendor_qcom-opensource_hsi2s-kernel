@@ -215,8 +215,10 @@
 
 #define T_I2S_LONG_RATE_15 0x3C0000
 #define T_I2S_SPKR_MODE_SD0 0x800
+#define T_I2S_SPKR_MODE_SD1 0x1000
 #define T_I2S_SPKR_MODE_QUAD01 0x2800
 #define T_I2S_SPKR_MONO 0x400
+#define T_I2S_MIC_MODE_SD0 0x10
 #define T_I2S_MIC_MODE_SD1 0x20
 #define T_I2S_MIC_MODE_QUAD01 0x50
 #define T_I2S_MIC_MONO 0x8
@@ -257,8 +259,10 @@
 
 #define H_I2S_LONG_RATE_15 0xF0000
 #define H_I2S_SPKR_MODE_SD0 0x400
+#define H_I2S_SPKR_MODE_SD1 0x800
 #define H_I2S_SPKR_MODE_QUAD01 0x1400
 #define H_I2S_SPKR_MONO 0x200
+#define H_I2S_MIC_MODE_SD0 0x10
 #define H_I2S_MIC_MODE_SD1 0x20
 #define H_I2S_MIC_MODE_QUAD01 0x50
 #define H_I2S_MIC_MONO 0x8
@@ -556,8 +560,10 @@ struct hsi2s_macros {
 	/* Register fields */
 	u32 regfield_i2s_lrate15;
 	u32 regfield_spkr_mode_sd0;
+	u32 regfield_spkr_mode_sd1;
 	u32 regfield_spkr_mode_quad01;
 	u32 regfield_spkr_mono;
+	u32 regfield_mic_mode_sd0;
 	u32 regfield_mic_mode_sd1;
 	u32 regfield_mic_mode_quad01;
 	u32 regfield_mic_mono;
