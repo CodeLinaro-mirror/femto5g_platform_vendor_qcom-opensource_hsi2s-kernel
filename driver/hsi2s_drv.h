@@ -189,7 +189,8 @@
 #define I2S_INIT_TX _IOWR('i', 7, int)
 #define I2S_DEINIT_TX _IOWR('i', 8, int)
 #define I2S_CONFIG_PARAMS _IOWR('i', 9, int)
-#define I2S_RESET _IOWR('i', 10, int)
+#define I2S_SET_CLOCK _IOWR('i', 10, int)
+#define I2S_RESET _IOWR('i', 11, int)
 
 /* Additional macros */
 #define DEVICE_NAME "hsi2s_driver"
@@ -298,6 +299,15 @@
 #define H_SYNC_SEL_PRI 0x2
 #define H_SYNC_SEL_SEC 0x4
 #define H_SYNC_SEL_TER 0x6
+
+#define HS0_BITCLK_CMD 0x17046000
+#define HS0_BITCLK_CFG 0x17046004
+#define HS1_BITCLK_CMD 0x17047000
+#define HS1_BITCLK_CFG 0x17047004
+#define HS2_BITCLK_CMD 0x17048000
+#define HS2_BITCLK_CFG 0x17048004
+#define HS_BITCLK_UPDATE 0x1
+#define HS_BITCLK_RESET 0x71F
 
 enum operation_mode {
 	NORMAL,

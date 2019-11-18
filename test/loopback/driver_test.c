@@ -24,23 +24,37 @@
 #include <pthread.h>
 
 /* IOCTL commands copied from the i2s_driver header */
+/* Configures I2S and DMA registers for normal data transfer on the interface */
 #define I2S_NORMAL_MODE _IOWR('i', 0, int)
+/* Configures I2S and DMA registers for internal loopback on the interface */
 #define I2S_INTERNAL_LOOPBACK _IOWR('i', 1, int)
+/* Configures I2S and DMA registers for external loopback on the interface */
 #define I2S_EXTERNAL_LOOPBACK _IOWR('i', 2, int)
+/* Configures the interface as either master or slave */
 #define I2S_MUXMODE _IOWR('i', 3, int)
+/* Configures I2S and DMA registers for speaker operation on the interface */
 #define I2S_SPEAKER _IOWR('i', 4, int)
+/* Configures I2S and DMA registers for mic operation on the interface */
 #define I2S_MIC _IOWR('i', 5, int)
+/* Used in master-slave external loopback to set slave field of master interface data structure */
 #define I2S_SET_SLAVE _IOWR('i', 6, int)
+/* Enables read DMA channel and speaker */
 #define I2S_INIT_TX _IOWR('i', 7, int)
+/* Disables read DMA channel and speaker */
 #define I2S_DEINIT_TX _IOWR('i', 8, int)
+/* Configures I2S parameters on the interface */
 #define I2S_CONFIG_PARAMS _IOWR('i', 9, int)
-#define I2S_RESET _IOWR('i', 10, int)
+/* Configures the master clock on the interface */
+#define I2S_SET_CLOCK _IOWR('i', 10, int)
+/* Resets the I2S and DMA registers */
+#define I2S_RESET _IOWR('i', 11, int)
 
 /* Macros */
 #define BYTES_PER_WORD 4
 #define READ_LENGTH_MB 2
 #define READ_LENGTH_WORDS (READ_LENGTH_MB * 1024 * 1024) / BYTES_PER_WORD
 #define READ_LIMIT 1024*1024*1024
+#define SRC_DIGITAL_PLL 0x500
 
 /* Operation mode of the test utility */
 enum operation_mode {
@@ -50,7 +64,8 @@ enum operation_mode {
 	EXTERNAL_LB_MASTER,
 	EXTERNAL_LB_MASTER_SLAVE,
 	SET_MUXMODE,
-	CONFIG_PARAMS
+	CONFIG_PARAMS,
+	CONFIG_M_CLK
 };
 
 /* I2S parameters */
@@ -77,7 +92,8 @@ void help()
 {
 
 	printf("Operational modes:\n 0 - Normal Rx\n 1 - Normal Tx*\n 2 - Internal loopback\n 3 - External loopback on master*\n"
-	       " 4 - External loopback on master-slave*\n 5 - Set master/slave mode*\n 6 - Configure I2S parameters\n");
+	       " 4 - External loopback on master-slave*\n 5 - Set master/slave mode*\n 6 - Configure I2S parameters\n"
+	       " 7 - Configure master clock*\n");
 	printf("* Supported only on SA8155\n\n");
 	printf("Usage for each operation mode:\n\n");
 	printf("NORMAL Rx:\n");
@@ -94,6 +110,8 @@ void help()
 	printf("hsi2s_test 5 <device file> <muxmode>\n\n");
 	printf("CONFIGURE I2S PARAMETERS:\n");
 	printf("hsi2s_test 6 <device file> <bit clock in hertz> <data buffer in ms> <bit depth> <speaker channel count> <mic channel count>\n\n");
+	printf("CONFIGURE MASTER CLOCK:\n");
+	printf("hsi2s_test 7 <device file> <clock-source> <divide-by>\n\n");
 	printf("Argument details:\n");
 	printf("<device file> : /dev/hs0_i2s | /dev/hs1_i2s | /dev/hs2_i2s\n");
 	printf("<muxmode> : 0 - Master 1 - Slave\n");
@@ -105,7 +123,8 @@ void help()
 	printf("<bit depth> : 16/24/25/32\n");
 	printf("<speaker channel count> : 1/2/4\n");
 	printf("<mic channel count> : 1/2/4\n");
-
+	printf("<clock-source> : 0 - CXO(19.2 MHz) 1 - DIGITAL PLL(122.88 MHz)\n");
+	printf("<divide-by> : 0:Bypass, 1:Div-1, 2:Div-1.5, 3:Div-2, 4:Div-2.5, ..... 31:Div-16\n\n");
 }
 
 /* Returns the size of input file in bytes */
@@ -172,6 +191,9 @@ int main(int argc, char **argv)
 	int mux;
 	int arg = 1;
 	int slave;
+	int clk_source;
+	uint32_t divide_by;
+	uint32_t reg_val;
 	pthread_t tid;
 	int ret = 0;
 
@@ -182,7 +204,7 @@ int main(int argc, char **argv)
 
 	printf("Reading operation mode...\n");
 	mode = atoi(argv[arg++]);
-	if (mode > CONFIG_PARAMS) {
+	if (mode > CONFIG_M_CLK) {
 		printf("Undefined mode\n");
 		help();
 		exit(0);
@@ -193,6 +215,44 @@ int main(int argc, char **argv)
 	if(fd_master < 0) {
 		printf("Cannot open device file\n");
 		help();
+		exit(0);
+	}
+
+	/* Operation mode : Configure master clock */
+	if (mode == CONFIG_M_CLK) {
+		printf("Reading clock source...\n");
+		clk_source = atoi(argv[arg++]);
+		if (clk_source > 1) {
+			printf("Undefined source\n");
+			help();
+			exit(0);
+		}
+
+		divide_by = atoi(argv[arg++]);
+		if (divide_by > 31) {
+			printf("Undefined division\n");
+			help();
+			exit(0);
+		}
+
+		if (!clk_source) {
+			printf("Clock source is CXO\n");
+			reg_val = divide_by;
+			if (ioctl(fd_master, I2S_SET_CLOCK, reg_val) < 0) {
+				printf("Failed to set master clock on target\n");
+				exit(0);
+			}
+
+		} else {
+			printf("Clock source is Digital PLL\n");
+			reg_val = SRC_DIGITAL_PLL | divide_by;
+			if (ioctl(fd_master, I2S_SET_CLOCK, reg_val) < 0) {
+				printf("Failed to set master clock on target\n");
+				exit(0);
+			}
+		}
+
+		printf("Successfully configured master clock\n\n");
 		exit(0);
 	}
 

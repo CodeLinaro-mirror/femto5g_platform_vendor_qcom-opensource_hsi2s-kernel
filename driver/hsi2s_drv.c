@@ -1364,15 +1364,11 @@ static int hsi2s_configure_gpio_pins(struct platform_device *pdev)
 
 static void h_modify_core_clks(int enable)
 {
-	void __iomem *gcc_lpass_sway;
-	void __iomem *lpass_gdscr;
 	void __iomem *lpass_core_cbcr;
 	void __iomem *hs_rdmem;
 	void __iomem *hs_wrmem;
 	void __iomem *lpass_mport;
 
-	gcc_lpass_sway = ioremap(0x147004, 4);
-	lpass_gdscr = ioremap(0x1700B000, 4);
 	lpass_core_cbcr = ioremap(0x1701F000, 4);
 	hs_rdmem = ioremap(0x17049004, 4);
 	hs_wrmem = ioremap(0x17049000, 4);
@@ -1380,25 +1376,22 @@ static void h_modify_core_clks(int enable)
 
 	if (enable) {
 		pr_warn("[HSI2S] Enable core clocks for 8155");
-		setbits(gcc_lpass_sway, 0x1);
-		clearbits(lpass_gdscr, 0x1);
-		setbits(lpass_core_cbcr, 0x1);
-		setbits(hs_rdmem, 0x1);
-		setbits(hs_wrmem, 0x1);
-		setbits(lpass_mport, 0x1);
+		if (!(readl_relaxed(lpass_core_cbcr) & 0x1))
+			setbits(lpass_core_cbcr, 0x1);
+		if (!(readl_relaxed(hs_rdmem) & 0x1))
+			setbits(hs_rdmem, 0x1);
+		if (!(readl_relaxed(hs_wrmem) & 0x1))
+			setbits(hs_wrmem, 0x1);
+		if (!(readl_relaxed(lpass_mport) & 0x1))
+			setbits(lpass_mport, 0x1);
 		pr_warn("[HSI2S] Core clocks enabled for 8155");
 	} else {
 		pr_warn("[HSI2S] Disable core clocks for 8155");
-		clearbits(lpass_mport, 0x1);
 		clearbits(hs_wrmem, 0x1);
 		clearbits(hs_rdmem, 0x1);
-		clearbits(lpass_core_cbcr, 0x1);
-		clearbits(gcc_lpass_sway, 0x1);
 		pr_warn("[HSI2S] Core clocks disabled for 8155");
 	}
 
-	iounmap(gcc_lpass_sway);
-	iounmap(lpass_gdscr);
 	iounmap(lpass_core_cbcr);
 	iounmap(hs_rdmem);
 	iounmap(hs_wrmem);
@@ -2182,6 +2175,8 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	struct hsi2s_device *hs_dev;
 	struct hsi2s_params *params;
+	void __iomem *clk_val_reg;
+	void __iomem *clk_update_reg;
 	int minor;
 	int ret = 0;
 
@@ -2324,6 +2319,44 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		}
 		else
 			pr_warn("[HSI2S] Mode already set by previous client");
+		break;
+	case I2S_SET_CLOCK:
+		if (hsi2s_core->target == 6155) {
+			pr_warn("[HSI2S] Master mode not supported by target");
+			return -EINVAL;
+		}
+
+		pr_warn("[HSI2S] Configuring master clock on HS%d interface", hs_dev->minor_num);
+
+		if (hs_dev->client_count == 1) {
+			if (hs_dev->minor_num == 0) {
+				clk_update_reg = ioremap(HS0_BITCLK_CMD,4);
+				clk_val_reg = ioremap(HS0_BITCLK_CFG,4);
+
+				clearbits(clk_val_reg, HS_BITCLK_RESET);
+				setbits(clk_val_reg, arg);
+				setbits(clk_update_reg, HS_BITCLK_UPDATE);
+			}
+			else if (hs_dev->minor_num == 1) {
+				clk_update_reg = ioremap(HS1_BITCLK_CMD,4);
+				clk_val_reg = ioremap(HS1_BITCLK_CFG,4);
+
+				clearbits(clk_val_reg, HS_BITCLK_RESET);
+				setbits(clk_val_reg, arg);
+				setbits(clk_update_reg, HS_BITCLK_UPDATE);
+			}
+			else {
+				clk_update_reg = ioremap(HS2_BITCLK_CMD,4);
+				clk_val_reg = ioremap(HS2_BITCLK_CFG,4);
+
+				clearbits(clk_val_reg, HS_BITCLK_RESET);
+				setbits(clk_val_reg, arg);
+				setbits(clk_update_reg, HS_BITCLK_UPDATE);
+			}
+			pr_warn("[HSI2S] Re-configured master clock");
+		}
+		else
+			pr_warn("[HSI2S] Clock already set by previous client");
 		break;
 	case I2S_RESET:
 		if (hs_dev->client_count == 1) {
