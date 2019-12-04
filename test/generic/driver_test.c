@@ -22,6 +22,10 @@
 #include <sys/ioctl.h>
 #include <time.h>
 #include <pthread.h>
+#include <sys/mman.h>
+#include <string.h>
+#include <poll.h>
+#include <time.h>
 
 /* IOCTL commands copied from the i2s_driver header */
 /* Configures I2S and DMA registers for normal data transfer on the interface */
@@ -55,6 +59,7 @@
 #define READ_LENGTH_WORDS (READ_LENGTH_MB * 1024 * 1024) / BYTES_PER_WORD
 #define READ_LIMIT 1024*1024*1024
 #define SRC_DIGITAL_PLL 0x500
+#define BILLION 1000000000L
 
 /* Operation mode of the test utility */
 enum operation_mode {
@@ -66,6 +71,12 @@ enum operation_mode {
 	SET_MUXMODE,
 	CONFIG_PARAMS,
 	CONFIG_M_CLK
+};
+
+/* Rx mode */
+enum rx_mode {
+	READ,
+	MMAP
 };
 
 /* I2S parameters */
@@ -85,7 +96,17 @@ long read_length_bytes;
 long read_length_words;
 long read_limit;
 enum operation_mode mode;
+enum rx_mode rx;
 struct i2s_params *params;
+struct pollfd pfd;
+void *mmap_ptr;
+void *mmap_read;
+void *mmap_end;
+long mmap_len;
+struct timespec pread_start;
+struct timespec pread_stop;
+struct timespec nread_start;
+struct timespec nread_stop;
 
 /* Prints the usage information */
 void help()
@@ -97,15 +118,16 @@ void help()
 	printf("* Supported only on SA8155\n\n");
 	printf("Usage for each operation mode:\n\n");
 	printf("NORMAL Rx:\n");
-	printf("hsi2s_test 0 <device file> <output file> [<size>]\n\n");
+	printf("hsi2s_test 0 <device file> <rx mode> <output file> "
+		"<bit clock in Hz(used with mmap)] [<data buffer in ms(used with mmap)>] [<size>]\n\n");
 	printf("NORMAL Tx:\n");
 	printf("hsi2s_test 1 <device file> <input file>\n\n");
 	printf("INTERNAL LOOPBACK:\n");
-	printf("hsi2s_test 2 <device file> <output file> <input file> [<size>]\n\n");
+	printf("hsi2s_test 2 <device file> <rx mode> <output file> <input file> [<size>]\n\n");
 	printf("EXTERNAL LOOPBACK ON MASTER:\n");
-	printf("hsi2s_test 3 <device file> <output file> <input file> [<size>]\n\n");
+	printf("hsi2s_test 3 <device file> <rx mode> <output file> <input file> [<size>]\n\n");
 	printf("EXTERNAL LOOPBACK BETWEEN MASTER AND SLAVE INTERFACES:\n");
-	printf("hsi2s_test 4 <master device file> <slave device file> <output file> <input file> [<size>]\n\n");
+	printf("hsi2s_test 4 <master device file> <slave device file> <rx mode> <output file> <input file> [<size>]\n\n");
 	printf("SET MASTER/SLAVE MODE:\n");
 	printf("hsi2s_test 5 <device file> <muxmode>\n\n");
 	printf("CONFIGURE I2S PARAMETERS:\n");
@@ -115,6 +137,7 @@ void help()
 	printf("Argument details:\n");
 	printf("<device file> : /dev/hs0_i2s | /dev/hs1_i2s | /dev/hs2_i2s\n");
 	printf("<muxmode> : 0 - Master 1 - Slave\n");
+	printf("<rx mode> : 0 - READ 1 - MMAP\n");
 	printf("<output file> : To store the data read from the device file\n");
 	printf("<input file> : To be written to the HS-I2S interface via device file\n");
 	printf("<size> : DMA buffer length in MB (4MB by default)\n");
@@ -145,6 +168,86 @@ long get_size(FILE *fp)
 	return n;
 }
 
+/* Function to calculate periodic interrupt length */
+uint32_t get_periodic_length(uint32_t bit_clk, uint32_t interval)
+{
+	/*
+	 * Formula to calculate
+	 * Bit clock -> 'm' Hz
+	 * Bits per sec  = m
+	 * Bits per msec = m * (10^(-3))
+	 * Bytes per msec = (m * (10^(-3))) / 8 = m / 8000
+	 * Bytes per 'k' msec = k * (m / 8000)
+	 */
+	return (((unsigned long long)interval * bit_clk) / 8000);
+}
+
+/* Read thread */
+void *poll_read(void *arg)
+{
+	long r_limit = 0;
+	long temp;
+	int ret;
+	double thread_start;
+	double thread_stop;
+	double delta;
+
+	printf("Performing poll wait...\n");
+
+	clock_gettime(CLOCK_REALTIME, &pread_start);
+	thread_start = (pread_start.tv_sec * BILLION) + pread_start.tv_nsec;
+	printf("[POLL] Starttime %lf\n", thread_start);
+
+	while (r_limit < read_limit) {
+		clock_gettime(CLOCK_REALTIME, &pread_start);
+		ret = poll(&pfd, 1, -1);
+		clock_gettime(CLOCK_REALTIME, &pread_stop);
+		delta = ((pread_stop.tv_sec - pread_start.tv_sec) * BILLION) +
+				(pread_stop.tv_nsec - pread_start.tv_nsec);
+		printf("[POLL] Data ready in %lf nsec\n", delta);
+		if (ret < 0) {
+			printf("Poll failed\n");
+		} else if (pfd.revents & POLLIN) {
+			if (r_limit + mmap_len > read_limit) {
+				if (mmap_read + (read_limit - r_limit) > mmap_end) {
+					temp = mmap_end - mmap_read;
+					fwrite(mmap_read,temp,1,fd_write_op);
+					temp = (read_limit - r_limit) - temp;
+					fwrite(mmap_ptr,temp,1,fd_write_op);
+					mmap_read = mmap_ptr + temp;
+
+				} else {
+					fwrite(mmap_read,read_limit - r_limit,1,fd_write_op);
+					mmap_read += (read_limit - r_limit);
+				}
+				r_limit += (read_limit - r_limit);
+			} else {
+				if (mmap_read + mmap_len > mmap_end) {
+					temp = mmap_end - mmap_read;
+					fwrite(mmap_read,temp,1,fd_write_op);
+					temp = mmap_len - temp;
+					fwrite(mmap_ptr,temp,1,fd_write_op);
+					mmap_read = mmap_ptr + temp;
+				} else {
+					fwrite(mmap_read,mmap_len,1,fd_write_op);
+					mmap_read += mmap_len;
+				}
+				r_limit += mmap_len;
+			}
+			if (mmap_read >= mmap_end)
+				mmap_read = mmap_ptr;
+		}
+	}
+
+	clock_gettime(CLOCK_REALTIME, &pread_stop);
+	thread_stop = (pread_stop.tv_sec * BILLION) + pread_stop.tv_nsec;
+	delta = (thread_stop - thread_start) / BILLION;
+	printf("[POLL] Endtime %lf\n", thread_stop);
+	printf("[POLL] Total thread execution time %lfs\n", delta);
+
+	return NULL;
+}
+
 /* Read thread */
 void *user_read(void *arg)
 {
@@ -154,17 +257,33 @@ void *user_read(void *arg)
 	int cnt = 0;
 	long r_limit = 0;
 	int boundary_read;
+	double thread_start;
+	double thread_stop;
+	double delta;
 
 	printf("Performing data read...\n");
 
 	received_data = (int32_t *) malloc(read_length_words * sizeof(int32_t));
 
+	clock_gettime(CLOCK_REALTIME, &nread_start);
+	thread_start = (nread_start.tv_sec * BILLION) + nread_start.tv_nsec;
+	printf("[READ] Starttime %lf\n", thread_start);
+
 	while (r_limit < read_limit) {
-		if (mode != EXTERNAL_LB_MASTER_SLAVE)
+		if (mode != EXTERNAL_LB_MASTER_SLAVE) {
+			clock_gettime(CLOCK_REALTIME, &nread_start);
 			transfer_length = read(fd_master, received_data, read_length_bytes);
-		else
+			clock_gettime(CLOCK_REALTIME, &nread_stop);
+		} else {
+			clock_gettime(CLOCK_REALTIME, &nread_start);
 			transfer_length = read(fd_slave, received_data, read_length_bytes);
-		printf("Bytes read: %zd\n", transfer_length);
+			clock_gettime(CLOCK_REALTIME, &nread_stop);
+		}
+		delta = ((nread_stop.tv_sec - nread_start.tv_sec) * BILLION) +
+			(nread_stop.tv_nsec - nread_start.tv_nsec);
+
+		printf("Bytes read: %zd in %lf nsecs\n", transfer_length, delta);
+
 		if ((r_limit + transfer_length) > read_limit) {
 			boundary_read = (read_limit - r_limit);
 			fwrite(received_data,boundary_read,1,fd_write_op);
@@ -174,6 +293,12 @@ void *user_read(void *arg)
 
 		r_limit = r_limit + transfer_length;
 	}
+
+	clock_gettime(CLOCK_REALTIME, &nread_stop);
+	thread_stop = (nread_stop.tv_sec * BILLION) + nread_stop.tv_nsec;
+	delta = (thread_stop - thread_start) / BILLION;
+	printf("[READ] Endtime %lf\n", thread_stop);
+	printf("[READ] Total thread execution time %lfs\n", delta);
 
 	free(received_data);
 
@@ -220,6 +345,11 @@ int main(int argc, char **argv)
 
 	/* Operation mode : Configure master clock */
 	if (mode == CONFIG_M_CLK) {
+		if (argc < 5) {
+			help();
+			exit(0);
+		}
+
 		printf("Reading clock source...\n");
 		clk_source = atoi(argv[arg++]);
 		if (clk_source > 1) {
@@ -258,7 +388,7 @@ int main(int argc, char **argv)
 
 	/* Operation mode : Configure I2S parameters */
 	if (mode == CONFIG_PARAMS) {
-		printf("Configuring I2S parameters\n");
+		printf("Configuring I2S parameters...\n");
 		if (argc < 8) {
 			help();
 			exit(0);
@@ -279,7 +409,7 @@ int main(int argc, char **argv)
 	/* Operation mode : Set I2S interface as master/slave */
 	if (mode == SET_MUXMODE) {
 		mux = atoi(argv[arg++]);
-		printf("Setting muxmode\n");
+		printf("Setting muxmode...\n");
 		if (ioctl(fd_master, I2S_MUXMODE, mux) < 0) {
 			printf("Failed to set master/slave configuration on target\n");
 			exit(0);
@@ -289,7 +419,7 @@ int main(int argc, char **argv)
 
 	/* Operation mode : External loopback between master and slave interfaces */
 	if (mode == EXTERNAL_LB_MASTER_SLAVE) {
-		if (argc < 6) {
+		if (argc < 7) {
 			help();
 			exit(0);
 		}
@@ -304,6 +434,14 @@ int main(int argc, char **argv)
 	}
 
 	if (mode != NORMAL_TX) {
+		printf("Reading Rx mode...\n");
+		rx = atoi(argv[arg++]);
+		if (rx > MMAP) {
+			printf("Undefined rx mode\n");
+			help();
+			exit(0);
+		}
+
 		/* Open the output file to store received data */
 		printf("Opening o/p file...\n");
 		fd_write_op = fopen(argv[arg++], "w");
@@ -317,6 +455,7 @@ int main(int argc, char **argv)
 	/* Initializing to default macros and use the macros if no size specified by user*/
 	read_length_bytes = READ_LENGTH_MB * 1024 * 1024;
 	read_length_words = READ_LENGTH_WORDS;
+	mmap_len = read_length_bytes;
 
 	if (mode != NORMAL_RX) {
 		switch (mode) {
@@ -338,7 +477,7 @@ int main(int argc, char **argv)
 			break;
 		/* Operation mode : Internal loopback */
 		case INTERNAL_LB:
-			if (argc < 5) {
+			if (argc < 6) {
 				help();
 				exit(0);
 			}
@@ -354,7 +493,7 @@ int main(int argc, char **argv)
 			break;
 		/* Operation mode : External loopback on master interface */
 		case EXTERNAL_LB_MASTER:
-			if (argc < 5) {
+			if (argc < 6) {
 				help();
 				exit(0);
 			}
@@ -420,6 +559,7 @@ int main(int argc, char **argv)
 			/* Use the size provided by the user */
 			read_length_bytes = (atoi(argv[arg++]) * 1024 * 1024) / 2;
 			read_length_words = read_length_bytes/BYTES_PER_WORD;
+			mmap_len = read_length_bytes;
 		}
 	} else {
 		/* Operation mode : Normal mode data reception */
@@ -435,6 +575,20 @@ int main(int argc, char **argv)
 
 		read_limit = READ_LIMIT;
 
+		if (rx) {
+			if (argc < 7) {
+				help();
+				exit(0);
+			}
+
+			params = (struct i2s_params *) malloc(sizeof(struct i2s_params));
+			params->bit_clk = atoi(argv[arg++]);
+			params->buffer_ms = atoi(argv[arg++]);
+
+			mmap_len = get_periodic_length(params->bit_clk, params->buffer_ms);
+			printf("Periodic length set to %ld bytes\n", mmap_len);
+		}
+
 		if (arg < argc) {
 			/* Use the size provided by the user */
 			read_length_bytes = (atoi(argv[arg++]) * 1024 * 1024) / 2;
@@ -443,10 +597,57 @@ int main(int argc, char **argv)
 	}
 
 	if (mode != NORMAL_TX) {
+		if (rx) {
+			if (mode == EXTERNAL_LB_MASTER_SLAVE) {
+				/* Map the slave device write DMA buffer */
+				pfd.fd = fd_slave;
+				pfd.events = POLLIN | POLLRDNORM;
+				printf("Mapping userspace memory with kernel memory\n");
+				mmap_ptr = mmap(NULL, read_length_bytes * 2, PROT_READ | PROT_WRITE, MAP_SHARED, fd_slave, 0);
+				if (mmap_ptr == MAP_FAILED) {
+					printf("mmap failed\n");
+					goto exit_app;
+				} else {
+					mmap_read = mmap_ptr;
+					mmap_end = mmap_ptr + (read_length_bytes * 2);
+				}
+			} else {
+				/* Map the device write DMA buffer */
+				pfd.fd = fd_master;
+				pfd.events = POLLIN | POLLRDNORM;
+				printf("Mapping userspace memory with kernel memory\n");
+				mmap_ptr = mmap(NULL, read_length_bytes * 2, PROT_READ | PROT_WRITE, MAP_SHARED, fd_master, 0);
+				if (mmap_ptr == MAP_FAILED) {
+					printf("mmap failed\n");
+					goto exit_app;
+				} else {
+					mmap_read = mmap_ptr;
+					mmap_end = mmap_ptr + (read_length_bytes * 2);
+				}
+			}
+		}
+
 		/* Create thread to read the received data */
-		printf("Creating read thread\n");
-		if (pthread_create(&tid, NULL, user_read, NULL)!=0) {
-			printf("Error creating reader thread\n");
+		printf("Creating thread to read the received data\n");
+		switch (rx) {
+		case 0:
+			printf("Using read mode...\n");
+			if (pthread_create(&tid, NULL, user_read, NULL) != 0) {
+				printf("Error creating reader thread\n");
+			}
+			break;
+		case 1:
+			printf("Using mmap mode...\n");
+			if (pthread_create(&tid, NULL, poll_read, NULL) != 0) {
+				printf("Error creating poll thread\n");
+			}
+			break;
+		default:
+			printf("Using read mode...\n");
+			if (pthread_create(&tid, NULL, user_read, NULL) != 0) {
+				printf("Error creating reader thread\n");
+			}
+			break;
 		}
 	}
 
@@ -485,6 +686,7 @@ int main(int argc, char **argv)
 		}
 	}
 
+exit_app:
 	printf("Closing Files \n");
 	if (mode != NORMAL_RX) {
 		free(wav_data);
