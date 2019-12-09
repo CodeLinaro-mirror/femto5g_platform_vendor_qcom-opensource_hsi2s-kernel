@@ -1,5 +1,5 @@
 obj-y += driver/
-obj-y += test/loopback
+obj-y += test/generic
 
 all:
 	$(MAKE) -C $(KERNEL_SRC) M=$(shell pwd) modules $(KBUILD_OPTIONS)
