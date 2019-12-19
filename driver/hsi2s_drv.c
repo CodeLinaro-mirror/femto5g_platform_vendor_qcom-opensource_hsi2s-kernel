@@ -186,7 +186,7 @@ static void t_assign_macros(void)
 	hsi2s_core->macro->regfield_rate_sync_sel_sec = T_SYNC_SEL_SEC;
 }
 
-/* SA8155 macros */
+/* SA8155/SA8195 macros */
 static void h_assign_macros(void)
 {
 
@@ -376,7 +376,7 @@ static int map_registers(struct hsi2s_device *hs_dev, int intf)
 		hs_dev->wrdma_per_len = hsi2s_core->lpaif_base_va +
 								hsi2s_core->macro->offset_wrdma_per_len +
 								(0x1000 * intf);
-		if (hsi2s_core->target == 8155) {
+		if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195) {
 			hs_dev->lpaif_muxmode = hsi2s_core->lpass_tcsr_base_va +
 									H_LPAIF_MUXMODE + (0x4 * intf);
 		}
@@ -558,7 +558,7 @@ static void configure_rate_detection(int block)
 				setbits(hsi2s_core->pri_rate_sel, hsi2s_core->macro->regfield_rate_sync_sel_pri);
 			else
 				setbits(hsi2s_core->pri_rate_sel, hsi2s_core->macro->regfield_rate_sync_sel_sec);
-		} else if (hsi2s_core->target == 8155) {
+		} else if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195) {
 			switch (minor) {
 				case 0:
 					setbits(hsi2s_core->pri_rate_config, hsi2s_core->macro->regfield_rate_sync_sel_pri);
@@ -594,7 +594,7 @@ static void configure_rate_detection(int block)
 				setbits(hsi2s_core->sec_rate_sel, hsi2s_core->macro->regfield_rate_sync_sel_pri);
 			else
 				setbits(hsi2s_core->sec_rate_sel, hsi2s_core->macro->regfield_rate_sync_sel_sec);
-		} else if (hsi2s_core->target == 8155) {
+		} else if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195) {
 			switch (minor) {
 				case 0:
 					setbits(hsi2s_core->sec_rate_config, hsi2s_core->macro->regfield_rate_sync_sel_pri);
@@ -1969,7 +1969,7 @@ static void h_modify_core_clks(int enable)
 	lpass_mport = ioremap(0x17023000, 4);
 
 	if (enable) {
-		pr_warn("[HSI2S] Enable core clocks for 8155");
+		pr_warn("[HSI2S] Enable core clocks for SA8155/SA8195");
 		if (!(readl_relaxed(lpass_core_cbcr) & 0x1))
 			setbits(lpass_core_cbcr, 0x1);
 		if (!(readl_relaxed(hs_rdmem) & 0x1))
@@ -1978,12 +1978,12 @@ static void h_modify_core_clks(int enable)
 			setbits(hs_wrmem, 0x1);
 		if (!(readl_relaxed(lpass_mport) & 0x1))
 			setbits(lpass_mport, 0x1);
-		pr_warn("[HSI2S] Core clocks enabled for 8155");
+		pr_warn("[HSI2S] Core clocks enabled for SA8155/SA8195");
 	} else {
-		pr_warn("[HSI2S] Disable core clocks for 8155");
+		pr_warn("[HSI2S] Disable core clocks for SA8155/SA8195");
 		clearbits(hs_wrmem, 0x1);
 		clearbits(hs_rdmem, 0x1);
-		pr_warn("[HSI2S] Core clocks disabled for 8155");
+		pr_warn("[HSI2S] Core clocks disabled for SA8155/SA8195");
 	}
 
 	iounmap(lpass_core_cbcr);
@@ -2015,7 +2015,7 @@ static void h_modify_interface_clks(int enable)
 	hs_if2_mclk = ioremap(0x17022014, 4);
 
 	if (enable) {
-		pr_warn("[HSI2S] Enable interface clocks for 8155");
+		pr_warn("[HSI2S] Enable interface clocks for SA8155/SA8195");
 		setbits(hs_if0_ibit, 0x1);
 		setbits(hs_if1_ibit, 0x1);
 		setbits(hs_if2_ibit, 0x1);
@@ -2025,9 +2025,9 @@ static void h_modify_interface_clks(int enable)
 		setbits(hs_if0_mclk, 0x1);
 		setbits(hs_if1_mclk, 0x1);
 		setbits(hs_if2_mclk, 0x1);
-		pr_warn("[HSI2S] Interface clocks enabled for 8155");
+		pr_warn("[HSI2S] Interface clocks enabled for SA8155/SA8195");
 	} else {
-		pr_warn("[HSI2S] Disable interface clocks for 8155");
+		pr_warn("[HSI2S] Disable interface clocks for SA8155/SA8195");
 		clearbits(hs_if0_ibit, 0x1);
 		clearbits(hs_if1_ibit, 0x1);
 		clearbits(hs_if2_ibit, 0x1);
@@ -2037,7 +2037,7 @@ static void h_modify_interface_clks(int enable)
 		clearbits(hs_if0_mclk, 0x1);
 		clearbits(hs_if1_mclk, 0x1);
 		clearbits(hs_if2_mclk, 0x1);
-		pr_warn("[HSI2S] Interface clocks disabled for 8155");
+		pr_warn("[HSI2S] Interface clocks disabled for SA8155/SA8195");
 	}
 
 	iounmap(hs_if0_ibit);
@@ -2806,8 +2806,8 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		case LPAIF_NORMAL_MODE:
 			pr_warn("[HSI2S] Triggering normal operation");
 			if (hs_dev->client_count == 1) {
-				/* Setting slave mode for SA8155 target */
-				if (hsi2s_core->target == 8155)
+				/* Setting slave mode for SA8155/SA8195 targets */
+				if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195)
 					configure_muxmode(hs_dev, 1);
 				configure_normal_mode(hs_dev, minor);
 				hs_dev->slave = minor;
@@ -3610,6 +3610,8 @@ static int hsi2s_probe(struct platform_device *pdev)
 		target = 6155;
 	else if (of_device_is_compatible(pdev->dev.of_node, "qcom,sa8155-hsi2s"))
 		target = 8155;
+	else if (of_device_is_compatible(pdev->dev.of_node, "qcom,sa8195-hsi2s"))
+		target = 8195;
 	else {
 		pr_err("[HSI2S] Uncompatible target");
 		goto err_free_core;
@@ -3625,8 +3627,8 @@ static int hsi2s_probe(struct platform_device *pdev)
 		pr_warn("[HSI2S] Talos target detected");
 		t_assign_macros();
 	}
-	else if (target == 8155) {
-		pr_warn("[HSI2S] Hana target detected");
+	else if (target == 8155 || target == 8195) {
+		pr_warn("[HSI2S] Hana/Poipu target detected");
 		h_assign_macros();
 	}
 
@@ -3674,7 +3676,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 		if (ret)
 			goto err_free_macro;
 	}
-	else if (target == 8155) {
+	else if (target == 8155 || target == 8195) {
 		h_modify_core_clks(1);
 		h_modify_interface_clks(1);
 	}
@@ -3696,7 +3698,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 		goto err_disable_core_clocks;
 	}
 
-	if (target == 8155) {
+	if (target == 8155 || target == 8195) {
 		resource = platform_get_resource_byname(pdev, IORESOURCE_MEM,
 						"lpass_tcsr");
 		if (!resource) {
@@ -3913,7 +3915,7 @@ static int hsi2s_remove(struct platform_device *pdev)
 	/* Disable the core clocks */
 	if (hs_core->target == 6155)
 		hsi2s_disable_core_clks(pdev);
-	else if (hs_core->target == 8155) {
+	else if (hs_core->target == 8155 || hs_core->target == 8195) {
 		h_modify_interface_clks(0);
 		h_modify_core_clks(0);
 	}
@@ -3945,7 +3947,7 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 		/* Suspend the core clocks */
 		if (hsi2s_core->target == 6155)
 			hsi2s_suspend_core_clks(pdev);
-		else if (hsi2s_core->target == 8155) {
+		else if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195) {
 			h_modify_interface_clks(0);
 			h_modify_core_clks(0);
 		}
@@ -3979,7 +3981,7 @@ static int hsi2s_resume(struct platform_device *pdev)
 				pr_warn("[HSI2S] Failed to resume core clocks");
 				return ret;
 			}
-		} else if (hsi2s_core->target == 8155) {
+		} else if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195) {
 			h_modify_core_clks(1);
 			h_modify_interface_clks(1);
 		}
