@@ -40,11 +40,18 @@
 #include <linux/iommu.h>
 #include <linux/irqdesc.h>
 #include <linux/io.h>
+#include <linux/poll.h>
 #include <asm/dma-iommu.h>
 
 /* Register offsets */
 #define T_LPAIF_I2S_CTL				0x1000
 #define T_LPAIF_PCM_I2S_SEL			0x1200
+#define T_LPAIF_PCM_CTL				0x1500
+#define T_LPAIF_PCM_TDM_CTL			0x1518
+#define T_LPAIF_PCM_TDM_SAMPLE_WIDTH		0x151C
+#define T_LPAIF_PCM_RPCM_SLOT_NUM		0x1520
+#define T_LPAIF_PCM_TPCM_SLOT_NUM		0x1524
+#define T_LPAIF_PCM_LANE_CONFIG			0x1528
 #define T_LPAIF_IRQ_EN				0x9000
 #define T_LPAIF_IRQ_STAT			0x9004
 #define T_LPAIF_IRQ_CLEAR			0x900C
@@ -72,7 +79,12 @@
 #define T_LPAIF_SEC_RATE_DET_SEL		0x23014
 
 #define H_LPAIF_I2S_CTL				0x1000
-#define H_LPAIF_PCM_I2S_SEL			0x1B00
+#define H_LPAIF_PCM_CTL				0x1500
+#define H_LPAIF_PCM_TDM_CTL			0x1518
+#define H_LPAIF_PCM_TDM_SAMPLE_WIDTH		0x151C
+#define H_LPAIF_PCM_RPCM_SLOT_NUM		0x1520
+#define H_LPAIF_PCM_TPCM_SLOT_NUM		0x1524
+#define H_LPAIF_PCM_LANE_CONFIG			0x1528
 #define H_LPAIF_IRQ_EN				0xA000
 #define H_LPAIF_IRQ_STAT			0xA004
 #define H_LPAIF_IRQ_CLEAR			0xA00C
@@ -96,6 +108,7 @@
 #define H_LPAIF_SEC_RATE_DET_TARGET2_CONFIG	0x1A008
 #define H_LPAIF_SEC_RATE_BIN			0x1A00C
 #define H_LPAIF_SEC_STC_DIFF			0x1A010
+#define H_LPAIF_PCM_I2S_SEL			0x1B000
 #define H_LPAIF_MUXMODE				0xB000
 
 /* Bits for I2S control register */
@@ -110,6 +123,65 @@
 #define H_I2S_SPKR_EN				BIT(14)
 #define H_I2S_LOOPBACK				BIT(15)
 #define H_I2S_RESET				BIT(31)
+
+/* Bits for PCM control register */
+#define T_TPCM_WIDTH				BIT(10)
+#define T_RPCM_WIDTH				BIT(11)
+#define T_AUX_MODE				BIT(12)
+#define T_SYNC_SRC				BIT(13)
+#define T_PCM_LOOPBACK				BIT(14)
+#define T_CTRL_DATA_OE				BIT(18)
+#define T_ONE_SLOT_SYNC_EN			BIT(19)
+#define T_PCM_ENABLE				BIT(24)
+#define T_PCM_ENABLE_TX				BIT(25)
+#define T_PCM_ENABLE_RX				BIT(26)
+#define T_PCM_RESET_TX				BIT(27)
+#define T_PCM_RESET_RX				BIT(28)
+#define T_PCM_RESET				BIT(31)
+
+#define H_TPCM_WIDTH				BIT(10)
+#define H_RPCM_WIDTH				BIT(11)
+#define H_AUX_MODE				BIT(12)
+#define H_SYNC_SRC				BIT(13)
+#define H_PCM_LOOPBACK				BIT(14)
+#define H_CTRL_DATA_OE				BIT(18)
+#define H_ONE_SLOT_SYNC_EN			BIT(19)
+#define H_PCM_ENABLE				BIT(24)
+#define H_PCM_ENABLE_TX				BIT(25)
+#define H_PCM_ENABLE_RX				BIT(26)
+#define H_PCM_RESET_TX				BIT(27)
+#define H_PCM_RESET_RX				BIT(28)
+#define H_PCM_RESET				BIT(31)
+
+/* Bits for TDM control register */
+#define T_TDM_INV_RPCM_SYNC			BIT(27)
+#define T_TDM_INV_TPCM_SYNC			BIT(28)
+#define T_EN_DIFF_SAMPLE_WIDTH			BIT(29)
+#define T_EN_TDM				BIT(30)
+
+#define H_TDM_INV_RPCM_SYNC			BIT(27)
+#define H_TDM_INV_TPCM_SYNC			BIT(28)
+#define H_EN_DIFF_SAMPLE_WIDTH			BIT(29)
+#define H_EN_TDM				BIT(30)
+
+/* Bits for PCM lane configuration register */
+#define T_LANE0_DIR				BIT(0)
+#define T_LANE1_DIR				BIT(1)
+#define T_LANE2_DIR				BIT(2)
+#define T_LANE3_DIR				BIT(3)
+#define T_LANE0_EN				BIT(16)
+#define T_LANE1_EN				BIT(17)
+#define T_LANE2_EN				BIT(18)
+#define T_LANE3_EN				BIT(19)
+
+#define H_LANE0_DIR				BIT(0)
+#define H_LANE1_DIR				BIT(1)
+#define H_LANE2_DIR				BIT(2)
+#define H_LANE3_DIR				BIT(3)
+#define H_LANE0_EN				BIT(16)
+#define H_LANE1_EN				BIT(17)
+#define H_LANE2_EN				BIT(18)
+#define H_LANE3_EN				BIT(19)
 
 /* Bits for I2S select register */
 #define T_I2S_SEL				BIT(0)
@@ -179,27 +251,78 @@
 #define IRQ_SEC_RD_NO_RATE			BIT(31)
 
 /* IOCTLs */
-#define I2S_NORMAL_MODE _IOWR('i', 0, int)
-#define I2S_INTERNAL_LOOPBACK _IOWR('i', 1, int)
-#define I2S_EXTERNAL_LOOPBACK _IOWR('i', 2, int)
-#define I2S_MUXMODE _IOWR('i', 3, int)
-#define I2S_SPEAKER _IOWR('i', 4, int)
-#define I2S_MIC _IOWR('i', 5, int)
-#define I2S_SET_SLAVE _IOWR('i', 6, int)
-#define I2S_INIT_TX _IOWR('i', 7, int)
-#define I2S_DEINIT_TX _IOWR('i', 8, int)
-#define I2S_CONFIG_PARAMS _IOWR('i', 9, int)
-#define I2S_SET_CLOCK _IOWR('i', 10, int)
-#define I2S_RESET _IOWR('i', 11, int)
+/* Configures I2S/PCM and DMA registers for normal data transfer on the interface */
+#define LPAIF_NORMAL_MODE _IOWR('i', 0, int)
+/* Configures I2S/PCM and DMA registers for internal loopback on the interface */
+#define LPAIF_INTERNAL_LOOPBACK _IOWR('i', 1, int)
+/* Configures I2S/PCM and DMA registers for external loopback on the interface */
+#define LPAIF_EXTERNAL_LOOPBACK _IOWR('i', 2, int)
+/* Configures the interface as either master or slave */
+#define LPAIF_MUXMODE _IOWR('i', 3, int)
+/* Configures I2S/PCM and DMA registers for speaker operation on the interface */
+#define LPAIF_SPEAKER _IOWR('i', 4, int)
+/* Configures I2S/PCM and DMA registers for mic operation on the interface */
+#define LPAIF_MIC _IOWR('i', 5, int)
+/* Used in master-slave external loopback to set slave field of master interface data structure */
+#define LPAIF_SET_SLAVE _IOWR('i', 6, int)
+/* Enables read DMA channel and speaker */
+#define LPAIF_INIT_TX _IOWR('i', 7, int)
+/* Disables read DMA channel and speaker */
+#define LPAIF_DEINIT_TX _IOWR('i', 8, int)
+/* Configures the master clock on the interface */
+#define LPAIF_SET_CLOCK _IOWR('i', 9, int)
+/* Resets the I2S/PCM and DMA registers */
+#define LPAIF_RESET _IOWR('i', 10, int)
+/* Configures LPAIF to be in I2S/PCM mode */
+#define LPAIF_MODE _IOWR('i', 11, int)
+/* Configures I2S parameters on the interface */
+#define I2S_CONFIG_PARAMS _IOWR('i', 12, int)
+/* Configures PCM parameters on the interface */
+#define PCM_CONFIG_PARAMS _IOWR('i', 13, int)
+/* Configures TDM parameters on the interface */
+#define TDM_CONFIG_PARAMS _IOWR('i', 14, int)
+/* Sets PCM lane configuration */
+#define PCM_CONFIG_LANE  _IOWR('i', 15, int)
 
 /* Additional macros */
 #define DEVICE_NAME "hsi2s_driver"
 #define SDR0 "hs0_i2s"
 #define SDR1 "hs1_i2s"
 #define SDR2 "hs2_i2s"
+#define HS_I2S 0
+#define HS_PCM 1
 #define HS0_I2S 0
 #define HS1_I2S 1
 #define HS2_I2S 2
+#define PCM_RATE_8_BIT_CLKS 0
+#define PCM_RATE_16_BIT_CLKS 1
+#define PCM_RATE_32_BIT_CLKS 2
+#define PCM_RATE_64_BIT_CLKS 3
+#define PCM_RATE_128_BIT_CLKS 4
+#define PCM_RATE_256_BIT_CLKS 5
+#define PCM_SYNC_EXT 0
+#define PCM_SYNC_INT 1
+#define PCM_AUXMODE_PCM 0
+#define PCM_AUXMODE_AUX 1
+#define RPCM_WIDTH_8 0
+#define RPCM_WIDTH_16 1
+#define TPCM_WIDTH_8 0
+#define TPCM_WIDTH_16 1
+#define TDM_DEFAULT_RATE 32
+#define TDM_DEFAULT_SLOT_SIZE 16
+#define TDM_MAX_RATE 512
+#define TDM_MAX_SLOT_SIZE 32
+#define LANE0 0
+#define LANE1 1
+#define LANE2 2
+#define LANE3 3
+#define DELAY_2_CYCLE 0
+#define DELAY_1_CYCLE 1
+#define DELAY_0_CYCLE 2
+#define SINGLE_LANE 0
+#define MULTI_LANE_RX 1
+#define MULTI_LANE_TX 2
+#define MAX_SLOTS 32
 #define BYTES_PER_SAMPLE 4
 #define DEFAULT_BUFF_LEN_BYTES   (4 * 1024 * 1024)
 #define DEFAULT_BUFF_LEN_WORDS   ((DEFAULT_BUFF_LEN_BYTES / 4) - 1)
@@ -211,11 +334,17 @@
 #define MIC_QUAD 0x0
 #define PRI_RATE_DET 0
 #define SEC_RATE_DET 1
+#define DISABLE_DEVICE_READ
+#define DISABLE_RATE_DETECTION
+#define SPKR 0
+#define MIC 1
 
 #define T_I2S_LONG_RATE_15 0x3C0000
 #define T_I2S_SPKR_MODE_SD0 0x800
+#define T_I2S_SPKR_MODE_SD1 0x1000
 #define T_I2S_SPKR_MODE_QUAD01 0x2800
 #define T_I2S_SPKR_MONO 0x400
+#define T_I2S_MIC_MODE_SD0 0x10
 #define T_I2S_MIC_MODE_SD1 0x20
 #define T_I2S_MIC_MODE_QUAD01 0x50
 #define T_I2S_MIC_MONO 0x8
@@ -223,15 +352,26 @@
 #define T_I2S_BIT_WIDTH_24 0x1
 #define T_I2S_BIT_WIDTH_32 0x2
 #define T_I2S_BIT_WIDTH_25 0x3
+#define T_PCM_RATE_8_BIT_CLKS 0x0
+#define T_PCM_RATE_16_BIT_CLKS 0x8000
+#define T_PCM_RATE_32_BIT_CLKS 0x10000
+#define T_PCM_RATE_64_BIT_CLKS 0x18000
+#define T_PCM_RATE_128_BIT_CLKS 0x20000
+#define T_PCM_RATE_256_BIT_CLKS 0x28000
+#define T_TDM_SYNC_DELAY_0 0x4000000
+#define T_TDM_SYNC_DELAY_1 0x2000000
+#define T_TDM_SYNC_DELAY_2 0x0
 #define T_RDDMA_WPSCNT_ONE 0x0
 #define T_RDDMA_WPSCNT_TWO 0x10000
 #define T_RDDMA_WPSCNT_FOUR 0x30000
+#define T_RDDMA_WPSCNT_EIGHT 0x70000
 #define T_RDDMA_PRI_AUDIO_INTF 0x1000
 #define T_RDDMA_SEC_AUDIO_INTF 0x2000
 #define T_RDDMA_FIFO_WM_8 0xE
 #define T_WRDMA_WPSCNT_ONE 0x0
 #define T_WRDMA_WPSCNT_TWO 0x20000
 #define T_WRDMA_WPSCNT_FOUR 0x60000
+#define T_WRDMA_WPSCNT_EIGHT 0xE0000
 #define T_WRDMA_PRI_AUDIO_INTF 0x1000
 #define T_WRDMA_LOOPBACK_CH0 0x9000
 #define T_WRDMA_LOOPBACK_CH1 0xA000
@@ -256,8 +396,10 @@
 
 #define H_I2S_LONG_RATE_15 0xF0000
 #define H_I2S_SPKR_MODE_SD0 0x400
+#define H_I2S_SPKR_MODE_SD1 0x800
 #define H_I2S_SPKR_MODE_QUAD01 0x1400
 #define H_I2S_SPKR_MONO 0x200
+#define H_I2S_MIC_MODE_SD0 0x10
 #define H_I2S_MIC_MODE_SD1 0x20
 #define H_I2S_MIC_MODE_QUAD01 0x50
 #define H_I2S_MIC_MONO 0x8
@@ -265,9 +407,19 @@
 #define H_I2S_BIT_WIDTH_24 0x1
 #define H_I2S_BIT_WIDTH_32 0x2
 #define H_I2S_BIT_WIDTH_25 0x3
+#define H_PCM_RATE_8_BIT_CLKS 0x0
+#define H_PCM_RATE_16_BIT_CLKS 0x8000
+#define H_PCM_RATE_32_BIT_CLKS 0x10000
+#define H_PCM_RATE_64_BIT_CLKS 0x18000
+#define H_PCM_RATE_128_BIT_CLKS 0x20000
+#define H_PCM_RATE_256_BIT_CLKS 0x28000
+#define H_TDM_SYNC_DELAY_0 0x4000000
+#define H_TDM_SYNC_DELAY_1 0x2000000
+#define H_TDM_SYNC_DELAY_2 0x0
 #define H_RDDMA_WPSCNT_ONE 0x0
 #define H_RDDMA_WPSCNT_TWO 0x4000
 #define H_RDDMA_WPSCNT_FOUR 0xC000
+#define H_RDDMA_WPSCNT_EIGHT 0x1C000
 #define H_RDDMA_PRI_AUDIO_INTF 0x400
 #define H_RDDMA_SEC_AUDIO_INTF 0x800
 #define H_RDDMA_TER_AUDIO_INTF 0xC00
@@ -275,6 +427,7 @@
 #define H_WRDMA_WPSCNT_ONE 0x0
 #define H_WRDMA_WPSCNT_TWO 0x10000
 #define H_WRDMA_WPSCNT_FOUR 0x30000
+#define H_WRDMA_WPSCNT_EIGHT 0x70000
 #define H_WRDMA_PRI_AUDIO_INTF 0x1000
 #define H_WRDMA_SEC_AUDIO_INTF 0x2000
 #define H_WRDMA_TER_AUDIO_INTF 0x3000
@@ -376,11 +529,20 @@ struct hsi2s_core {
 
 /* LPAIF HS-I2S device structure */
 struct hsi2s_device {
+	/* I2S/PCM mode */
+	u8 lpaif_mode;
+
 	/* Device pointer */
 	struct device *dev;
 
 	/* Configuration registers */
 	void __iomem *i2s_ctl;
+	void __iomem *pcm_ctl;
+	void __iomem *tdm_ctl;
+	void __iomem *tdm_sample_width;
+	void __iomem *rpcm_slot_num;
+	void __iomem *tpcm_slot_num;
+	void __iomem *pcm_lane_config;
 	void __iomem *i2s_sel;
 	void __iomem *rddma_ctl;
 	void __iomem *rddma_base;
@@ -454,6 +616,22 @@ struct hsi2s_device {
 	u32 wrdma_periodic_length;
 	u32 wrdma_periodic_length_bytes;
 
+	/* PCM configurations */
+	u32 pcm_rate;
+	u8 pcm_sync_src;
+	u8 pcm_aux_mode;
+	u8 pcm_rpcm_width;
+	u8 pcm_tpcm_width;
+	u8 tdm_en;
+	u32 tdm_sync_delay;
+	u32 tdm_tpcm_width;
+	u32 tdm_rpcm_width;
+	u32 tdm_rate;
+	u8 tdm_en_diff_sample_width;
+	u32 tdm_tpcm_sample_width;
+	u32 tdm_rpcm_sample_width;
+	u8 tdm_inv_sync;
+
 	/* Device file attributes */
 	dev_t curr_devid;
 	struct cdev *cdev_sdr;
@@ -469,6 +647,28 @@ struct hsi2s_params {
 	u32 mic_channel_count;
 };
 
+/* PCM parameters */
+struct hspcm_params {
+	u32 bit_clk;
+	u32 buffer_ms;
+	u8 rate;
+	u8 sync_src;
+	u8 aux_mode;
+	u8 rpcm_width;
+	u8 tpcm_width;
+};
+
+/* TDM parameters */
+struct hstdm_params {
+	u8 sync_delay;
+	u32 tpcm_width;
+	u32 rpcm_width;
+	u32 rate;
+	u8 en_diff_sample_width;
+	u32 tpcm_sample_width;
+	u32 rpcm_sample_width;
+};
+
 /* FIFO for holding HSI2S data in the kernel space */
 struct hsi2s_buffer {
 	void *buffer;
@@ -476,6 +676,7 @@ struct hsi2s_buffer {
 	void *tail;
 	int size;
 	bool data_ready;
+	bool pollin;
 	dma_addr_t handle;
 };
 
@@ -506,6 +707,12 @@ struct hsi2s_smmu_cb_ctx {
 struct hsi2s_macros {
 	/* Offsets */
 	u32 offset_i2s_ctl;
+	u32 offset_pcm_ctl;
+	u32 offset_tdm_ctl;
+	u32 offset_tdm_sample_width;
+	u32 offset_rpcm_slot_num;
+	u32 offset_tpcm_slot_num;
+	u32 offset_pcm_lane_config;
 	u32 offset_i2s_sel;
 	u32 offset_irq_en;
 	u32 offset_irq_stat;
@@ -539,6 +746,31 @@ struct hsi2s_macros {
 	u32 bit_spkr_en;
 	u32 bit_loopback;
 	u32 bit_i2s_reset;
+	u32 bit_tpcm_width;
+	u32 bit_rpcm_width;
+	u32 bit_aux_mode;
+	u32 bit_sync_src;
+	u32 bit_pcm_loopback;
+	u32 bit_ctrl_data_oe;
+	u32 bit_one_slot_sync_en;
+	u32 bit_pcm_en;
+	u32 bit_pcm_en_tx;
+	u32 bit_pcm_en_rx;
+	u32 bit_pcm_reset;
+	u32 bit_pcm_reset_tx;
+	u32 bit_pcm_reset_rx;
+	u32 bit_tdm_inv_rpcm_sync;
+	u32 bit_tdm_inv_tpcm_sync;
+	u32 bit_tdm_en_diff_sample_width;
+	u32 bit_tdm_en;
+	u32 bit_lane0_dir;
+	u32 bit_lane1_dir;
+	u32 bit_lane2_dir;
+	u32 bit_lane3_dir;
+	u32 bit_lane0_en;
+	u32 bit_lane1_en;
+	u32 bit_lane2_en;
+	u32 bit_lane3_en;
 	u32 bit_i2s_sel;
 	u32 bit_rddma_en;
 	u32 bit_rddma_burst_en;
@@ -554,8 +786,10 @@ struct hsi2s_macros {
 	/* Register fields */
 	u32 regfield_i2s_lrate15;
 	u32 regfield_spkr_mode_sd0;
+	u32 regfield_spkr_mode_sd1;
 	u32 regfield_spkr_mode_quad01;
 	u32 regfield_spkr_mono;
+	u32 regfield_mic_mode_sd0;
 	u32 regfield_mic_mode_sd1;
 	u32 regfield_mic_mode_quad01;
 	u32 regfield_mic_mono;
@@ -563,9 +797,19 @@ struct hsi2s_macros {
 	u32 regfield_bit_width24;
 	u32 regfield_bit_width32;
 	u32 regfield_bit_width25;
+	u32 regfield_pcmrate_8;
+	u32 regfield_pcmrate_16;
+	u32 regfield_pcmrate_32;
+	u32 regfield_pcmrate_64;
+	u32 regfield_pcmrate_128;
+	u32 regfield_pcmrate_256;
+	u32 regfield_sync_delay_0;
+	u32 regfield_sync_delay_1;
+	u32 regfield_sync_delay_2;
 	u32 regfield_rddma_wpscnt_one;
 	u32 regfield_rddma_wpscnt_two;
 	u32 regfield_rddma_wpscnt_four;
+	u32 regfield_rddma_wpscnt_eight;
 	u32 regfield_rddma_pri_audio_intf;
 	u32 regfield_rddma_sec_audio_intf;
 	u32 regfield_rddma_ter_audio_intf;
@@ -573,6 +817,7 @@ struct hsi2s_macros {
 	u32 regfield_wrdma_wpscnt_one;
 	u32 regfield_wrdma_wpscnt_two;
 	u32 regfield_wrdma_wpscnt_four;
+	u32 regfield_wrdma_wpscnt_eight;
 	u32 regfield_wrdma_pri_audio_intf;
 	u32 regfield_wrdma_sec_audio_intf;
 	u32 regfield_wrdma_ter_audio_intf;

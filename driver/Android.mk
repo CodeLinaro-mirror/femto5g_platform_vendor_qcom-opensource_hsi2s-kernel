@@ -17,7 +17,6 @@ DLKM_DIR := ./device/qcom/common/dlkm
 KBUILD_OPTIONS := $(HSI2S_BLD_DIR)
 
 LOCAL_MODULE := hsi2s.ko
-LOCAL_MODULE_TAGS := debug
 
 include $(DLKM_DIR)/AndroidKernelModule.mk
 endif
