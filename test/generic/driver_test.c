@@ -60,6 +60,8 @@
 #define TDM_CONFIG_PARAMS _IOWR('i', 14, int)
 /* Sets PCM lane configuration */
 #define PCM_CONFIG_LANE  _IOWR('i', 15, int)
+/* Inverts the bit clock on the interface */
+#define LPAIF_INVERT_BIT_CLOCK _IOWR('i', 16, int)
 
 /* Macros */
 #define BYTES_PER_WORD 4
@@ -68,6 +70,12 @@
 #define READ_LIMIT 1024*1024*1024
 #define SRC_DIGITAL_PLL 0x500
 #define BILLION 1000000000L
+#define INVERT 1
+#define EXTERNAL 1
+#define INVERT_INT_BIT_CLOCK 0x0
+#define INVERT_EXT_BIT_CLOCK 0x1
+#define DONT_INVERT_INT_BIT_CLOCK 0x2
+#define DONT_INVERT_EXT_BIT_CLOCK 0x3
 
 /* Operation mode of the test utility */
 enum operation_mode {
@@ -82,7 +90,8 @@ enum operation_mode {
 	CONFIG_PCM_PARAMS,
 	CONFIG_TDM_PARAMS,
 	CONFIG_LPAIF_MODE,
-	CONFIG_PCM_LANE
+	CONFIG_PCM_LANE,
+	CONFIG_BIT_CLK
 };
 
 /* Rx mode */
@@ -151,8 +160,8 @@ void help()
 	printf("Operational modes:\n 0 - Normal Rx\n 1 - Normal Tx*\n 2 - Internal loopback\n 3 - External loopback on master*\n"
 	       " 4 - External loopback on master-slave*\n 5 - Set master/slave mode*\n 6 - Configure master clock*\n"
 	       " 7 - Configure I2S params\n 8 - Configure PCM params\n 9 - Configure TDM params\n"
-	       " 10 - Configure LPAIF mode\n 11 - Set PCM lane configuration\n");
-	printf("* Supported only on SA8155\n\n");
+	       " 10 - Configure LPAIF mode\n 11 - Set PCM lane configuration\n 12 - Configure bit clock*\n");
+	printf("* Supported only on SA8155/SA8195\n\n");
 	printf("Usage for each operation mode:\n\n");
 	printf("NORMAL Rx:\n");
 	printf("hsi2s_test 0 <device file> <output file> <bit clock in Hz> <data buffer in ms> [<size>]\n\n");
@@ -178,6 +187,8 @@ void help()
 	printf("hsi2s_test 10 <device file> <lpaif mode>\n\n");
 	printf("SET PCM LANE CONFIGURATION:\n");
 	printf("hsi2s_test 11 <device file> <lane config>\n\n");
+	printf("CONFIGURE BIT CLOCK:\n");
+	printf("hsi2s_test 12 <device file> <invert/dont-invert> <bit clock type>\n\n");
 	printf("Argument details:\n");
 	printf("<device file> : /dev/hs0_i2s | /dev/hs1_i2s | /dev/hs2_i2s\n");
 	printf("<muxmode> : 0 -> MASTER 1 -> SLAVE\n");
@@ -204,7 +215,9 @@ void help()
 	printf("<tpcm_sample_width> : TDM TPCM sample width in bits (maximum 32)\n");
 	printf("<rpcm_sample_width> : TDM RPCM sample width in bits (maximum 32)\n");
 	printf("<lpaif mode> : 0 -> HS-I2S mode 1 -> HS-PCM mode\n");
-	printf("<lane config> : 0 -> SINGLE LANE, 1 -> MULTI LANE RX, 2 -> MULTI LANE TX\n\n");
+	printf("<lane config> : 0 -> SINGLE LANE, 1 -> MULTI LANE RX, 2 -> MULTI LANE TX\n");
+	printf("<invert/dont-invert> : 0 - Do not invert bit clock(default) 1 - Invert bit clock\n");
+	printf("<bit clock type> : 0 - Internal(Slave mode) 1 - External(Master mode)\n\n");
 }
 
 /* Returns the size of input file in bytes */
@@ -391,7 +404,7 @@ int main(int argc, char **argv)
 
 	printf("Reading operation mode...\n");
 	mode = atoi(argv[arg++]);
-	if (mode > CONFIG_PCM_LANE) {
+	if (mode > CONFIG_BIT_CLK) {
 		printf("Undefined mode\n");
 		help();
 		exit(0);
@@ -402,6 +415,32 @@ int main(int argc, char **argv)
 	if(fd_master < 0) {
 		printf("Cannot open device file\n");
 		help();
+		exit(0);
+	}
+
+	/* Operation mode : Configure bit clock */
+	if (mode == CONFIG_BIT_CLK) {
+		if (argc < 5) {
+			help();
+			exit(0);
+		}
+		mux = atoi(argv[arg++]);
+		clk_source  = atoi(argv[arg++]);
+		if (mux == INVERT) {
+			if (clk_source == EXTERNAL)
+				reg_val = INVERT_EXT_BIT_CLOCK;
+			else
+				reg_val = INVERT_INT_BIT_CLOCK;
+		} else {
+			if (clk_source == EXTERNAL)
+				reg_val = DONT_INVERT_EXT_BIT_CLOCK;
+			else
+				reg_val = DONT_INVERT_INT_BIT_CLOCK;
+		}
+		printf("Configuring bit clock...\n");
+		if (ioctl(fd_master, LPAIF_INVERT_BIT_CLOCK, reg_val) < 0) {
+			printf("Failed to configure bit clock on target\n");
+		}
 		exit(0);
 	}
 
