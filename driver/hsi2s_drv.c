@@ -2796,6 +2796,7 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	struct hstdm_params *tdm_params;
 	void __iomem *clk_val_reg;
 	void __iomem *clk_update_reg;
+	void __iomem *clk_inv_reg;
 	int minor;
 	int ret = 0;
 
@@ -2954,24 +2955,24 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 			if (hs_dev->client_count == 1) {
 				if (hs_dev->minor_num == 0) {
-					clk_update_reg = ioremap(HS0_BITCLK_CMD,4);
-					clk_val_reg = ioremap(HS0_BITCLK_CFG,4);
+					clk_update_reg = ioremap(HS0_BITCLK_CMD_REG,4);
+					clk_val_reg = ioremap(HS0_BITCLK_CFG_REG,4);
 
 					clearbits(clk_val_reg, HS_BITCLK_RESET);
 					setbits(clk_val_reg, arg);
 					setbits(clk_update_reg, HS_BITCLK_UPDATE);
 				}
 				else if (hs_dev->minor_num == 1) {
-					clk_update_reg = ioremap(HS1_BITCLK_CMD,4);
-					clk_val_reg = ioremap(HS1_BITCLK_CFG,4);
+					clk_update_reg = ioremap(HS1_BITCLK_CMD_REG,4);
+					clk_val_reg = ioremap(HS1_BITCLK_CFG_REG,4);
 
 					clearbits(clk_val_reg, HS_BITCLK_RESET);
 					setbits(clk_val_reg, arg);
 					setbits(clk_update_reg, HS_BITCLK_UPDATE);
 				}
 				else {
-					clk_update_reg = ioremap(HS2_BITCLK_CMD,4);
-					clk_val_reg = ioremap(HS2_BITCLK_CFG,4);
+					clk_update_reg = ioremap(HS2_BITCLK_CMD_REG,4);
+					clk_val_reg = ioremap(HS2_BITCLK_CFG_REG,4);
 
 					clearbits(clk_val_reg, HS_BITCLK_RESET);
 					setbits(clk_val_reg, arg);
@@ -3114,6 +3115,51 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				set_pcm_lane_config(hs_dev, arg);
 			else
 				pr_warn("[HSI2S] Mode already set by previous client");
+			break;
+
+		case LPAIF_INVERT_BIT_CLOCK:
+			if (hsi2s_core->target == 6155) {
+				pr_err("[HSI2S] Bit clock configuration is not supported by target");
+				return -EINVAL;
+			}
+
+			pr_info("[HSI2S] Re-configuring bit clock on HS%d interface", hs_dev->minor_num);
+			if (hs_dev->client_count == 1) {
+				if (hs_dev->minor_num == 0)
+					clk_inv_reg = ioremap(HS0_BITCLK_INV_REG, 4);
+				else if (hs_dev->minor_num == 1)
+					clk_inv_reg = ioremap(HS1_BITCLK_INV_REG, 4);
+				else
+					clk_inv_reg = ioremap(HS2_BITCLK_INV_REG, 4);
+
+				switch (arg) {
+					case INVERT_INT_BIT_CLOCK:
+						pr_info("[HSI2S] Inverting internal bit clock");
+						setbits(clk_inv_reg, INV_INT_CLK);
+						break;
+					case INVERT_EXT_BIT_CLOCK:
+						pr_info("[HSI2S] Inverting external bit clock");
+						setbits(clk_inv_reg, INV_EXT_CLK);
+						break;
+					case DONT_INVERT_INT_BIT_CLOCK:
+						pr_info("[HSI2S] Non-inverting internal bit clock");
+						clearbits(clk_inv_reg, INV_INT_CLK);
+						break;
+					case DONT_INVERT_EXT_BIT_CLOCK:
+						pr_info("[HSI2S] Non-inverting external bit clock");
+						clearbits(clk_inv_reg, INV_EXT_CLK);
+						break;
+					default:
+						pr_err("[HSI2S] Invalid argument provided");
+						ret = -EINVAL;
+						break;
+				}
+
+				iounmap(clk_inv_reg);
+				pr_info("[HSI2S] Re-configured bit clock");
+			}
+			else
+				pr_warn("[HSI2S] Clock already set by previous client");
 			break;
 
 		default:
