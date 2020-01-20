@@ -28,30 +28,38 @@
 #include <time.h>
 
 /* IOCTL commands copied from the i2s_driver header */
-/* Configures I2S and DMA registers for normal data transfer on the interface */
-#define I2S_NORMAL_MODE _IOWR('i', 0, int)
-/* Configures I2S and DMA registers for internal loopback on the interface */
-#define I2S_INTERNAL_LOOPBACK _IOWR('i', 1, int)
-/* Configures I2S and DMA registers for external loopback on the interface */
-#define I2S_EXTERNAL_LOOPBACK _IOWR('i', 2, int)
+/* Configures I2S/PCM and DMA registers for normal data transfer on the interface */
+#define LPAIF_NORMAL_MODE _IOWR('i', 0, int)
+/* Configures I2S/PCM and DMA registers for internal loopback on the interface */
+#define LPAIF_INTERNAL_LOOPBACK _IOWR('i', 1, int)
+/* Configures I2S/PCM and DMA registers for external loopback on the interface */
+#define LPAIF_EXTERNAL_LOOPBACK _IOWR('i', 2, int)
 /* Configures the interface as either master or slave */
-#define I2S_MUXMODE _IOWR('i', 3, int)
-/* Configures I2S and DMA registers for speaker operation on the interface */
-#define I2S_SPEAKER _IOWR('i', 4, int)
-/* Configures I2S and DMA registers for mic operation on the interface */
-#define I2S_MIC _IOWR('i', 5, int)
+#define LPAIF_MUXMODE _IOWR('i', 3, int)
+/* Configures I2S/PCM and DMA registers for speaker operation on the interface */
+#define LPAIF_SPEAKER _IOWR('i', 4, int)
+/* Configures I2S/PCM and DMA registers for mic operation on the interface */
+#define LPAIF_MIC _IOWR('i', 5, int)
 /* Used in master-slave external loopback to set slave field of master interface data structure */
-#define I2S_SET_SLAVE _IOWR('i', 6, int)
+#define LPAIF_SET_SLAVE _IOWR('i', 6, int)
 /* Enables read DMA channel and speaker */
-#define I2S_INIT_TX _IOWR('i', 7, int)
+#define LPAIF_INIT_TX _IOWR('i', 7, int)
 /* Disables read DMA channel and speaker */
-#define I2S_DEINIT_TX _IOWR('i', 8, int)
-/* Configures I2S parameters on the interface */
-#define I2S_CONFIG_PARAMS _IOWR('i', 9, int)
+#define LPAIF_DEINIT_TX _IOWR('i', 8, int)
 /* Configures the master clock on the interface */
-#define I2S_SET_CLOCK _IOWR('i', 10, int)
-/* Resets the I2S and DMA registers */
-#define I2S_RESET _IOWR('i', 11, int)
+#define LPAIF_SET_CLOCK _IOWR('i', 9, int)
+/* Resets the I2S/PCM and DMA registers */
+#define LPAIF_RESET _IOWR('i', 10, int)
+/* Configures LPAIF to be in I2S/PCM mode */
+#define LPAIF_MODE _IOWR('i', 11, int)
+/* Configures I2S parameters on the interface */
+#define I2S_CONFIG_PARAMS _IOWR('i', 12, int)
+/* Configures PCM parameters on the interface */
+#define PCM_CONFIG_PARAMS _IOWR('i', 13, int)
+/* Configures TDM parameters on the interface */
+#define TDM_CONFIG_PARAMS _IOWR('i', 14, int)
+/* Sets PCM lane configuration */
+#define PCM_CONFIG_LANE  _IOWR('i', 15, int)
 
 /* Macros */
 #define BYTES_PER_WORD 4
@@ -69,8 +77,12 @@ enum operation_mode {
 	EXTERNAL_LB_MASTER,
 	EXTERNAL_LB_MASTER_SLAVE,
 	SET_MUXMODE,
-	CONFIG_PARAMS,
-	CONFIG_M_CLK
+	CONFIG_M_CLK,
+	CONFIG_I2S_PARAMS,
+	CONFIG_PCM_PARAMS,
+	CONFIG_TDM_PARAMS,
+	CONFIG_LPAIF_MODE,
+	CONFIG_PCM_LANE
 };
 
 /* Rx mode */
@@ -88,6 +100,28 @@ struct i2s_params {
 	unsigned int mic_channel_count;
 };
 
+/* PCM parameters */
+struct pcm_params {
+	uint32_t bit_clk;
+	uint32_t buffer_ms;
+	uint8_t rate;
+	uint8_t sync_src;
+	uint8_t aux_mode;
+	uint8_t rpcm_width;
+	uint8_t tpcm_width;
+};
+
+/* TDM parameters */
+struct tdm_params {
+	uint8_t sync_delay;
+	uint32_t tpcm_width;
+	uint32_t rpcm_width;
+	uint32_t rate;
+	uint8_t en_diff_sample_width;
+	uint32_t tpcm_sample_width;
+	uint32_t rpcm_sample_width;
+};
+
 int fd_master;
 int fd_slave;
 FILE *fd_read_ip;
@@ -96,8 +130,10 @@ long read_length_bytes;
 long read_length_words;
 long read_limit;
 enum operation_mode mode;
-enum rx_mode rx;
-struct i2s_params *params;
+enum rx_mode rx = MMAP;
+struct i2s_params *i_params;
+struct pcm_params *p_params;
+struct tdm_params *t_params;
 struct pollfd pfd;
 void *mmap_ptr;
 void *mmap_read;
@@ -113,41 +149,62 @@ void help()
 {
 
 	printf("Operational modes:\n 0 - Normal Rx\n 1 - Normal Tx*\n 2 - Internal loopback\n 3 - External loopback on master*\n"
-	       " 4 - External loopback on master-slave*\n 5 - Set master/slave mode*\n 6 - Configure I2S parameters\n"
-	       " 7 - Configure master clock*\n");
+	       " 4 - External loopback on master-slave*\n 5 - Set master/slave mode*\n 6 - Configure master clock*\n"
+	       " 7 - Configure I2S params\n 8 - Configure PCM params\n 9 - Configure TDM params\n"
+	       " 10 - Configure LPAIF mode\n 11 - Set PCM lane configuration\n");
 	printf("* Supported only on SA8155\n\n");
 	printf("Usage for each operation mode:\n\n");
 	printf("NORMAL Rx:\n");
-	printf("hsi2s_test 0 <device file> <rx mode> <output file> "
-		"<bit clock in Hz(used with mmap)] [<data buffer in ms(used with mmap)>] [<size>]\n\n");
+	printf("hsi2s_test 0 <device file> <output file> <bit clock in Hz> <data buffer in ms> [<size>]\n\n");
 	printf("NORMAL Tx:\n");
 	printf("hsi2s_test 1 <device file> <input file>\n\n");
 	printf("INTERNAL LOOPBACK:\n");
-	printf("hsi2s_test 2 <device file> <rx mode> <output file> <input file> [<size>]\n\n");
+	printf("hsi2s_test 2 <device file> <output file> <input file> [<size>]\n\n");
 	printf("EXTERNAL LOOPBACK ON MASTER:\n");
-	printf("hsi2s_test 3 <device file> <rx mode> <output file> <input file> [<size>]\n\n");
+	printf("hsi2s_test 3 <device file> <output file> <input file> [<size>]\n\n");
 	printf("EXTERNAL LOOPBACK BETWEEN MASTER AND SLAVE INTERFACES:\n");
-	printf("hsi2s_test 4 <master device file> <slave device file> <rx mode> <output file> <input file> [<size>]\n\n");
+	printf("hsi2s_test 4 <master device file> <slave device file> <output file> <input file> [<size>]\n\n");
 	printf("SET MASTER/SLAVE MODE:\n");
 	printf("hsi2s_test 5 <device file> <muxmode>\n\n");
-	printf("CONFIGURE I2S PARAMETERS:\n");
-	printf("hsi2s_test 6 <device file> <bit clock in hertz> <data buffer in ms> <bit depth> <speaker channel count> <mic channel count>\n\n");
 	printf("CONFIGURE MASTER CLOCK:\n");
-	printf("hsi2s_test 7 <device file> <clock-source> <divide-by>\n\n");
+	printf("hsi2s_test 6 <device file> <clock-source> <divide-by>\n\n");
+	printf("CONFIGURE I2S PARAMETERS:\n");
+	printf("hsi2s_test 7 <device file> <bit clock in hertz> <data buffer in ms> <bit depth> <speaker channel count> <mic channel count>\n\n");
+	printf("CONFIGURE PCM PARAMETERS:\n");
+	printf("hsi2s_test 8 <device file> <bit clock in hertz> <data buffer in ms> <pcm_rate> <sync_src> <aux_mode> <rpcm_width> <tpcm_width>\n\n");
+	printf("CONFIGURE TDM PARAMETERS:\n");
+	printf("hsi2s_test 9 <device file> <sync_delay> <tdm_tpcm_width> <tdm_rpcm_width> <tdm_rate> <en_diff_sample_width> [<tpcm_sample_width>] [<rpcm_sample_width>]\n\n");
+	printf("SET I2S/PCM MODE:\n");
+	printf("hsi2s_test 10 <device file> <lpaif mode>\n\n");
+	printf("SET PCM LANE CONFIGURATION:\n");
+	printf("hsi2s_test 11 <device file> <lane config>\n\n");
 	printf("Argument details:\n");
 	printf("<device file> : /dev/hs0_i2s | /dev/hs1_i2s | /dev/hs2_i2s\n");
-	printf("<muxmode> : 0 - Master 1 - Slave\n");
-	printf("<rx mode> : 0 - READ 1 - MMAP\n");
+	printf("<muxmode> : 0 -> MASTER 1 -> SLAVE\n");
 	printf("<output file> : To store the data read from the device file\n");
 	printf("<input file> : To be written to the HS-I2S interface via device file\n");
 	printf("<size> : DMA buffer length in MB (4MB by default)\n");
 	printf("<bit clock in hertz> : Bit clock freqeuncy in Hertz\n");
 	printf("<data buffer in ms> : Periodic length of data buffer in milli seconds\n");
-	printf("<bit depth> : 16/24/25/32\n");
-	printf("<speaker channel count> : 1/2/4\n");
-	printf("<mic channel count> : 1/2/4\n");
-	printf("<clock-source> : 0 - CXO(19.2 MHz) 1 - DIGITAL PLL(122.88 MHz)\n");
-	printf("<divide-by> : 0:Bypass, 1:Div-1, 2:Div-1.5, 3:Div-2, 4:Div-2.5, ..... 31:Div-16\n\n");
+	printf("<bit depth> : 16 | 24 | 25 | 32\n");
+	printf("<speaker channel count> : 1 | 2 | 4\n");
+	printf("<mic channel count> : 1 | 2 |4\n");
+	printf("<clock-source> : 0 -> CXO(19.2 MHz) 1 -> DIGITAL PLL(122.88 MHz)\n");
+	printf("<divide-by> : 0 -> Bypass, 1 -> Div-1, 2 -> Div-1.5, 3 -> Div-2, 4 -> Div-2.5, ..... 31 -> Div-16\n");
+	printf("<pcm_rate> : Frame size : 0 -> 8 bits, 1 -> 16 bits, 2 -> 32 bits, 3 -> 64 bits, 4 -> 128 bits, 5 -> 256 bits\n");
+	printf("<sync_src> : 0 -> EXTERNAL SYNC 1 -> INTERNAL SYNC\n");
+	printf("<aux_mode> : 0 -> PCM(SHORT SYNC) 1 -> AUX(LONG SYNC)\n");
+	printf("<rpcm_width> : PCM receive slot size : 0 -> 8 bits, 1 -> 16 bits\n");
+	printf("<tpcm_width> : PCM transmit slot size : 0 -> 8 bits, 1 -> 16 bits\n");
+	printf("<sync_delay> : 0 -> 2 CYCLE DELAY, 1 -> 1 CYCLE DELAY, 2 -> 0 CYCLE DELAY\n");
+	printf("<tdm_tpcm_width> : TDM transmit slot size in bits (maximum 32)\n");
+	printf("<tdm_rpcm_width> : TDM receive slot size in bits (maximum 32)\n");
+	printf("<tdm_rate> : TDM frame size in bits (maximum 512)\n");
+	printf("<en_diff_sample_width> : To be enabled if sample width(number of useful bits) is different from slot size\n");
+	printf("<tpcm_sample_width> : TDM TPCM sample width in bits (maximum 32)\n");
+	printf("<rpcm_sample_width> : TDM RPCM sample width in bits (maximum 32)\n");
+	printf("<lpaif mode> : 0 -> HS-I2S mode 1 -> HS-PCM mode\n");
+	printf("<lane config> : 0 -> SINGLE LANE, 1 -> MULTI LANE RX, 2 -> MULTI LANE TX\n\n");
 }
 
 /* Returns the size of input file in bytes */
@@ -284,6 +341,11 @@ void *user_read(void *arg)
 
 		printf("Bytes read: %zd in %lf nsecs\n", transfer_length, delta);
 
+		if (transfer_length < 0) {
+			printf("Error in reading data from the driver\n");
+			break;
+		}
+
 		if ((r_limit + transfer_length) > read_limit) {
 			boundary_read = (read_limit - r_limit);
 			fwrite(received_data,boundary_read,1,fd_write_op);
@@ -329,7 +391,7 @@ int main(int argc, char **argv)
 
 	printf("Reading operation mode...\n");
 	mode = atoi(argv[arg++]);
-	if (mode > CONFIG_M_CLK) {
+	if (mode > CONFIG_PCM_LANE) {
 		printf("Undefined mode\n");
 		help();
 		exit(0);
@@ -340,6 +402,28 @@ int main(int argc, char **argv)
 	if(fd_master < 0) {
 		printf("Cannot open device file\n");
 		help();
+		exit(0);
+	}
+
+	/* Operation mode : Set PCM lane configuration */
+	if (mode == CONFIG_PCM_LANE) {
+		mux = atoi(argv[arg++]);
+		printf("Setting PCM lane configuration...\n");
+		if (ioctl(fd_master, PCM_CONFIG_LANE, mux) < 0) {
+			printf("Failed to set PCM lane configuration on target\n");
+			exit(0);
+		}
+		exit(0);
+	}
+
+	/* Operation mode : Set LPAIF interface in I2S/PCM mode */
+	if (mode == CONFIG_LPAIF_MODE) {
+		mux = atoi(argv[arg++]);
+		printf("Setting LPAIF mode...\n");
+		if (ioctl(fd_master, LPAIF_MODE, mux) < 0) {
+			printf("Failed to set I2S/PCM configuration on target\n");
+			exit(0);
+		}
 		exit(0);
 	}
 
@@ -368,7 +452,7 @@ int main(int argc, char **argv)
 		if (!clk_source) {
 			printf("Clock source is CXO\n");
 			reg_val = divide_by;
-			if (ioctl(fd_master, I2S_SET_CLOCK, reg_val) < 0) {
+			if (ioctl(fd_master, LPAIF_SET_CLOCK, reg_val) < 0) {
 				printf("Failed to set master clock on target\n");
 				exit(0);
 			}
@@ -376,7 +460,7 @@ int main(int argc, char **argv)
 		} else {
 			printf("Clock source is Digital PLL\n");
 			reg_val = SRC_DIGITAL_PLL | divide_by;
-			if (ioctl(fd_master, I2S_SET_CLOCK, reg_val) < 0) {
+			if (ioctl(fd_master, LPAIF_SET_CLOCK, reg_val) < 0) {
 				printf("Failed to set master clock on target\n");
 				exit(0);
 			}
@@ -387,22 +471,79 @@ int main(int argc, char **argv)
 	}
 
 	/* Operation mode : Configure I2S parameters */
-	if (mode == CONFIG_PARAMS) {
+	if (mode == CONFIG_I2S_PARAMS) {
 		printf("Configuring I2S parameters...\n");
 		if (argc < 8) {
 			help();
 			exit(0);
 		}
-		params = (struct i2s_params *) malloc(sizeof(struct i2s_params));
-		params->bit_clk = atoi(argv[arg++]);
-		params->buffer_ms = atoi(argv[arg++]);
-		params->bit_depth = atoi(argv[arg++]);
-		params->spkr_channel_count = atoi(argv[arg++]);
-		params->mic_channel_count = atoi(argv[arg++]);
-		if (ioctl(fd_master, I2S_CONFIG_PARAMS, params) < 0) {
+		i_params = (struct i2s_params *) malloc(sizeof(struct i2s_params));
+		i_params->bit_clk = atoi(argv[arg++]);
+		i_params->buffer_ms = atoi(argv[arg++]);
+		i_params->bit_depth = atoi(argv[arg++]);
+		i_params->spkr_channel_count = atoi(argv[arg++]);
+		i_params->mic_channel_count = atoi(argv[arg++]);
+		if (ioctl(fd_master, I2S_CONFIG_PARAMS, i_params) < 0) {
 			printf("Failed to configure I2S parameters on target\n");
+			free(i_params);
 			exit(0);
 		}
+		free(i_params);
+		exit(0);
+	}
+
+	/* Operation mode : Configure PCM parameters */
+	if (mode == CONFIG_PCM_PARAMS) {
+		printf("Configuring PCM parameters...\n");
+		if (argc < 10) {
+			help();
+			exit(0);
+		}
+		p_params = (struct pcm_params *) malloc(sizeof(struct pcm_params));
+		p_params->bit_clk = atoi(argv[arg++]);
+		p_params->buffer_ms = atoi(argv[arg++]);
+		p_params->rate = atoi(argv[arg++]);
+		p_params->sync_src = atoi(argv[arg++]);
+		p_params->aux_mode = atoi(argv[arg++]);
+		p_params->rpcm_width = atoi(argv[arg++]);
+		p_params->tpcm_width = atoi(argv[arg++]);
+		if (ioctl(fd_master, PCM_CONFIG_PARAMS, p_params) < 0) {
+			printf("Failed to configure PCM parameters on target\n");
+			free(p_params);
+			exit(0);
+		}
+		free(p_params);
+		exit(0);
+	}
+
+	/* Operation mode : Configure TDM parameters */
+	if (mode == CONFIG_TDM_PARAMS) {
+		printf("Configuring TDM parameters...\n");
+		if (argc < 8) {
+			help();
+			exit(0);
+		}
+		t_params = (struct tdm_params *) malloc(sizeof(struct tdm_params));
+		t_params->sync_delay = atoi(argv[arg++]);
+		t_params->tpcm_width = atoi(argv[arg++]);
+		t_params->rpcm_width = atoi(argv[arg++]);
+		t_params->rate = atoi(argv[arg++]);
+		t_params->en_diff_sample_width = atoi(argv[arg++]);
+		if (t_params->en_diff_sample_width) {
+			if(arg < argc) {
+				t_params->tpcm_sample_width = atoi(argv[arg++]);
+				t_params->rpcm_sample_width = atoi(argv[arg++]);
+			} else {
+				help();
+				exit(0);
+			}
+		}
+		if (ioctl(fd_master, TDM_CONFIG_PARAMS, t_params) < 0) {
+			printf("Failed to configure TDM parameters on target\n");
+			free(t_params);
+			exit(0);
+		}
+		free(t_params);
 		exit(0);
 	}
 
@@ -410,7 +551,7 @@ int main(int argc, char **argv)
 	if (mode == SET_MUXMODE) {
 		mux = atoi(argv[arg++]);
 		printf("Setting muxmode...\n");
-		if (ioctl(fd_master, I2S_MUXMODE, mux) < 0) {
+		if (ioctl(fd_master, LPAIF_MUXMODE, mux) < 0) {
 			printf("Failed to set master/slave configuration on target\n");
 			exit(0);
 		}
@@ -419,7 +560,7 @@ int main(int argc, char **argv)
 
 	/* Operation mode : External loopback between master and slave interfaces */
 	if (mode == EXTERNAL_LB_MASTER_SLAVE) {
-		if (argc < 7) {
+		if (argc < 6) {
 			help();
 			exit(0);
 		}
@@ -434,14 +575,6 @@ int main(int argc, char **argv)
 	}
 
 	if (mode != NORMAL_TX) {
-		printf("Reading Rx mode...\n");
-		rx = atoi(argv[arg++]);
-		if (rx > MMAP) {
-			printf("Undefined rx mode\n");
-			help();
-			exit(0);
-		}
-
 		/* Open the output file to store received data */
 		printf("Opening o/p file...\n");
 		fd_write_op = fopen(argv[arg++], "w");
@@ -462,47 +595,47 @@ int main(int argc, char **argv)
 		/* Operation mode : Normal Tx */
 		case NORMAL_TX:
 			printf("Setting Tx on master\n");
-			if (ioctl(fd_master, I2S_RESET) < 0) {
+			if (ioctl(fd_master, LPAIF_RESET) < 0) {
 				printf("Failed to reset the hsi2s device\n");
 				exit(0);
 			}
-			if (ioctl(fd_master, I2S_MUXMODE, 0) < 0) {
+			if (ioctl(fd_master, LPAIF_MUXMODE, 0) < 0) {
 				printf("Failed to set master mode\n");
 				exit(0);
 			}
-			if (ioctl(fd_master, I2S_SPEAKER) < 0) {
+			if (ioctl(fd_master, LPAIF_SPEAKER) < 0) {
 				printf("Failed to configure speaker\n");
 				exit(0);
 			}
 			break;
 		/* Operation mode : Internal loopback */
 		case INTERNAL_LB:
-			if (argc < 6) {
+			if (argc < 5) {
 				help();
 				exit(0);
 			}
 			printf("Setting internal loopback operation \n");
-			if (ioctl(fd_master, I2S_RESET) < 0) {
+			if (ioctl(fd_master, LPAIF_RESET) < 0) {
 				printf("Failed to reset the hsi2s device\n");
 				exit(0);
 			}
-			if (ioctl(fd_master, I2S_INTERNAL_LOOPBACK) < 0) {
+			if (ioctl(fd_master, LPAIF_INTERNAL_LOOPBACK) < 0) {
 				printf("Failed to trigger internal loopback\n");
 				exit(0);
 			}
 			break;
 		/* Operation mode : External loopback on master interface */
 		case EXTERNAL_LB_MASTER:
-			if (argc < 6) {
+			if (argc < 5) {
 				help();
 				exit(0);
 			}
 			printf("Setting external loopback on master \n");
-			if (ioctl(fd_master, I2S_RESET) < 0) {
+			if (ioctl(fd_master, LPAIF_RESET) < 0) {
 				printf("Failed to reset the hsi2s device\n");
 				exit(0);
 			}
-			if (ioctl(fd_master, I2S_EXTERNAL_LOOPBACK) < 0) {
+			if (ioctl(fd_master, LPAIF_EXTERNAL_LOOPBACK) < 0) {
 				printf("Failed to trigger external loopback\n");
 				exit(0);
 			}
@@ -510,31 +643,31 @@ int main(int argc, char **argv)
 		/* Operation mode : External loopback between master and slave interfaces */
 		case EXTERNAL_LB_MASTER_SLAVE:
 			printf("Setting external loopback on master/slave \n");
-			if (ioctl(fd_master, I2S_RESET) < 0) {
+			if (ioctl(fd_master, LPAIF_RESET) < 0) {
 				printf("Failed to reset the hsi2s master\n");
 				exit(0);
 			}
-			if (ioctl(fd_slave, I2S_RESET) < 0) {
+			if (ioctl(fd_slave, LPAIF_RESET) < 0) {
 				printf("Failed to reset the hsi2s slave\n");
 				exit(0);
 			}
-			if (ioctl(fd_master, I2S_MUXMODE, 0) < 0) {
+			if (ioctl(fd_master, LPAIF_MUXMODE, 0) < 0) {
 				printf("Failed to set master mode\n");
 				exit(0);
 			}
-			if (ioctl(fd_slave, I2S_MUXMODE, 1) < 0) {
+			if (ioctl(fd_slave, LPAIF_MUXMODE, 1) < 0) {
 				printf("Failed to set slave mode\n");
 				exit(0);
 			}
-			if (ioctl(fd_master, I2S_SET_SLAVE, slave) < 0) {
+			if (ioctl(fd_master, LPAIF_SET_SLAVE, slave) < 0) {
 				printf("Failed to set slave for the master\n");
 				exit(0);
 			}
-			if (ioctl(fd_slave, I2S_MIC) < 0) {
+			if (ioctl(fd_slave, LPAIF_MIC) < 0) {
 				printf("Failed to configure mic\n");
 				exit(0);
 			}
-			if (ioctl(fd_master, I2S_SPEAKER) < 0) {
+			if (ioctl(fd_master, LPAIF_SPEAKER) < 0) {
 				printf("Failed to configure speaker\n");
 				exit(0);
 			}
@@ -564,29 +697,31 @@ int main(int argc, char **argv)
 	} else {
 		/* Operation mode : Normal mode data reception */
 		printf("Setting normal mode \n");
-		if (ioctl(fd_master, I2S_RESET) < 0) {
+		if (ioctl(fd_master, LPAIF_RESET) < 0) {
 			printf("Failed to reset the hsi2s device\n");
 			exit(0);
 		}
-		if (ioctl(fd_master, I2S_NORMAL_MODE) < 0) {
+		if (ioctl(fd_master, LPAIF_NORMAL_MODE) < 0) {
 			printf("Failed to configure normal operation on the hsi2s device\n");
 			exit(0);
 		}
 
 		read_limit = READ_LIMIT;
 
-		if (rx) {
-			if (argc < 7) {
+		if (rx == MMAP) {
+			if (argc < 6) {
 				help();
 				exit(0);
 			}
 
-			params = (struct i2s_params *) malloc(sizeof(struct i2s_params));
-			params->bit_clk = atoi(argv[arg++]);
-			params->buffer_ms = atoi(argv[arg++]);
+			i_params = (struct i2s_params *) malloc(sizeof(struct i2s_params));
+			i_params->bit_clk = atoi(argv[arg++]);
+			i_params->buffer_ms = atoi(argv[arg++]);
 
-			mmap_len = get_periodic_length(params->bit_clk, params->buffer_ms);
+			mmap_len = get_periodic_length(i_params->bit_clk, i_params->buffer_ms);
 			printf("Periodic length set to %ld bytes\n", mmap_len);
+
+			free(i_params);
 		}
 
 		if (arg < argc) {
@@ -597,7 +732,7 @@ int main(int argc, char **argv)
 	}
 
 	if (mode != NORMAL_TX) {
-		if (rx) {
+		if (rx == MMAP) {
 			if (mode == EXTERNAL_LB_MASTER_SLAVE) {
 				/* Map the slave device write DMA buffer */
 				pfd.fd = fd_slave;
@@ -630,13 +765,13 @@ int main(int argc, char **argv)
 		/* Create thread to read the received data */
 		printf("Creating thread to read the received data\n");
 		switch (rx) {
-		case 0:
+		case READ:
 			printf("Using read mode...\n");
 			if (pthread_create(&tid, NULL, user_read, NULL) != 0) {
 				printf("Error creating reader thread\n");
 			}
 			break;
-		case 1:
+		case MMAP:
 			printf("Using mmap mode...\n");
 			if (pthread_create(&tid, NULL, poll_read, NULL) != 0) {
 				printf("Error creating poll thread\n");
@@ -680,7 +815,7 @@ int main(int argc, char **argv)
 	/* Disable transmission */
 	if (mode != NORMAL_RX) {
 		printf("Disabling Tx on read DMA channel\n");
-		if (ioctl(fd_master, I2S_DEINIT_TX) < 0) {
+		if (ioctl(fd_master, LPAIF_DEINIT_TX) < 0) {
 			printf("Failed to stop Tx on hsi2s device\n");
 			exit(0);
 		}
