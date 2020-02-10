@@ -1,4 +1,4 @@
-/* Copyright (c) 2019, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -11,6 +11,7 @@
  */
 
 #include "hsi2s_drv.h"
+#include "hsi2s_adsp_clk_ctrl.h"
 
 /* Device number */
 static dev_t devid;
@@ -20,6 +21,10 @@ static u32 dma_buffer_length_words;
 
 /* HS-I2S core structure */
 static struct hsi2s_core *hsi2s_core;
+
+#ifndef CONFIG_QTI_GVM
+static struct sockaddr_qrtr sq;
+#endif
 
 /* Module parameters */
 static int lpaif_mode = HS_I2S;
@@ -49,6 +54,124 @@ MODULE_PARM_DESC(channel_count, "Number of channels(mono/stereo)");
 static u32 bit_depth;
 module_param(bit_depth, uint, 0644);
 MODULE_PARM_DESC(bit_depth, "Bit depth of the I2S interface");
+
+static int enable_qmi;
+module_param(enable_qmi, int, 0644);
+MODULE_PARM_DESC(enable_qmi, "Is QMI enabled: 0->Disabled 1->Enabled");
+
+#ifndef CONFIG_QTI_GVM
+/* QMI callbacks */
+static int pgs_clk_ctrl_send_sync_msg(struct qmi_handle *dev, int en)
+{
+	int ret;
+	struct prod_hsi2s_clk_ctrl_req_msg_v01 *req;
+	struct prod_hsi2s_clk_ctrl_resp_msg_v01 *resp;
+	struct qmi_txn txn;
+
+	if (!dev)
+		return -ENODEV;
+
+	req = kzalloc(sizeof(struct prod_hsi2s_clk_ctrl_req_msg_v01), GFP_KERNEL);
+	if (!req) {
+		pr_err("[HSI2S] Failed to allocate QMI request message");
+		return -ENOMEM;
+	}
+
+	resp = kzalloc(sizeof(struct prod_hsi2s_clk_ctrl_resp_msg_v01),
+			GFP_KERNEL);
+	if (!resp) {
+		pr_err("[HSI2S] Failed to allocate QMI response message");
+		kfree(req);
+		return -ENOMEM;
+	}
+
+	req->hsi2s_data[0] = (u8) en;
+
+	ret = qmi_txn_init(dev, &txn, prod_hsi2s_clk_ctrl_resp_msg_v01_ei, resp);
+	if (ret < 0) {
+		pr_err("[HSI2S] Failed Init txn for Mode resp %d\n", ret);
+		goto out;
+	}
+
+	ret = qmi_send_request(dev, &sq, &txn,
+			PROD_HSI2S_CLK_CTRL_REQ_V01,
+			PROD_HSI2S_CLK_CTRL_REQ_MSG_V01_MAX_MSG_LEN,
+			prod_hsi2s_clk_ctrl_req_msg_v01_ei, req);
+
+	if (ret < 0) {
+		qmi_txn_cancel(&txn);
+		pr_err("[HSI2S] Fail to send Mode req %d\n", ret);
+		goto out;
+	}
+
+	ret = qmi_txn_wait(&txn, PGS_TIMEOUT);
+
+	if (ret < 0) {
+		pr_err("[HSI2S] Mode resp wait failed with ret %d\n", ret);
+		goto out;
+	}
+
+	if (resp->resp.result != QMI_RESULT_SUCCESS_V01) {
+		pr_err("[HSI2S] QMI Mode request rejected, result:%d error:%d\n",
+				resp->resp.result, resp->resp.error);
+		ret = -resp->resp.result;
+		goto out;
+	}
+
+	if (!en)
+		pr_warn("[HSI2S] ADSP clock disabling is successful\n");
+	else
+		pr_warn("[HSI2S] ADSP clock enabling is successful\n");
+
+out:
+	kfree(req);
+	kfree(resp);
+	return ret;
+}
+
+static int hsi2s_qmi_adsp_new_server(struct qmi_handle *qmi,
+		struct qmi_service *service)
+{
+	struct platform_device *pdev;
+	int ret;
+
+	sq.sq_family = AF_QIPCRTR;
+	sq.sq_node = service->node;
+	sq.sq_port = service->port;
+
+	pdev = platform_device_alloc("hsi2s_qmi_adsp_client",
+			PLATFORM_DEVID_AUTO);
+	if (!pdev)
+		return -ENOMEM;
+
+	ret = platform_device_add_data(pdev, &sq, sizeof(sq));
+	if (ret)
+		goto err_put_device;
+	ret = platform_device_add(pdev);
+	if (ret)
+		goto err_put_device;
+
+	service->priv = pdev;
+	return 0;
+
+err_put_device:
+	platform_device_put(pdev);
+	return ret;
+}
+
+static void hsi2s_qmi_adsp_del_server(struct qmi_handle *qmi,
+		struct qmi_service *service)
+{
+	struct platform_device *pdev = service->priv;
+
+	platform_device_unregister(pdev);
+}
+
+static struct qmi_ops hsi2s_qmi_adsp_ops = {
+	.new_server = hsi2s_qmi_adsp_new_server,
+	.del_server = hsi2s_qmi_adsp_del_server,
+};
+#endif
 
 /* Macro callbacks */
 
@@ -1693,7 +1816,7 @@ static int hsi2s_buffer_init(struct hsi2s_device *hs_dev)
 	int ret = 0;
 
 	/* Allocate read buffer */
-	pr_warn("[HSI2S] Allocating kernel buffer for write DMA");
+	pr_warn("[HSI2S] Allocating kernel buffer for read DMA");
 	hs_dev->read_buffer = kzalloc(sizeof(*hs_dev->read_buffer),
 				       GFP_KERNEL);
 	if (!hs_dev->read_buffer) {
@@ -1954,7 +2077,36 @@ static int hsi2s_configure_gpio_pins(struct platform_device *pdev)
 }
 
 /* Clock management functions */
+#ifndef CONFIG_QTI_GVM
+/* Function to disable clocks for SA8155/SA8195 using QMI */
+static int hsi2s_adsp_disable_clks()
+{
+	int ret = 0;
 
+	pr_warn("[HSI2S] Disabling LPASS clocks via QMI");
+	ret = pgs_clk_ctrl_send_sync_msg(hsi2s_core->qmi_dev, 0);
+
+	if (ret < 0)
+		pr_err("[HSI2S] Failed to disable LPASS clocks\n");
+
+	return ret;
+}
+
+/* Function to enable clocks for SA8155/SA8195 using QMI */
+static int hsi2s_adsp_enable_clks()
+{
+	int ret = 0;
+
+	pr_warn("[HSI2S] Enabling LPASS clocks via QMI");
+	ret = pgs_clk_ctrl_send_sync_msg(hsi2s_core->qmi_dev, 1);
+
+	if (ret < 0)
+		pr_err("Failed to enable LPASS clocks\n");
+
+	return ret;
+}
+#endif
+/* Function to enable/disable core clocks for SA8155/SA8195 */
 static void h_modify_core_clks(int enable)
 {
 	void __iomem *lpass_core_cbcr;
@@ -1991,6 +2143,7 @@ static void h_modify_core_clks(int enable)
 	iounmap(lpass_mport);
 }
 
+/* Function to enable/disable interface clocks for SA8155/SA8195 */
 static void h_modify_interface_clks(int enable)
 {
 	void __iomem *hs_if0_ibit;
@@ -2050,7 +2203,7 @@ static void h_modify_interface_clks(int enable)
 	iounmap(hs_if2_mclk);
 }
 
-/* Function to disable core clocks */
+/* Function to disable core clocks for SA6155 */
 static void hsi2s_disable_core_clks(struct platform_device *pdev)
 {
 	struct hsi2s_core *hs_core;
@@ -2094,7 +2247,7 @@ static void hsi2s_disable_core_clks(struct platform_device *pdev)
 	hs_core->wr2_mem_clk = NULL;
 }
 
-/* Function to enable core clocks */
+/* Function to enable core clocks for SA6155 */
 static int hsi2s_enable_core_clks(struct platform_device *pdev)
 {
 	struct hsi2s_core *hs_core;
@@ -2170,7 +2323,7 @@ fail_clk:
 	return ret;
 }
 
-/* Function to suspend core clocks */
+/* Function to suspend core clocks for SA6155 */
 static void hsi2s_suspend_core_clks(struct platform_device *pdev)
 {
 	struct hsi2s_core *hs_core;
@@ -2193,7 +2346,7 @@ static void hsi2s_suspend_core_clks(struct platform_device *pdev)
 		clk_disable_unprepare(hs_core->wr2_mem_clk);
 }
 
-/* Function to resume core clocks */
+/* Function to resume core clocks SA6155 */
 static int hsi2s_resume_core_clks(struct platform_device *pdev)
 {
 	struct hsi2s_core *hs_core;
@@ -2248,7 +2401,7 @@ fail_clk:
 	return ret;
 }
 
-/* Function to disable interface clocks */
+/* Function to disable interface clocks SA6155 */
 static void hsi2s_disable_intf_clks(struct platform_device *pdev)
 {
 	struct hsi2s_device *hs_dev;
@@ -2264,7 +2417,7 @@ static void hsi2s_disable_intf_clks(struct platform_device *pdev)
 	hs_dev->intf_clk = NULL;
 }
 
-/* Function to enable interface clocks */
+/* Function to enable interface clocks SA6155 */
 static int hsi2s_enable_intf_clks(struct platform_device *pdev)
 {
 	struct hsi2s_device *hs_dev;
@@ -2297,7 +2450,7 @@ fail_clk:
 	return ret;
 }
 
-/* Function to suspend interface clocks */
+/* Function to suspend interface clocks SA6155 */
 static void hsi2s_suspend_intf_clks(struct platform_device *pdev)
 {
 	struct hsi2s_device *hs_dev;
@@ -2307,7 +2460,7 @@ static void hsi2s_suspend_intf_clks(struct platform_device *pdev)
 		clk_disable_unprepare(hs_dev->intf_clk);
 }
 
-/* Function to resume interface clocks */
+/* Function to resume interface clocks SA6155 */
 static int hsi2s_resume_intf_clks(struct platform_device *pdev)
 {
 	struct hsi2s_device *hs_dev;
@@ -3722,8 +3875,47 @@ static int hsi2s_probe(struct platform_device *pdev)
 			goto err_free_macro;
 	}
 	else if (target == 8155 || target == 8195) {
+#ifndef CONFIG_QTI_GVM
+		if (enable_qmi) {
+			/* Allocate QMI handle */
+			hsi2s_core->qmi_dev = kzalloc(sizeof(*hsi2s_core->qmi_dev), GFP_KERNEL);
+			if (!hsi2s_core->qmi_dev) {
+				pr_err("[HSI2S] Failed to allocate QMI handle");
+				ret = -ENOMEM;
+				goto err_free_macro;
+			}
+
+			ret = qmi_handle_init(hsi2s_core->qmi_dev,
+					PROD_HSI2S_CLK_CTRL_REQ_MSG_V01_MAX_MSG_LEN,
+					&hsi2s_qmi_adsp_ops, NULL);
+
+			if (ret < 0) {
+				pr_err("[HSI2S] Failed to initialize the qmi_handle for the client");
+				goto err_disable_core_clocks;
+			}
+
+			/* Register a new lookup with the service PGS_SERVICE_ID_V01 */
+			ret = qmi_add_lookup(hsi2s_core->qmi_dev, PGS_SERVICE_ID_V01,
+					PGS_SERVICE_VERS_V01, 0);
+
+			if (ret < 0) {
+				pr_err("[HSI2S] Failed to add QMI lookup");
+				goto err_disable_core_clocks;
+			}
+
+			/* Enable clocks */
+			ret = hsi2s_adsp_enable_clks();
+			if (ret < 0) {
+				goto err_disable_core_clocks;
+			}
+		} else {
+			h_modify_core_clks(1);
+			h_modify_interface_clks(1);
+		}
+#else
 		h_modify_core_clks(1);
 		h_modify_interface_clks(1);
+#endif
 	}
 
 	/* Map the register memory region */
@@ -3867,8 +4059,16 @@ err_iounmap_lpass_tcsr:
 err_iounmap_lpaif:
 	iounmap(hsi2s_core->lpaif_base_va);
 err_disable_core_clocks:
-	if (target == 6155)
+	if (target == 6155) {
 		hsi2s_disable_core_clks(pdev);
+	} else {
+#ifndef CONFIG_QTI_GVM
+		if (enable_qmi) {
+			if (hsi2s_core->qmi_dev)
+				kfree(hsi2s_core->qmi_dev);
+		}
+#endif
+	}
 err_free_macro:
 	kfree(hsi2s_core->macro);
 	hsi2s_core->macro = NULL;
@@ -3961,8 +4161,21 @@ static int hsi2s_remove(struct platform_device *pdev)
 	if (hs_core->target == 6155)
 		hsi2s_disable_core_clks(pdev);
 	else if (hs_core->target == 8155 || hs_core->target == 8195) {
+#ifndef CONFIG_QTI_GVM
+		if (enable_qmi) {
+			if (hs_core->qmi_dev) {
+				hsi2s_adsp_disable_clks();
+				qmi_handle_release(hs_core->qmi_dev);
+				kfree(hs_core->qmi_dev);
+			}
+		} else {
+			h_modify_interface_clks(0);
+			h_modify_core_clks(0);
+		}
+#else
 		h_modify_interface_clks(0);
 		h_modify_core_clks(0);
+#endif
 	}
 	/* Unregister the device numbers */
 	unregister_chrdev_region(devid, 1);
@@ -3993,8 +4206,18 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 		if (hsi2s_core->target == 6155)
 			hsi2s_suspend_core_clks(pdev);
 		else if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195) {
-			h_modify_interface_clks(0);
-			h_modify_core_clks(0);
+#ifndef CONFIG_QTI_GVM
+			if (enable_qmi) {
+				if (hsi2s_core->qmi_dev)
+					hsi2s_adsp_disable_clks();
+			} else {
+				h_modify_interface_clks(0);
+				h_modify_core_clks(0);
+			}
+#else
+		h_modify_interface_clks(0);
+		h_modify_core_clks(0);
+#endif
 		}
 	}
 
@@ -4027,8 +4250,23 @@ static int hsi2s_resume(struct platform_device *pdev)
 				return ret;
 			}
 		} else if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195) {
-			h_modify_core_clks(1);
+#ifndef CONFIG_QTI_GVM
+			if (enable_qmi) {
+				if (hsi2s_core->qmi_dev) {
+					ret = hsi2s_adsp_enable_clks();
+					if (ret) {
+						pr_warn("[HSI2S] Failed to resume core clocks");
+						return ret;
+					}
+				}
+			} else {
+				h_modify_interface_clks(1);
+				h_modify_core_clks(1);
+			}
+#else
 			h_modify_interface_clks(1);
+			h_modify_core_clks(1);
+#endif
 		}
 	}
 

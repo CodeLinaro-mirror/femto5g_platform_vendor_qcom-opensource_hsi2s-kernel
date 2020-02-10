@@ -1,4 +1,4 @@
-/* Copyright (c) 2019, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -41,6 +41,7 @@
 #include <linux/irqdesc.h>
 #include <linux/io.h>
 #include <linux/poll.h>
+#include <linux/soc/qcom/qmi.h>
 #include <asm/dma-iommu.h>
 
 /* Register offsets */
@@ -348,6 +349,7 @@
 #define INVERT_EXT_BIT_CLOCK 0x1
 #define DONT_INVERT_INT_BIT_CLOCK 0x2
 #define DONT_INVERT_EXT_BIT_CLOCK 0x3
+#define PGS_TIMEOUT msecs_to_jiffies(3000)
 
 #define T_I2S_LONG_RATE_15 0x3C0000
 #define T_I2S_SPKR_MODE_SD0 0x800
@@ -519,6 +521,9 @@ struct hsi2s_core {
 	void __iomem *sec_rate_bin;
 	void __iomem *sec_rate_stc_diff;
 	void __iomem *sec_rate_sel;
+
+	/* QMI handle */
+	struct qmi_handle *qmi_dev;
 
 	/* Clocks */
 	struct clk *core_clk;
