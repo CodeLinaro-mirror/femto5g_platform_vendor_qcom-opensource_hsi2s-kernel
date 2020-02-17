@@ -26,6 +26,7 @@
 #include <string.h>
 #include <poll.h>
 #include <time.h>
+#include <errno.h>
 
 /* IOCTL commands copied from the i2s_driver header */
 /* Configures I2S/PCM and DMA registers for normal data transfer on the interface */
@@ -334,6 +335,10 @@ void *user_read(void *arg)
 	printf("Performing data read...\n");
 
 	received_data = (int32_t *) malloc(read_length_words * sizeof(int32_t));
+	if (!received_data) {
+		printf("Failed to allocate receive data buffer\n");
+		return NULL;
+	}
 
 	clock_gettime(CLOCK_REALTIME, &nread_start);
 	thread_start = (nread_start.tv_sec * BILLION) + nread_start.tv_nsec;
@@ -385,7 +390,7 @@ int main(int argc, char **argv)
 	long wav_samples;
 	long no_words;
 	long w_len;
-	int32_t *wav_data;
+	int32_t *wav_data = NULL;
 	int32_t temp_data;
 	int i;
 	int mux;
@@ -517,6 +522,10 @@ int main(int argc, char **argv)
 			exit(0);
 		}
 		i_params = (struct i2s_params *) malloc(sizeof(struct i2s_params));
+		if (!i_params) {
+			printf("Failed to allocate I2S param structure\n");
+			return -ENOMEM;
+		}
 		i_params->bit_clk = atoi(argv[arg++]);
 		i_params->buffer_ms = atoi(argv[arg++]);
 		i_params->bit_depth = atoi(argv[arg++]);
@@ -539,6 +548,10 @@ int main(int argc, char **argv)
 			exit(0);
 		}
 		p_params = (struct pcm_params *) malloc(sizeof(struct pcm_params));
+		if (!p_params) {
+			printf("Failed to allocate PCM param structure\n");
+			return -ENOMEM;
+		}
 		p_params->bit_clk = atoi(argv[arg++]);
 		p_params->buffer_ms = atoi(argv[arg++]);
 		p_params->rate = atoi(argv[arg++]);
@@ -563,6 +576,10 @@ int main(int argc, char **argv)
 			exit(0);
 		}
 		t_params = (struct tdm_params *) malloc(sizeof(struct tdm_params));
+		if (!t_params) {
+			printf("Failed to allocate TDM param structure\n");
+			return -ENOMEM;
+		}
 		t_params->sync_delay = atoi(argv[arg++]);
 		t_params->tpcm_width = atoi(argv[arg++]);
 		t_params->rpcm_width = atoi(argv[arg++]);
@@ -754,6 +771,10 @@ int main(int argc, char **argv)
 			}
 
 			i_params = (struct i2s_params *) malloc(sizeof(struct i2s_params));
+			if (!i_params) {
+				printf("Failed to allocate I2S param structure\n");
+				return -ENOMEM;
+			}
 			i_params->bit_clk = atoi(argv[arg++]);
 			i_params->buffer_ms = atoi(argv[arg++]);
 
@@ -829,6 +850,10 @@ int main(int argc, char **argv)
 	if (mode != NORMAL_RX) {
 		printf("Reading i/p file...\n");
 		wav_data = (int32_t *) malloc(no_words * sizeof(int32_t));
+		if (!wav_data) {
+			printf("Failed to allocate transmit data buffer\n");
+			return -ENOMEM;
+		}
 
 		/* Copy data from wav file into memory */
 		for (i = 0; i < no_words; i++) {
