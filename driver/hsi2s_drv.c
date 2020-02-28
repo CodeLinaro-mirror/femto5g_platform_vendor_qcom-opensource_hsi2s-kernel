@@ -1410,8 +1410,8 @@ static int configure_tdm_params(struct hsi2s_device *hs_dev, struct hstdm_params
 		/* Check whether different sample width is enabled */
 		hs_dev->tdm_en_diff_sample_width = params->en_diff_sample_width;
 		if (hs_dev->tdm_en_diff_sample_width) {
-			hs_dev->tdm_tpcm_sample_width = params->tpcm_sample_width << 5;
-			hs_dev->tdm_rpcm_sample_width = params->rpcm_sample_width;
+			hs_dev->tdm_tpcm_sample_width = (params->tpcm_sample_width - 1) << 5;
+			hs_dev->tdm_rpcm_sample_width = params->rpcm_sample_width - 1;
 		}
 	} else {
 		pr_err("[HSI2S] Passed null hstdm_params structure");
