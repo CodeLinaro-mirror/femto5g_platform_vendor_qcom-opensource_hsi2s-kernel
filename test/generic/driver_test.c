@@ -68,7 +68,7 @@
 #define BYTES_PER_WORD 4
 #define READ_LENGTH_MB 2
 #define READ_LENGTH_WORDS (READ_LENGTH_MB * 1024 * 1024) / BYTES_PER_WORD
-#define READ_LIMIT 1024*1024*1024
+#define READ_LIMIT 4294967926 /* 4GB */
 #define SRC_DIGITAL_PLL 0x500
 #define BILLION 1000000000L
 #define INVERT 1
@@ -138,7 +138,7 @@ FILE *fd_read_ip;
 FILE *fd_write_op;
 long read_length_bytes;
 long read_length_words;
-long read_limit;
+long long read_limit;
 enum operation_mode mode;
 enum rx_mode rx = MMAP;
 struct i2s_params *i_params;
@@ -256,7 +256,7 @@ uint32_t get_periodic_length(uint32_t bit_clk, uint32_t interval)
 /* Read thread */
 void *poll_read(void *arg)
 {
-	long r_limit = 0;
+	long long r_limit = 0;
 	long temp;
 	int ret;
 	double thread_start;
@@ -326,7 +326,7 @@ void *user_read(void *arg)
 	size_t transfer_length;
 	int32_t *received_data;
 	int cnt = 0;
-	long r_limit = 0;
+	long long r_limit = 0;
 	int boundary_read;
 	double thread_start;
 	double thread_stop;
