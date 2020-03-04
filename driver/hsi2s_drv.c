@@ -217,6 +217,7 @@ static void t_assign_macros(void)
 	hsi2s_core->macro->bit_spkr_en = T_I2S_SPKR_EN;
 	hsi2s_core->macro->bit_loopback = T_I2S_LOOPBACK;
 	hsi2s_core->macro->bit_i2s_reset = T_I2S_RESET;
+	hsi2s_core->macro->bit_en_long_rate = T_I2S_EN_LONG_RATE;
 	hsi2s_core->macro->bit_tpcm_width = T_TPCM_WIDTH;
 	hsi2s_core->macro->bit_rpcm_width = T_RPCM_WIDTH;
 	hsi2s_core->macro->bit_aux_mode = T_AUX_MODE;
@@ -253,7 +254,7 @@ static void t_assign_macros(void)
 	hsi2s_core->macro->bit_wrdma_reset = T_WRDMA_RESET;
 	hsi2s_core->macro->bit_rate_en = T_RATE_DET_EN;
 	hsi2s_core->macro->bit_rate_reset = T_RATE_DET_RESET;
-	hsi2s_core->macro->regfield_i2s_lrate15 = T_I2S_LONG_RATE_15;
+	hsi2s_core->macro->regfield_i2s_lrate_offset = T_I2S_LONG_RATE_OFFSET;
 	hsi2s_core->macro->regfield_spkr_mode_sd0 = T_I2S_SPKR_MODE_SD0;
 	hsi2s_core->macro->regfield_spkr_mode_sd1 = T_I2S_SPKR_MODE_SD1;
 	hsi2s_core->macro->regfield_spkr_mode_quad01 = T_I2S_SPKR_MODE_QUAD01;
@@ -349,6 +350,7 @@ static void h_assign_macros(void)
 	hsi2s_core->macro->bit_spkr_en = H_I2S_SPKR_EN;
 	hsi2s_core->macro->bit_loopback = H_I2S_LOOPBACK;
 	hsi2s_core->macro->bit_i2s_reset = H_I2S_RESET;
+	hsi2s_core->macro->bit_en_long_rate = H_I2S_EN_LONG_RATE;
 	hsi2s_core->macro->bit_tpcm_width = H_TPCM_WIDTH;
 	hsi2s_core->macro->bit_rpcm_width = H_RPCM_WIDTH;
 	hsi2s_core->macro->bit_aux_mode = H_AUX_MODE;
@@ -385,7 +387,7 @@ static void h_assign_macros(void)
 	hsi2s_core->macro->bit_wrdma_reset = H_WRDMA_RESET;
 	hsi2s_core->macro->bit_rate_en = H_RATE_DET_EN;
 	hsi2s_core->macro->bit_rate_reset = H_RATE_DET_RESET;
-	hsi2s_core->macro->regfield_i2s_lrate15 = H_I2S_LONG_RATE_15;
+	hsi2s_core->macro->regfield_i2s_lrate_offset = H_I2S_LONG_RATE_OFFSET;
 	hsi2s_core->macro->regfield_spkr_mode_sd0 = H_I2S_SPKR_MODE_SD0;
 	hsi2s_core->macro->regfield_spkr_mode_sd1 = H_I2S_SPKR_MODE_SD1;
 	hsi2s_core->macro->regfield_spkr_mode_quad01 = H_I2S_SPKR_MODE_QUAD01;
@@ -993,6 +995,16 @@ static int configure_i2s_params(struct hsi2s_device *hs_dev, struct hsi2s_params
 		/* Mic channel */
 		configure_mic_channel(hs_dev, params->mic_channel_count);
 		pr_warn("[HSI2S] Mic channel count configured as %u", params->mic_channel_count);
+		/* Check whether long rate is enabled */
+		hs_dev->en_long_rate = params->en_long_rate;
+		if (hs_dev->en_long_rate) {
+			if (params->long_rate >= LONG_RATE_MIN && params->long_rate <= LONG_RATE_MAX) {
+				hs_dev->long_rate = params->long_rate << hsi2s_core->macro->regfield_i2s_lrate_offset;
+			} else {
+				pr_warn("[HSI2S] Invalid long rate value specified, disabling long rate");
+				hs_dev->en_long_rate = 0;
+			}
+		}
 	} else {
 		pr_err("[HSI2S] Passed null hsi2s_params structure");
 		ret = -EINVAL;
@@ -1007,6 +1019,10 @@ static void configure_i2s_spkr(struct hsi2s_device *hs_dev)
 	setbits(hs_dev->i2s_ctl, hs_dev->spkr_mode |
 				 hs_dev->spkr_channel_count |
 				 hs_dev->bit_depth);
+	if (hs_dev->en_long_rate) {
+		setbits(hs_dev->i2s_ctl, hs_dev->long_rate);
+		setbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_en_long_rate);
+	}
 	clearbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
 	setbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_i2s_reset);
 	clearbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_i2s_reset);
@@ -1019,6 +1035,10 @@ static void configure_i2s_mic(struct hsi2s_device *hs_dev)
 				 hsi2s_core->macro->bit_ws_src |
 				 hs_dev->mic_channel_count |
 				 hs_dev->bit_depth);
+	if (hs_dev->en_long_rate) {
+		setbits(hs_dev->i2s_ctl, hs_dev->long_rate);
+		setbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_en_long_rate);
+	}
 	clearbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
 	setbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_i2s_reset);
 	clearbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_i2s_reset);

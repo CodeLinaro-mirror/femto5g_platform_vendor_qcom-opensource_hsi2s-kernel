@@ -117,12 +117,14 @@
 #define T_I2S_MIC_EN				BIT(9)
 #define T_I2S_SPKR_EN				BIT(16)
 #define T_I2S_LOOPBACK				BIT(17)
+#define T_I2S_EN_LONG_RATE			BIT(24)
 #define T_I2S_RESET				BIT(31)
 
 #define H_I2S_WS_SRC				BIT(2)
 #define H_I2S_MIC_EN				BIT(8)
 #define H_I2S_SPKR_EN				BIT(14)
 #define H_I2S_LOOPBACK				BIT(15)
+#define H_I2S_EN_LONG_RATE			BIT(22)
 #define H_I2S_RESET				BIT(31)
 
 /* Bits for PCM control register */
@@ -350,8 +352,10 @@
 #define DONT_INVERT_INT_BIT_CLOCK 0x2
 #define DONT_INVERT_EXT_BIT_CLOCK 0x3
 #define PGS_TIMEOUT msecs_to_jiffies(3000)
+#define LONG_RATE_MIN 0
+#define LONG_RATE_MAX 63
 
-#define T_I2S_LONG_RATE_15 0x3C0000
+#define T_I2S_LONG_RATE_OFFSET 18
 #define T_I2S_SPKR_MODE_SD0 0x800
 #define T_I2S_SPKR_MODE_SD1 0x1000
 #define T_I2S_SPKR_MODE_QUAD01 0x2800
@@ -406,7 +410,7 @@
 #define T_SYNC_SEL_PRI 0x1
 #define T_SYNC_SEL_SEC 0x2
 
-#define H_I2S_LONG_RATE_15 0xF0000
+#define H_I2S_LONG_RATE_OFFSET 16
 #define H_I2S_SPKR_MODE_SD0 0x400
 #define H_I2S_SPKR_MODE_SD1 0x800
 #define H_I2S_SPKR_MODE_QUAD01 0x1400
@@ -627,6 +631,8 @@ struct hsi2s_device {
 	u32 bit_depth;
 	u32 wpscnt_rddma;
 	u32 wpscnt_wrdma;
+	u8 en_long_rate;
+	u32 long_rate;
 	/* Absolute values */
 	u32 data_buffer_ms_val;
 	u32 bit_depth_val;
@@ -663,6 +669,8 @@ struct hsi2s_params {
 	u32 bit_depth;
 	u32 spkr_channel_count;
 	u32 mic_channel_count;
+	u8 en_long_rate;
+	u32 long_rate;
 };
 
 /* PCM parameters */
@@ -764,6 +772,7 @@ struct hsi2s_macros {
 	u32 bit_spkr_en;
 	u32 bit_loopback;
 	u32 bit_i2s_reset;
+	u32 bit_en_long_rate;
 	u32 bit_tpcm_width;
 	u32 bit_rpcm_width;
 	u32 bit_aux_mode;
@@ -802,7 +811,7 @@ struct hsi2s_macros {
 	u32 bit_rate_reset;
 
 	/* Register fields */
-	u32 regfield_i2s_lrate15;
+	u32 regfield_i2s_lrate_offset;
 	u32 regfield_spkr_mode_sd0;
 	u32 regfield_spkr_mode_sd1;
 	u32 regfield_spkr_mode_quad01;

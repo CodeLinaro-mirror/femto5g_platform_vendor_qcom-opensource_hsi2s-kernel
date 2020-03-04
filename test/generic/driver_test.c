@@ -108,6 +108,8 @@ struct i2s_params {
 	unsigned int bit_depth;
 	unsigned int spkr_channel_count;
 	unsigned int mic_channel_count;
+	uint8_t en_long_rate;
+	uint32_t long_rate;
 };
 
 /* PCM parameters */
@@ -179,7 +181,8 @@ void help()
 	printf("CONFIGURE MASTER CLOCK:\n");
 	printf("hsi2s_test 6 <device file> <clock-source> <divide-by>\n\n");
 	printf("CONFIGURE I2S PARAMETERS:\n");
-	printf("hsi2s_test 7 <device file> <bit clock in hertz> <data buffer in ms> <bit depth> <speaker channel count> <mic channel count>\n\n");
+	printf("hsi2s_test 7 <device file> <bit clock in hertz> <data buffer in ms> <bit depth> <speaker channel count> <mic channel count>"
+	       " <en_long_rate> [<long rate>]\n\n");
 	printf("CONFIGURE PCM PARAMETERS:\n");
 	printf("hsi2s_test 8 <device file> <bit clock in hertz> <data buffer in ms> <pcm_rate> <sync_src> <aux_mode> <rpcm_width> <tpcm_width>\n\n");
 	printf("CONFIGURE TDM PARAMETERS:\n");
@@ -201,6 +204,8 @@ void help()
 	printf("<bit depth> : 16 | 24 | 25 | 32\n");
 	printf("<speaker channel count> : 1 | 2 | 4\n");
 	printf("<mic channel count> : 1 | 2 |4\n");
+	printf("<en_long_rate> : 0 -> Disable long rate 1 -> Enable long rate, allows WS rate to be larger than bit depth\n");
+	printf("<long rate> : New WS rate when long rate is enabled\n");
 	printf("<clock-source> : 0 -> CXO(19.2 MHz) 1 -> DIGITAL PLL(122.88 MHz)\n");
 	printf("<divide-by> : 0 -> Bypass, 1 -> Div-1, 2 -> Div-1.5, 3 -> Div-2, 4 -> Div-2.5, ..... 31 -> Div-16\n");
 	printf("<pcm_rate> : Frame size : 0 -> 8 bits, 1 -> 16 bits, 2 -> 32 bits, 3 -> 64 bits, 4 -> 128 bits, 5 -> 256 bits\n");
@@ -517,7 +522,7 @@ int main(int argc, char **argv)
 	/* Operation mode : Configure I2S parameters */
 	if (mode == CONFIG_I2S_PARAMS) {
 		printf("Configuring I2S parameters...\n");
-		if (argc < 8) {
+		if (argc < 9) {
 			help();
 			exit(0);
 		}
@@ -531,6 +536,16 @@ int main(int argc, char **argv)
 		i_params->bit_depth = atoi(argv[arg++]);
 		i_params->spkr_channel_count = atoi(argv[arg++]);
 		i_params->mic_channel_count = atoi(argv[arg++]);
+		i_params->en_long_rate = atoi(argv[arg++]);
+		if (i_params->en_long_rate) {
+			if(arg < argc) {
+				i_params->long_rate = atoi(argv[arg++]);
+			} else {
+				help();
+				free(i_params);
+				return -EINVAL;
+			}
+		}
 		if (ioctl(fd_master, I2S_CONFIG_PARAMS, i_params) < 0) {
 			printf("Failed to configure I2S parameters on target\n");
 			free(i_params);
