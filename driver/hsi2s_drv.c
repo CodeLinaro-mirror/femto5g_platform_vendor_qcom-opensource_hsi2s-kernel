@@ -2637,6 +2637,97 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 		}
 	}
 
+	/* Check for DMA errors on HS0 interface */
+	if (hs_arr[0]) {
+		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
+		/* Error on read channel 0 */
+		if (irq_stat & (IRQ_UNDR_RDDMA_CH0 | IRQ_ERR_RDDMA_CH0)) {
+			pr_err("[HSI2S] Error on read DMA channel 0");
+			if (irq_stat & IRQ_UNDR_RDDMA_CH0) {
+				setbits(hsi2s_core->irq_clear, IRQ_UNDR_RDDMA_CH0);
+				pr_err("[HSI2S] Underrun detected");
+			}
+			if (irq_stat & IRQ_ERR_RDDMA_CH0) {
+				setbits(hsi2s_core->irq_clear, IRQ_ERR_RDDMA_CH0);
+				pr_err("[HSI2S] Bus error detected");
+			}
+		}
+		/* Error on write channel 0 */
+		if (irq_stat & (IRQ_OVR_WRDMA_CH0 | IRQ_ERR_WRDMA_CH0)) {
+			pr_err("[HSI2S] Error on write DMA channel 0");
+			if (irq_stat & IRQ_OVR_WRDMA_CH0) {
+				setbits(hsi2s_core->irq_clear, IRQ_OVR_WRDMA_CH0);
+				pr_err("[HSI2S] Overrun detected");
+			}
+			if (irq_stat & IRQ_ERR_WRDMA_CH0) {
+				setbits(hsi2s_core->irq_clear, IRQ_ERR_WRDMA_CH0);
+				pr_err("[HSI2S] Bus error detected");
+			}
+		}
+
+	}
+
+	/* Check for DMA errors on HS1 interface */
+	if (hs_arr[1]) {
+		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
+		/* Error on read channel 1 */
+		if (irq_stat & (IRQ_UNDR_RDDMA_CH1 | IRQ_ERR_RDDMA_CH1)) {
+			pr_err("[HSI2S] Error on read DMA channel 1");
+			if (irq_stat & IRQ_UNDR_RDDMA_CH1) {
+				setbits(hsi2s_core->irq_clear, IRQ_UNDR_RDDMA_CH1);
+				pr_err("[HSI2S] Underrun detected");
+			}
+			if (irq_stat & IRQ_ERR_RDDMA_CH1) {
+				setbits(hsi2s_core->irq_clear, IRQ_ERR_RDDMA_CH1);
+				pr_err("[HSI2S] Bus error detected");
+			}
+		}
+		/* Error on write channel 1 */
+		if (irq_stat & (IRQ_OVR_WRDMA_CH1 | IRQ_ERR_WRDMA_CH1)) {
+			pr_err("[HSI2S] Error on write DMA channel 1");
+			if (irq_stat & IRQ_OVR_WRDMA_CH1) {
+				setbits(hsi2s_core->irq_clear, IRQ_OVR_WRDMA_CH1);
+				pr_err("[HSI2S] Overrun detected");
+			}
+			if (irq_stat & IRQ_ERR_WRDMA_CH1) {
+				setbits(hsi2s_core->irq_clear, IRQ_ERR_WRDMA_CH1);
+				pr_err("[HSI2S] Bus error detected");
+			}
+		}
+
+	}
+
+	/* Check for DMA errors on HS2 interface */
+	if (hs_arr[2]) {
+		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
+		/* Error on read channel 2 */
+		if (irq_stat & (IRQ_UNDR_RDDMA_CH2 | IRQ_ERR_RDDMA_CH2)) {
+			pr_err("[HSI2S] Error on read DMA channel 2");
+			if (irq_stat & IRQ_UNDR_RDDMA_CH2) {
+				setbits(hsi2s_core->irq_clear, IRQ_UNDR_RDDMA_CH2);
+				pr_err("[HSI2S] Underrun detected");
+			}
+			if (irq_stat & IRQ_ERR_RDDMA_CH2) {
+				setbits(hsi2s_core->irq_clear, IRQ_ERR_RDDMA_CH2);
+				pr_err("[HSI2S] Bus error detected");
+			}
+		}
+		/* Error on write channel 2 */
+		if (irq_stat & (IRQ_OVR_WRDMA_CH2 | IRQ_ERR_WRDMA_CH2)) {
+			pr_err("[HSI2S] Error on write DMA channel 2");
+			if (irq_stat & IRQ_OVR_WRDMA_CH2) {
+				setbits(hsi2s_core->irq_clear, IRQ_OVR_WRDMA_CH2);
+				pr_err("[HSI2S] Overrun detected");
+			}
+			if (irq_stat & IRQ_ERR_WRDMA_CH2) {
+				setbits(hsi2s_core->irq_clear, IRQ_ERR_WRDMA_CH2);
+				pr_err("[HSI2S] Bus error detected");
+			}
+		}
+
+	}
+
+	/* Rate detection */
 	if (hsi2s_core->is_rate_enabled) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		if (irq_stat & IRQ_PRI_RD_DIFF_RATE) {
