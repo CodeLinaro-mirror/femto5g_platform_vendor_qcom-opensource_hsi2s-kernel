@@ -492,6 +492,9 @@ enum operation_mode {
 
 /* LPAIF HS-I2S core structure */
 struct hsi2s_core {
+	/* Device pointer */
+	struct device *dev;
+
 	/* HS-I2S device structure */
 	struct hsi2s_device **hsi2s_arr;
 
