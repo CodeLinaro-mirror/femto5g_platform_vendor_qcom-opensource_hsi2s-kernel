@@ -983,6 +983,10 @@ static int configure_i2s_params(struct hsi2s_device *hs_dev, struct hsi2s_params
 
 	if (params) {
 		/* Set the periodic length */
+		if (params->bit_clk > BIT_CLK_MAX) {
+			dev_err(hs_dev->dev, "Bit clock rate exceeds maximum supported rate of 73.728MHz");
+			return -EINVAL;
+		}
 		hs_dev->wrdma_periodic_length_bytes = set_periodic_length(params->bit_clk, params->buffer_ms);
 		hs_dev->wrdma_periodic_length = hs_dev->wrdma_periodic_length_bytes / BYTES_PER_SAMPLE;
 		dev_info(hs_dev->dev, "Periodic length configured as %u words", hs_dev->wrdma_periodic_length);
@@ -1195,6 +1199,10 @@ static int configure_pcm_params(struct hsi2s_device *hs_dev, struct hspcm_params
 
 	if (params) {
 		/* Set the periodic length */
+		if (params->bit_clk > BIT_CLK_MAX) {
+			dev_err(hs_dev->dev, "Bit clock rate exceeds maximum supported rate of 73.728MHz");
+			return -EINVAL;
+		}
 		hs_dev->wrdma_periodic_length_bytes = set_periodic_length(params->bit_clk, params->buffer_ms);
 		hs_dev->wrdma_periodic_length = hs_dev->wrdma_periodic_length_bytes / BYTES_PER_SAMPLE;
 		dev_info(hs_dev->dev, "Periodic length configured as %u words", hs_dev->wrdma_periodic_length);
@@ -3569,6 +3577,12 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 
 	if (!bit_clk) {
 		dev_err(hs_dev->dev, "Bit clock not configured. Exiting...");
+		ret = -EINVAL;
+		goto err_disable_intf_clock;
+	}
+
+	if (bit_clk > BIT_CLK_MAX) {
+		dev_err(hs_dev->dev, "Bit clock rate exceeds maximum supported rate of 73.728MHz. Exiting...");
 		ret = -EINVAL;
 		goto err_disable_intf_clock;
 	}

@@ -354,6 +354,7 @@
 #define PGS_TIMEOUT msecs_to_jiffies(3000)
 #define LONG_RATE_MIN 0
 #define LONG_RATE_MAX 63
+#define BIT_CLK_MAX 73728000
 
 #define T_I2S_LONG_RATE_OFFSET 18
 #define T_I2S_SPKR_MODE_SD0 0x800
