@@ -1916,7 +1916,6 @@ err_smmu_probe:
 	kfree(hs_dev->hsi2s_smmu_ctx);
 	hs_dev->hsi2s_smmu_ctx = NULL;
 
-	hs_dev->hsi2s_smmu_ctx->ret = ret;
 	return ret;
 }
 #endif
@@ -2796,6 +2795,7 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	struct hstdm_params *tdm_params;
 	void __iomem *clk_val_reg;
 	void __iomem *clk_update_reg;
+	void __iomem *clk_inv_reg;
 	int minor;
 	int ret = 0;
 
@@ -2954,24 +2954,24 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 			if (hs_dev->client_count == 1) {
 				if (hs_dev->minor_num == 0) {
-					clk_update_reg = ioremap(HS0_BITCLK_CMD,4);
-					clk_val_reg = ioremap(HS0_BITCLK_CFG,4);
+					clk_update_reg = ioremap(HS0_BITCLK_CMD_REG,4);
+					clk_val_reg = ioremap(HS0_BITCLK_CFG_REG,4);
 
 					clearbits(clk_val_reg, HS_BITCLK_RESET);
 					setbits(clk_val_reg, arg);
 					setbits(clk_update_reg, HS_BITCLK_UPDATE);
 				}
 				else if (hs_dev->minor_num == 1) {
-					clk_update_reg = ioremap(HS1_BITCLK_CMD,4);
-					clk_val_reg = ioremap(HS1_BITCLK_CFG,4);
+					clk_update_reg = ioremap(HS1_BITCLK_CMD_REG,4);
+					clk_val_reg = ioremap(HS1_BITCLK_CFG_REG,4);
 
 					clearbits(clk_val_reg, HS_BITCLK_RESET);
 					setbits(clk_val_reg, arg);
 					setbits(clk_update_reg, HS_BITCLK_UPDATE);
 				}
 				else {
-					clk_update_reg = ioremap(HS2_BITCLK_CMD,4);
-					clk_val_reg = ioremap(HS2_BITCLK_CFG,4);
+					clk_update_reg = ioremap(HS2_BITCLK_CMD_REG,4);
+					clk_val_reg = ioremap(HS2_BITCLK_CFG_REG,4);
 
 					clearbits(clk_val_reg, HS_BITCLK_RESET);
 					setbits(clk_val_reg, arg);
@@ -3044,7 +3044,7 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		case I2S_CONFIG_PARAMS:
 			if (hs_dev->client_count == 1) {
 				pr_warn("[HSI2S] Configuring I2S parameters from test application");
-				i2s_params = kzalloc(sizeof(i2s_params), GFP_KERNEL);
+				i2s_params = kzalloc(sizeof(struct hsi2s_params), GFP_KERNEL);
 				if (!i2s_params) {
 					pr_err("[HSI2S] Failed to allocate params structure");
 					ret = -ENOMEM;
@@ -3066,7 +3066,7 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		case PCM_CONFIG_PARAMS:
 			if (hs_dev->client_count == 1) {
 				pr_warn("[HSI2S] Configuring PCM parameters from test application");
-				pcm_params = kzalloc(sizeof(pcm_params), GFP_KERNEL);
+				pcm_params = kzalloc(sizeof(struct hspcm_params), GFP_KERNEL);
 				if (!pcm_params) {
 					pr_err("[HSI2S] Failed to allocate params structure");
 					ret = -ENOMEM;
@@ -3089,7 +3089,7 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			pr_warn("[HSI2S] Setting TDM params");
 			if (hs_dev->client_count == 1) {
 				pr_warn("[HSI2S] Configuring TDM parameters from test application");
-				tdm_params = kzalloc(sizeof(tdm_params), GFP_KERNEL);
+				tdm_params = kzalloc(sizeof(struct hstdm_params), GFP_KERNEL);
 				if (!tdm_params) {
 					pr_err("[HSI2S] Failed to allocate params structure");
 					ret = -ENOMEM;
@@ -3114,6 +3114,51 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				set_pcm_lane_config(hs_dev, arg);
 			else
 				pr_warn("[HSI2S] Mode already set by previous client");
+			break;
+
+		case LPAIF_INVERT_BIT_CLOCK:
+			if (hsi2s_core->target == 6155) {
+				pr_err("[HSI2S] Bit clock configuration is not supported by target");
+				return -EINVAL;
+			}
+
+			pr_info("[HSI2S] Re-configuring bit clock on HS%d interface", hs_dev->minor_num);
+			if (hs_dev->client_count == 1) {
+				if (hs_dev->minor_num == 0)
+					clk_inv_reg = ioremap(HS0_BITCLK_INV_REG, 4);
+				else if (hs_dev->minor_num == 1)
+					clk_inv_reg = ioremap(HS1_BITCLK_INV_REG, 4);
+				else
+					clk_inv_reg = ioremap(HS2_BITCLK_INV_REG, 4);
+
+				switch (arg) {
+					case INVERT_INT_BIT_CLOCK:
+						pr_info("[HSI2S] Inverting internal bit clock");
+						setbits(clk_inv_reg, INV_INT_CLK);
+						break;
+					case INVERT_EXT_BIT_CLOCK:
+						pr_info("[HSI2S] Inverting external bit clock");
+						setbits(clk_inv_reg, INV_EXT_CLK);
+						break;
+					case DONT_INVERT_INT_BIT_CLOCK:
+						pr_info("[HSI2S] Non-inverting internal bit clock");
+						clearbits(clk_inv_reg, INV_INT_CLK);
+						break;
+					case DONT_INVERT_EXT_BIT_CLOCK:
+						pr_info("[HSI2S] Non-inverting external bit clock");
+						clearbits(clk_inv_reg, INV_EXT_CLK);
+						break;
+					default:
+						pr_err("[HSI2S] Invalid argument provided");
+						ret = -EINVAL;
+						break;
+				}
+
+				iounmap(clk_inv_reg);
+				pr_info("[HSI2S] Re-configured bit clock");
+			}
+			else
+				pr_warn("[HSI2S] Clock already set by previous client");
 			break;
 
 		default:
@@ -3509,7 +3554,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 		devname = SDR0;
 	else if (minor == 1)
 		devname = SDR1;
-	else if (minor == 2)
+	else
 		devname = SDR2;
 
 	hs_dev->class_sdr = class_create(THIS_MODULE,
@@ -3843,47 +3888,47 @@ static int hsi2s_interface_remove(struct platform_device *pdev)
 	mutex_lock(&hsi2s_core->irqlock);
 
 	hs_dev = (struct hsi2s_device *)platform_get_drvdata(pdev);
-	minor = hs_dev->minor_num;
-
-	/* Reset the interface registers */
-	reset_registers(hs_dev);
-	/* Remove the device file */
-	device_destroy(hs_dev->class_sdr, hs_dev->curr_devid);
-	class_destroy(hs_dev->class_sdr);
-	cdev_del(hs_dev->cdev_sdr);
-	kfree(hs_dev->cdev_sdr);
-	hs_dev->cdev_sdr = NULL;
-	/* Stop the DMA scheduler thread */
-	kthread_stop(hs_dev->rddma_thread);
-	/* Disable the interface clocks */
-	if (hsi2s_core->target == 6155)
-		hsi2s_disable_intf_clks(pdev);
-	/* Detach and release iommu mapping */
-	#ifndef CONFIG_QTI_GVM
-	if (hs_dev->hsi2s_smmu_ctx->valid) {
-		if (hs_dev->hsi2s_smmu_ctx->smmu_pdev)
-			arm_iommu_detach_device(&hs_dev->hsi2s_smmu_ctx->smmu_pdev->dev);
-		if (hs_dev->hsi2s_smmu_ctx->mapping)
-			arm_iommu_release_mapping(hs_dev->hsi2s_smmu_ctx->mapping);
-		hs_dev->hsi2s_smmu_ctx->valid = false;
-		hs_dev->hsi2s_smmu_ctx->mapping = NULL;
-		hs_dev->hsi2s_smmu_ctx->pdev_master = NULL;
-		hs_dev->hsi2s_smmu_ctx->smmu_pdev = NULL;
-		pr_warn("[HSI2S] Detach and release iommu mapping");
-	}
-	kfree(hs_dev->hsi2s_smmu_ctx);
-	hs_dev->hsi2s_smmu_ctx = NULL;
-	#endif
-
-	/* Free the allocated buffers and device data structures */
 	if (hs_dev) {
+		/* Get minor number for the interface */
+		minor = hs_dev->minor_num;
+
+		/* Reset the interface registers */
+		reset_registers(hs_dev);
+		/* Remove the device file */
+		device_destroy(hs_dev->class_sdr, hs_dev->curr_devid);
+		class_destroy(hs_dev->class_sdr);
+		cdev_del(hs_dev->cdev_sdr);
+		kfree(hs_dev->cdev_sdr);
+		hs_dev->cdev_sdr = NULL;
+		/* Stop the DMA scheduler thread */
+		kthread_stop(hs_dev->rddma_thread);
+		/* Disable the interface clocks */
+		if (hsi2s_core->target == 6155)
+			hsi2s_disable_intf_clks(pdev);
+		/* Detach and release iommu mapping */
+		#ifndef CONFIG_QTI_GVM
+		if (hs_dev->hsi2s_smmu_ctx->valid) {
+			if (hs_dev->hsi2s_smmu_ctx->smmu_pdev)
+				arm_iommu_detach_device(&hs_dev->hsi2s_smmu_ctx->smmu_pdev->dev);
+			if (hs_dev->hsi2s_smmu_ctx->mapping)
+				arm_iommu_release_mapping(hs_dev->hsi2s_smmu_ctx->mapping);
+			hs_dev->hsi2s_smmu_ctx->valid = false;
+			hs_dev->hsi2s_smmu_ctx->mapping = NULL;
+			hs_dev->hsi2s_smmu_ctx->pdev_master = NULL;
+			hs_dev->hsi2s_smmu_ctx->smmu_pdev = NULL;
+			pr_warn("[HSI2S] Detach and release iommu mapping");
+		}
+		kfree(hs_dev->hsi2s_smmu_ctx);
+		hs_dev->hsi2s_smmu_ctx = NULL;
+		#endif
+
+		/* Free the allocated buffers and device data structures */
 		hsi2s_buffer_free(hs_dev);
 		kfree(hs_dev);
 		hs_dev = NULL;
 		hsi2s_core->hsi2s_arr[minor] = NULL;
 	} else {
-		pr_warn("[HSI2S] hs_dev is already NULL for SDR%d"
-			, minor);
+		pr_warn("[HSI2S] Platform driver data is NULL");
 	}
 
 	mutex_unlock(&hsi2s_core->irqlock);
