@@ -2104,7 +2104,7 @@ static int hsi2s_configure_gpio_pins(struct platform_device *pdev)
 
 #ifndef CONFIG_QTI_GVM
 /* Function to disable clocks for SA8155/SA8195 using QMI */
-static int hsi2s_adsp_disable_clks()
+static int hsi2s_adsp_disable_clks(void)
 {
 	int ret = 0;
 
@@ -2118,7 +2118,7 @@ static int hsi2s_adsp_disable_clks()
 }
 
 /* Function to enable clocks for SA8155/SA8195 using QMI */
-static int hsi2s_adsp_enable_clks()
+static int hsi2s_adsp_enable_clks(void)
 {
 	int ret = 0;
 
