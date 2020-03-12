@@ -530,8 +530,10 @@ struct hsi2s_core {
 	void __iomem *sec_rate_stc_diff;
 	void __iomem *sec_rate_sel;
 
-	/* QMI handle */
+	/* QMI */
 	struct qmi_handle *qmi_dev;
+	wait_queue_head_t wq_qmi;
+	bool qmi_connection;
 
 	/* Clocks */
 	struct clk *core_clk;
@@ -612,7 +614,6 @@ struct hsi2s_device {
 	/* Wait queues */
 	wait_queue_head_t wq_rddma;
 	wait_queue_head_t wq_wrdma;
-	wait_queue_head_t wq_copy;
 
 	/* Minor number */
 	int minor_num;

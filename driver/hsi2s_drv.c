@@ -87,6 +87,10 @@ static int pgs_clk_ctrl_send_sync_msg(struct qmi_handle *dev, int en)
 
 	req->hsi2s_data[0] = (u8) en;
 
+	if (hsi2s_core->qmi_connection == false)
+		wait_event_interruptible(hsi2s_core->wq_qmi,
+					 hsi2s_core->qmi_connection == true);
+
 	ret = qmi_txn_init(dev, &txn, prod_hsi2s_clk_ctrl_resp_msg_v01_ei, resp);
 	if (ret < 0) {
 		dev_err(hsi2s_core->dev, "Init txn failed for mode resp %d\n", ret);
@@ -152,6 +156,9 @@ static int hsi2s_qmi_adsp_new_server(struct qmi_handle *qmi,
 		goto err_put_device;
 
 	service->priv = pdev;
+	hsi2s_core->qmi_connection = true;
+	wake_up_interruptible(&hsi2s_core->wq_qmi);
+
 	return 0;
 
 err_put_device:
@@ -164,6 +171,7 @@ static void hsi2s_qmi_adsp_del_server(struct qmi_handle *qmi,
 {
 	struct platform_device *pdev = service->priv;
 
+	hsi2s_core->qmi_connection = false;
 	platform_device_unregister(pdev);
 }
 
@@ -1983,7 +1991,6 @@ static int init_default(struct hsi2s_device *hs_dev, int intf)
 	/* Initialize the wait queues */
 	init_waitqueue_head(&hs_dev->wq_rddma);
 	init_waitqueue_head(&hs_dev->wq_wrdma);
-	init_waitqueue_head(&hs_dev->wq_copy);
 
 	return ret;
 }
@@ -4011,6 +4018,12 @@ static int hsi2s_probe(struct platform_device *pdev)
 				ret = -ENOMEM;
 				goto err_free_macro;
 			}
+
+			/* Initialize QMI wait queue */
+			init_waitqueue_head(&hsi2s_core->wq_qmi);
+
+			/* Initialize QMI connection flag */
+			hsi2s_core->qmi_connection = false;
 
 			ret = qmi_handle_init(hsi2s_core->qmi_dev,
 					PROD_HSI2S_CLK_CTRL_REQ_MSG_V01_MAX_MSG_LEN,
