@@ -21,20 +21,20 @@
 
 
 struct prod_hsi2s_clk_ctrl_req_msg_v01 {
-	u8 hsi2s_data[64];
+	u8 enable_hsi2s_clks;
 };
 
-#define PROD_HSI2S_CLK_CTRL_REQ_MSG_V01_MAX_MSG_LEN 67
+#define PROD_HSI2S_CLK_CTRL_REQ_MSG_V01_MAX_MSG_LEN 4
 
 struct qmi_elem_info prod_hsi2s_clk_ctrl_req_msg_v01_ei[] = {
 	{
 		.data_type      = QMI_UNSIGNED_1_BYTE,
-		.elem_len       = 64, /* size of hsi2s_data array */
+		.elem_len       = 1,
 		.elem_size      = sizeof(u8),
-		.is_array       = STATIC_ARRAY,
+		.is_array       = NO_ARRAY,
 		.tlv_type       = 0x01,
 		.offset         = offsetof(struct prod_hsi2s_clk_ctrl_req_msg_v01,
-					   hsi2s_data),
+					   enable_hsi2s_clks),
 	},
 	{
 		.data_type      = QMI_EOTI,

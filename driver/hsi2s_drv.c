@@ -85,7 +85,7 @@ static int pgs_clk_ctrl_send_sync_msg(struct qmi_handle *dev, int en)
 		return -ENOMEM;
 	}
 
-	req->hsi2s_data[0] = (u8) en;
+	req->enable_hsi2s_clks = (u8) en;
 
 	if (hsi2s_core->qmi_connection == false)
 		wait_event_interruptible(hsi2s_core->wq_qmi,
