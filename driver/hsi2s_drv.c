@@ -12,6 +12,7 @@
 
 #include "hsi2s_drv.h"
 #include "hsi2s_adsp_clk_ctrl.h"
+#include "hsi2s_common.h"
 
 /* Device number */
 static dev_t devid;
