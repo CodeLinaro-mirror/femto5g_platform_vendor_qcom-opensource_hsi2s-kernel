@@ -26,6 +26,7 @@
 #include <string.h>
 #include <poll.h>
 #include <time.h>
+#include <errno.h>
 
 /* IOCTL commands copied from the i2s_driver header */
 /* Configures I2S/PCM and DMA registers for normal data transfer on the interface */
@@ -67,7 +68,7 @@
 #define BYTES_PER_WORD 4
 #define READ_LENGTH_MB 2
 #define READ_LENGTH_WORDS (READ_LENGTH_MB * 1024 * 1024) / BYTES_PER_WORD
-#define READ_LIMIT 1024*1024*1024
+#define READ_LIMIT 4294967926 /* 4GB */
 #define SRC_DIGITAL_PLL 0x500
 #define BILLION 1000000000L
 #define INVERT 1
@@ -107,6 +108,8 @@ struct i2s_params {
 	unsigned int bit_depth;
 	unsigned int spkr_channel_count;
 	unsigned int mic_channel_count;
+	uint8_t en_long_rate;
+	uint32_t long_rate;
 };
 
 /* PCM parameters */
@@ -137,7 +140,7 @@ FILE *fd_read_ip;
 FILE *fd_write_op;
 long read_length_bytes;
 long read_length_words;
-long read_limit;
+long long read_limit;
 enum operation_mode mode;
 enum rx_mode rx = MMAP;
 struct i2s_params *i_params;
@@ -178,7 +181,8 @@ void help()
 	printf("CONFIGURE MASTER CLOCK:\n");
 	printf("hsi2s_test 6 <device file> <clock-source> <divide-by>\n\n");
 	printf("CONFIGURE I2S PARAMETERS:\n");
-	printf("hsi2s_test 7 <device file> <bit clock in hertz> <data buffer in ms> <bit depth> <speaker channel count> <mic channel count>\n\n");
+	printf("hsi2s_test 7 <device file> <bit clock in hertz> <data buffer in ms> <bit depth> <speaker channel count> <mic channel count>"
+	       " <en_long_rate> [<long rate>]\n\n");
 	printf("CONFIGURE PCM PARAMETERS:\n");
 	printf("hsi2s_test 8 <device file> <bit clock in hertz> <data buffer in ms> <pcm_rate> <sync_src> <aux_mode> <rpcm_width> <tpcm_width>\n\n");
 	printf("CONFIGURE TDM PARAMETERS:\n");
@@ -200,6 +204,8 @@ void help()
 	printf("<bit depth> : 16 | 24 | 25 | 32\n");
 	printf("<speaker channel count> : 1 | 2 | 4\n");
 	printf("<mic channel count> : 1 | 2 |4\n");
+	printf("<en_long_rate> : 0 -> Disable long rate 1 -> Enable long rate, allows WS rate to be larger than bit depth\n");
+	printf("<long rate> : New WS rate when long rate is enabled\n");
 	printf("<clock-source> : 0 -> CXO(19.2 MHz) 1 -> DIGITAL PLL(122.88 MHz)\n");
 	printf("<divide-by> : 0 -> Bypass, 1 -> Div-1, 2 -> Div-1.5, 3 -> Div-2, 4 -> Div-2.5, ..... 31 -> Div-16\n");
 	printf("<pcm_rate> : Frame size : 0 -> 8 bits, 1 -> 16 bits, 2 -> 32 bits, 3 -> 64 bits, 4 -> 128 bits, 5 -> 256 bits\n");
@@ -255,7 +261,7 @@ uint32_t get_periodic_length(uint32_t bit_clk, uint32_t interval)
 /* Read thread */
 void *poll_read(void *arg)
 {
-	long r_limit = 0;
+	long long r_limit = 0;
 	long temp;
 	int ret;
 	double thread_start;
@@ -325,7 +331,7 @@ void *user_read(void *arg)
 	size_t transfer_length;
 	int32_t *received_data;
 	int cnt = 0;
-	long r_limit = 0;
+	long long r_limit = 0;
 	int boundary_read;
 	double thread_start;
 	double thread_stop;
@@ -334,6 +340,10 @@ void *user_read(void *arg)
 	printf("Performing data read...\n");
 
 	received_data = (int32_t *) malloc(read_length_words * sizeof(int32_t));
+	if (!received_data) {
+		printf("Failed to allocate receive data buffer\n");
+		return NULL;
+	}
 
 	clock_gettime(CLOCK_REALTIME, &nread_start);
 	thread_start = (nread_start.tv_sec * BILLION) + nread_start.tv_nsec;
@@ -385,7 +395,7 @@ int main(int argc, char **argv)
 	long wav_samples;
 	long no_words;
 	long w_len;
-	int32_t *wav_data;
+	int32_t *wav_data = NULL;
 	int32_t temp_data;
 	int i;
 	int mux;
@@ -512,16 +522,30 @@ int main(int argc, char **argv)
 	/* Operation mode : Configure I2S parameters */
 	if (mode == CONFIG_I2S_PARAMS) {
 		printf("Configuring I2S parameters...\n");
-		if (argc < 8) {
+		if (argc < 9) {
 			help();
 			exit(0);
 		}
 		i_params = (struct i2s_params *) malloc(sizeof(struct i2s_params));
+		if (!i_params) {
+			printf("Failed to allocate I2S param structure\n");
+			return -ENOMEM;
+		}
 		i_params->bit_clk = atoi(argv[arg++]);
 		i_params->buffer_ms = atoi(argv[arg++]);
 		i_params->bit_depth = atoi(argv[arg++]);
 		i_params->spkr_channel_count = atoi(argv[arg++]);
 		i_params->mic_channel_count = atoi(argv[arg++]);
+		i_params->en_long_rate = atoi(argv[arg++]);
+		if (i_params->en_long_rate) {
+			if(arg < argc) {
+				i_params->long_rate = atoi(argv[arg++]);
+			} else {
+				help();
+				free(i_params);
+				return -EINVAL;
+			}
+		}
 		if (ioctl(fd_master, I2S_CONFIG_PARAMS, i_params) < 0) {
 			printf("Failed to configure I2S parameters on target\n");
 			free(i_params);
@@ -539,6 +563,10 @@ int main(int argc, char **argv)
 			exit(0);
 		}
 		p_params = (struct pcm_params *) malloc(sizeof(struct pcm_params));
+		if (!p_params) {
+			printf("Failed to allocate PCM param structure\n");
+			return -ENOMEM;
+		}
 		p_params->bit_clk = atoi(argv[arg++]);
 		p_params->buffer_ms = atoi(argv[arg++]);
 		p_params->rate = atoi(argv[arg++]);
@@ -563,6 +591,10 @@ int main(int argc, char **argv)
 			exit(0);
 		}
 		t_params = (struct tdm_params *) malloc(sizeof(struct tdm_params));
+		if (!t_params) {
+			printf("Failed to allocate TDM param structure\n");
+			return -ENOMEM;
+		}
 		t_params->sync_delay = atoi(argv[arg++]);
 		t_params->tpcm_width = atoi(argv[arg++]);
 		t_params->rpcm_width = atoi(argv[arg++]);
@@ -754,6 +786,10 @@ int main(int argc, char **argv)
 			}
 
 			i_params = (struct i2s_params *) malloc(sizeof(struct i2s_params));
+			if (!i_params) {
+				printf("Failed to allocate I2S param structure\n");
+				return -ENOMEM;
+			}
 			i_params->bit_clk = atoi(argv[arg++]);
 			i_params->buffer_ms = atoi(argv[arg++]);
 
@@ -829,6 +865,10 @@ int main(int argc, char **argv)
 	if (mode != NORMAL_RX) {
 		printf("Reading i/p file...\n");
 		wav_data = (int32_t *) malloc(no_words * sizeof(int32_t));
+		if (!wav_data) {
+			printf("Failed to allocate transmit data buffer\n");
+			return -ENOMEM;
+		}
 
 		/* Copy data from wav file into memory */
 		for (i = 0; i < no_words; i++) {
