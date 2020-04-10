@@ -1,4 +1,4 @@
-/* Copyright (c) 2019, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -11,6 +11,8 @@
  */
 
 #include "hsi2s_drv.h"
+#include "hsi2s_adsp_clk_ctrl.h"
+#include "hsi2s_common.h"
 
 /* Device number */
 static dev_t devid;
@@ -20,6 +22,10 @@ static u32 dma_buffer_length_words;
 
 /* HS-I2S core structure */
 static struct hsi2s_core *hsi2s_core;
+
+#ifndef CONFIG_QTI_GVM
+static struct sockaddr_qrtr sq;
+#endif
 
 /* Module parameters */
 static int lpaif_mode = HS_I2S;
@@ -49,6 +55,132 @@ MODULE_PARM_DESC(channel_count, "Number of channels(mono/stereo)");
 static u32 bit_depth;
 module_param(bit_depth, uint, 0644);
 MODULE_PARM_DESC(bit_depth, "Bit depth of the I2S interface");
+
+static int enable_qmi;
+module_param(enable_qmi, int, 0644);
+MODULE_PARM_DESC(enable_qmi, "Is QMI enabled: 0->Disabled 1->Enabled");
+
+#ifndef CONFIG_QTI_GVM
+/* QMI callbacks */
+static int pgs_clk_ctrl_send_sync_msg(struct qmi_handle *dev, int en)
+{
+	int ret;
+	struct prod_hsi2s_clk_ctrl_req_msg_v01 *req;
+	struct prod_hsi2s_clk_ctrl_resp_msg_v01 *resp;
+	struct qmi_txn txn;
+
+	if (!dev)
+		return -ENODEV;
+
+	req = kzalloc(sizeof(struct prod_hsi2s_clk_ctrl_req_msg_v01), GFP_KERNEL);
+	if (!req) {
+		dev_err(hsi2s_core->dev, "Failed to allocate QMI request message");
+		return -ENOMEM;
+	}
+
+	resp = kzalloc(sizeof(struct prod_hsi2s_clk_ctrl_resp_msg_v01),
+			GFP_KERNEL);
+	if (!resp) {
+		dev_err(hsi2s_core->dev, "Failed to allocate QMI response message");
+		kfree(req);
+		return -ENOMEM;
+	}
+
+	req->enable_hsi2s_clks = (u8) en;
+
+	if (hsi2s_core->qmi_connection == false)
+		wait_event_interruptible(hsi2s_core->wq_qmi,
+					 hsi2s_core->qmi_connection == true);
+
+	ret = qmi_txn_init(dev, &txn, prod_hsi2s_clk_ctrl_resp_msg_v01_ei, resp);
+	if (ret < 0) {
+		dev_err(hsi2s_core->dev, "Init txn failed for mode resp %d\n", ret);
+		goto out;
+	}
+
+	ret = qmi_send_request(dev, &sq, &txn,
+			PROD_HSI2S_CLK_CTRL_REQ_V01,
+			PROD_HSI2S_CLK_CTRL_REQ_MSG_V01_MAX_MSG_LEN,
+			prod_hsi2s_clk_ctrl_req_msg_v01_ei, req);
+
+	if (ret < 0) {
+		qmi_txn_cancel(&txn);
+		dev_err(hsi2s_core->dev, "Fail to send mode req %d\n", ret);
+		goto out;
+	}
+
+	ret = qmi_txn_wait(&txn, PGS_TIMEOUT);
+
+	if (ret < 0) {
+		dev_err(hsi2s_core->dev, "Mode resp wait failed with ret %d\n", ret);
+		goto out;
+	}
+
+	if (resp->resp.result != QMI_RESULT_SUCCESS_V01) {
+		dev_err(hsi2s_core->dev, "QMI Mode request rejected, result:%d error:%d\n",
+				resp->resp.result, resp->resp.error);
+		ret = -resp->resp.result;
+		goto out;
+	}
+
+	if (!en)
+		dev_info(hsi2s_core->dev, "ADSP clock disabling is successful\n");
+	else
+		dev_info(hsi2s_core->dev, "ADSP clock enabling is successful\n");
+
+out:
+	kfree(req);
+	kfree(resp);
+	return ret;
+}
+
+static int hsi2s_qmi_adsp_new_server(struct qmi_handle *qmi,
+		struct qmi_service *service)
+{
+	struct platform_device *pdev;
+	int ret;
+
+	sq.sq_family = AF_QIPCRTR;
+	sq.sq_node = service->node;
+	sq.sq_port = service->port;
+
+	pdev = platform_device_alloc("hsi2s_qmi_adsp_client",
+			PLATFORM_DEVID_AUTO);
+	if (!pdev)
+		return -ENOMEM;
+
+	ret = platform_device_add_data(pdev, &sq, sizeof(sq));
+	if (ret)
+		goto err_put_device;
+	ret = platform_device_add(pdev);
+	if (ret)
+		goto err_put_device;
+
+	service->priv = pdev;
+	hsi2s_core->qmi_connection = true;
+	wake_up_interruptible(&hsi2s_core->wq_qmi);
+
+	return 0;
+
+err_put_device:
+	platform_device_put(pdev);
+	return ret;
+}
+
+static void hsi2s_qmi_adsp_del_server(struct qmi_handle *qmi,
+		struct qmi_service *service)
+{
+	struct platform_device *pdev = service->priv;
+
+	hsi2s_core->qmi_connection = false;
+	platform_device_unregister(pdev);
+}
+
+static struct qmi_ops hsi2s_qmi_adsp_ops = {
+	.new_server = hsi2s_qmi_adsp_new_server,
+	.del_server = hsi2s_qmi_adsp_del_server,
+};
+#endif
 
 /* Macro callbacks */
 
@@ -94,6 +226,7 @@ static void t_assign_macros(void)
 	hsi2s_core->macro->bit_spkr_en = T_I2S_SPKR_EN;
 	hsi2s_core->macro->bit_loopback = T_I2S_LOOPBACK;
 	hsi2s_core->macro->bit_i2s_reset = T_I2S_RESET;
+	hsi2s_core->macro->bit_en_long_rate = T_I2S_EN_LONG_RATE;
 	hsi2s_core->macro->bit_tpcm_width = T_TPCM_WIDTH;
 	hsi2s_core->macro->bit_rpcm_width = T_RPCM_WIDTH;
 	hsi2s_core->macro->bit_aux_mode = T_AUX_MODE;
@@ -130,7 +263,7 @@ static void t_assign_macros(void)
 	hsi2s_core->macro->bit_wrdma_reset = T_WRDMA_RESET;
 	hsi2s_core->macro->bit_rate_en = T_RATE_DET_EN;
 	hsi2s_core->macro->bit_rate_reset = T_RATE_DET_RESET;
-	hsi2s_core->macro->regfield_i2s_lrate15 = T_I2S_LONG_RATE_15;
+	hsi2s_core->macro->regfield_i2s_lrate_offset = T_I2S_LONG_RATE_OFFSET;
 	hsi2s_core->macro->regfield_spkr_mode_sd0 = T_I2S_SPKR_MODE_SD0;
 	hsi2s_core->macro->regfield_spkr_mode_sd1 = T_I2S_SPKR_MODE_SD1;
 	hsi2s_core->macro->regfield_spkr_mode_quad01 = T_I2S_SPKR_MODE_QUAD01;
@@ -226,6 +359,7 @@ static void h_assign_macros(void)
 	hsi2s_core->macro->bit_spkr_en = H_I2S_SPKR_EN;
 	hsi2s_core->macro->bit_loopback = H_I2S_LOOPBACK;
 	hsi2s_core->macro->bit_i2s_reset = H_I2S_RESET;
+	hsi2s_core->macro->bit_en_long_rate = H_I2S_EN_LONG_RATE;
 	hsi2s_core->macro->bit_tpcm_width = H_TPCM_WIDTH;
 	hsi2s_core->macro->bit_rpcm_width = H_RPCM_WIDTH;
 	hsi2s_core->macro->bit_aux_mode = H_AUX_MODE;
@@ -262,7 +396,7 @@ static void h_assign_macros(void)
 	hsi2s_core->macro->bit_wrdma_reset = H_WRDMA_RESET;
 	hsi2s_core->macro->bit_rate_en = H_RATE_DET_EN;
 	hsi2s_core->macro->bit_rate_reset = H_RATE_DET_RESET;
-	hsi2s_core->macro->regfield_i2s_lrate15 = H_I2S_LONG_RATE_15;
+	hsi2s_core->macro->regfield_i2s_lrate_offset = H_I2S_LONG_RATE_OFFSET;
 	hsi2s_core->macro->regfield_spkr_mode_sd0 = H_I2S_SPKR_MODE_SD0;
 	hsi2s_core->macro->regfield_spkr_mode_sd1 = H_I2S_SPKR_MODE_SD1;
 	hsi2s_core->macro->regfield_spkr_mode_quad01 = H_I2S_SPKR_MODE_QUAD01;
@@ -381,7 +515,7 @@ static int map_registers(struct hsi2s_device *hs_dev, int intf)
 									H_LPAIF_MUXMODE + (0x4 * intf);
 		}
 	} else {
-		pr_err("[HSI2S] HS-I2S macro structure is NULL");
+		dev_err(hs_dev->dev, "HS-I2S macro structure is NULL");
 		ret = -EINVAL;
 	}
 
@@ -415,7 +549,7 @@ static int map_core_registers(void)
 		if (hsi2s_core->target == 6155)
 			hsi2s_core->sec_rate_sel = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_sec_rate_det_sel;
 	} else {
-		pr_err("[HSI2S] HS-I2S macro structure is NULL");
+		dev_err(hsi2s_core->dev, "HS-I2S macro structure is NULL");
 		ret = -EINVAL;
 	}
 
@@ -699,17 +833,17 @@ static void configure_lpaif_mode(struct hsi2s_device *hs_dev, u8 mode)
 {
 	switch (mode) {
 		case HS_I2S:
-			pr_warn("[HSI2S] Configure LPAIF in HS-I2S mode");
+			dev_info(hs_dev->dev, "Configure LPAIF in HS-I2S mode");
 			clearbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
 			hs_dev->lpaif_mode = HS_I2S;
 			break;
 		case HS_PCM:
-			pr_warn("[HSI2S] Configure LPAIF in HS-PCM mode");
+			dev_info(hs_dev->dev, "Configure LPAIF in HS-PCM mode");
 			setbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
 			hs_dev->lpaif_mode = HS_PCM;
 			break;
 		default:
-			pr_err("[HSI2S] Undefined LPAIF mode. Defaulting to HS-I2S mode");
+			dev_warn(hs_dev->dev, "Undefined LPAIF mode. Defaulting to HS-I2S mode");
 			clearbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
 			hs_dev->lpaif_mode = HS_I2S;
 			break;
@@ -720,27 +854,27 @@ static void configure_lpaif_mode(struct hsi2s_device *hs_dev, u8 mode)
 static void configure_bit_depth(struct hsi2s_device *hs_dev, u32 b_depth)
 {
 	if (b_depth <= 0) {
-		pr_warn("[HSI2S] Defaulting to 32 bit configuration");
+		dev_warn(hs_dev->dev, "Defaulting to 32 bit configuration");
 		hs_dev->bit_depth = hsi2s_core->macro->regfield_bit_width32;
 		hs_dev->bit_depth_val = 32;
 	} else if (b_depth <= 16) {
-		pr_warn("[HSI2S] Setting 16 bit configuration");
+		dev_info(hs_dev->dev, "Setting 16 bit configuration");
 		hs_dev->bit_depth = hsi2s_core->macro->regfield_bit_width16;
 		hs_dev->bit_depth_val = 16;
 	} else if (b_depth <= 24) {
-		pr_warn("[HSI2S] Setting 24 bit configuration");
+		dev_info(hs_dev->dev, "Setting 24 bit configuration");
 		hs_dev->bit_depth = hsi2s_core->macro->regfield_bit_width24;
 		hs_dev->bit_depth_val = 24;
 	} else if (b_depth == 25) {
-		pr_warn("[HSI2S] Setting 25 bit configuration");
+		dev_info(hs_dev->dev, "Setting 25 bit configuration");
 		hs_dev->bit_depth = hsi2s_core->macro->regfield_bit_width25;
 		hs_dev->bit_depth_val = 25;
 	} else if (b_depth <= 32) {
-		pr_warn("[HSI2S] Setting 32 bit configuration");
+		dev_info(hs_dev->dev, "Setting 32 bit configuration");
 		hs_dev->bit_depth = hsi2s_core->macro->regfield_bit_width32;
 		hs_dev->bit_depth_val = 32;
 	} else {
-		pr_warn("[HSI2S] Defaulting to 32 bit configuration");
+		dev_warn(hs_dev->dev, "Defaulting to 32 bit configuration");
 		hs_dev->bit_depth = hsi2s_core->macro->regfield_bit_width32;
 		hs_dev->bit_depth_val = 32;
 	}
@@ -751,7 +885,7 @@ static void configure_spkr_channel(struct hsi2s_device *hs_dev, u32 ch_count)
 {
 	switch (ch_count) {
 		case 0:
-			pr_warn("[HSI2S] Defaulting to stereo configuration for speaker");
+			dev_warn(hs_dev->dev, "Defaulting to stereo configuration for speaker");
 			hs_dev->spkr_channel_count = SPKR_STEREO;
 			hs_dev->spkr_mode = hsi2s_core->macro->regfield_spkr_mode_sd1;
 			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
@@ -760,13 +894,13 @@ static void configure_spkr_channel(struct hsi2s_device *hs_dev, u32 ch_count)
 				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_two;
 			break;
 		case 1:
-			pr_warn("[HSI2S] Setting mono configuration for speaker");
+			dev_info(hs_dev->dev, "Setting mono configuration for speaker");
 			hs_dev->spkr_channel_count = hsi2s_core->macro->regfield_spkr_mono;
 			hs_dev->spkr_mode = hsi2s_core->macro->regfield_spkr_mode_sd1;
 			hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_one;
 			break;
 		case 2:
-			pr_warn("[HSI2S] Setting stereo configuration for speaker");
+			dev_info(hs_dev->dev, "Setting stereo configuration for speaker");
 			hs_dev->spkr_channel_count = SPKR_STEREO;
 			hs_dev->spkr_mode = hsi2s_core->macro->regfield_spkr_mode_sd1;
 			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
@@ -775,7 +909,7 @@ static void configure_spkr_channel(struct hsi2s_device *hs_dev, u32 ch_count)
 				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_two;
 			break;
 		case 4:
-			pr_warn("[HSI2S] Setting quad configuration for speaker");
+			dev_info(hs_dev->dev, "Setting quad configuration for speaker");
 			hs_dev->spkr_channel_count = SPKR_QUAD;
 			hs_dev->spkr_mode = hsi2s_core->macro->regfield_spkr_mode_quad01;
 			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
@@ -784,8 +918,8 @@ static void configure_spkr_channel(struct hsi2s_device *hs_dev, u32 ch_count)
 				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_four;
 			break;
 		default:
-			pr_warn("[HSI2S] Invalid number of channels entered");
-			pr_warn("[HSI2S] Defaulting to stereo configuration for speaker");
+			dev_warn(hs_dev->dev, "Invalid number of channels entered");
+			dev_warn(hs_dev->dev, "Defaulting to stereo configuration for speaker");
 			hs_dev->spkr_channel_count = SPKR_STEREO;
 			hs_dev->spkr_mode = hsi2s_core->macro->regfield_spkr_mode_sd1;
 			if (hs_dev->bit_depth == hsi2s_core->macro->regfield_bit_width16)
@@ -801,7 +935,7 @@ static void configure_mic_channel(struct hsi2s_device *hs_dev, u32 ch_count)
 {
 	switch (ch_count) {
 		case 0:
-			pr_warn("[HSI2S] Defaulting to stereo configuration for mic");
+			dev_warn(hs_dev->dev, "Defaulting to stereo configuration for mic");
 			hs_dev->mic_channel_count = MIC_STEREO;
 			hs_dev->mic_mode = hsi2s_core->macro->regfield_mic_mode_sd0;
 			hs_dev->mic_ch_count_val = 2;
@@ -811,14 +945,14 @@ static void configure_mic_channel(struct hsi2s_device *hs_dev, u32 ch_count)
 				hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_two;
 			break;
 		case 1:
-			pr_warn("[HSI2S] Setting mono configuration for mic");
+			dev_info(hs_dev->dev, "Setting mono configuration for mic");
 			hs_dev->mic_channel_count = hsi2s_core->macro->regfield_mic_mono;
 			hs_dev->mic_mode = hsi2s_core->macro->regfield_mic_mode_sd0;
 			hs_dev->mic_ch_count_val = 1;
 			hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_one;
 			break;
 		case 2:
-			pr_warn("[HSI2S] Setting stereo configuration for mic");
+			dev_info(hs_dev->dev, "Setting stereo configuration for mic");
 			hs_dev->mic_channel_count = MIC_STEREO;
 			hs_dev->mic_mode = hsi2s_core->macro->regfield_mic_mode_sd0;
 			hs_dev->mic_ch_count_val = 2;
@@ -828,7 +962,7 @@ static void configure_mic_channel(struct hsi2s_device *hs_dev, u32 ch_count)
 				hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_two;
 			break;
 		case 4:
-			pr_warn("[HSI2S] Setting quad configuration for mic");
+			dev_info(hs_dev->dev, "Setting quad configuration for mic");
 			hs_dev->mic_channel_count = MIC_QUAD;
 			hs_dev->mic_mode = hsi2s_core->macro->regfield_mic_mode_quad01;
 			hs_dev->mic_ch_count_val = 4;
@@ -838,8 +972,8 @@ static void configure_mic_channel(struct hsi2s_device *hs_dev, u32 ch_count)
 				hs_dev->wpscnt_wrdma = hsi2s_core->macro->regfield_wrdma_wpscnt_four;
 			break;
 		default:
-			pr_warn("[HSI2S] Invalid number of channels entered");
-			pr_warn("[HSI2S] Defaulting to stereo configuration for mic");
+			dev_warn(hs_dev->dev, "Invalid number of channels entered");
+			dev_warn(hs_dev->dev, "Defaulting to stereo configuration for mic");
 			hs_dev->mic_channel_count = MIC_STEREO;
 			hs_dev->mic_mode = hsi2s_core->macro->regfield_mic_mode_sd0;
 			hs_dev->mic_ch_count_val = 2;
@@ -858,20 +992,34 @@ static int configure_i2s_params(struct hsi2s_device *hs_dev, struct hsi2s_params
 
 	if (params) {
 		/* Set the periodic length */
+		if (params->bit_clk > BIT_CLK_MAX) {
+			dev_err(hs_dev->dev, "Bit clock rate exceeds maximum supported rate of 73.728MHz");
+			return -EINVAL;
+		}
 		hs_dev->wrdma_periodic_length_bytes = set_periodic_length(params->bit_clk, params->buffer_ms);
 		hs_dev->wrdma_periodic_length = hs_dev->wrdma_periodic_length_bytes / BYTES_PER_SAMPLE;
-		pr_warn("[HSI2S] Periodic length configured as %u words", hs_dev->wrdma_periodic_length);
+		dev_info(hs_dev->dev, "Periodic length configured as %u words", hs_dev->wrdma_periodic_length);
 		/* Bit depth */
 		configure_bit_depth(hs_dev, params->bit_depth);
-		pr_warn("[HSI2S] Bit depth configured as %u bits", params->bit_depth);
+		dev_info(hs_dev->dev, "Bit depth configured as %u bits", params->bit_depth);
 		/* Speaker channel */
 		configure_spkr_channel(hs_dev, params->spkr_channel_count);
-		pr_warn("[HSI2S] Speaker channel count configured as %u", params->spkr_channel_count);
+		dev_info(hs_dev->dev, "Speaker channel count configured as %u", params->spkr_channel_count);
 		/* Mic channel */
 		configure_mic_channel(hs_dev, params->mic_channel_count);
-		pr_warn("[HSI2S] Mic channel count configured as %u", params->mic_channel_count);
+		dev_info(hs_dev->dev, "Mic channel count configured as %u", params->mic_channel_count);
+		/* Check whether long rate is enabled */
+		hs_dev->en_long_rate = params->en_long_rate;
+		if (hs_dev->en_long_rate) {
+			if (params->long_rate >= LONG_RATE_MIN && params->long_rate <= LONG_RATE_MAX) {
+				hs_dev->long_rate = params->long_rate << hsi2s_core->macro->regfield_i2s_lrate_offset;
+			} else {
+				dev_warn(hs_dev->dev, "Invalid long rate value specified, disabling long rate");
+				hs_dev->en_long_rate = 0;
+			}
+		}
 	} else {
-		pr_err("[HSI2S] Passed null hsi2s_params structure");
+		dev_err(hs_dev->dev, "Passed null hsi2s_params structure");
 		ret = -EINVAL;
 	}
 
@@ -884,6 +1032,10 @@ static void configure_i2s_spkr(struct hsi2s_device *hs_dev)
 	setbits(hs_dev->i2s_ctl, hs_dev->spkr_mode |
 				 hs_dev->spkr_channel_count |
 				 hs_dev->bit_depth);
+	if (hs_dev->en_long_rate) {
+		setbits(hs_dev->i2s_ctl, hs_dev->long_rate);
+		setbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_en_long_rate);
+	}
 	clearbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
 	setbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_i2s_reset);
 	clearbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_i2s_reset);
@@ -896,6 +1048,10 @@ static void configure_i2s_mic(struct hsi2s_device *hs_dev)
 				 hsi2s_core->macro->bit_ws_src |
 				 hs_dev->mic_channel_count |
 				 hs_dev->bit_depth);
+	if (hs_dev->en_long_rate) {
+		setbits(hs_dev->i2s_ctl, hs_dev->long_rate);
+		setbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_en_long_rate);
+	}
 	clearbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
 	setbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_i2s_reset);
 	clearbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_i2s_reset);
@@ -906,7 +1062,7 @@ static void configure_pcm_rate(struct hsi2s_device *hs_dev, u8 rate)
 {
 	switch (rate) {
 		case PCM_RATE_8_BIT_CLKS:
-			pr_err("[HSI2S] Setting pcm rate as 8 bit clocks per frame sync");
+			dev_info(hs_dev->dev, "Setting pcm rate as 8 bit clocks per frame sync");
 			hs_dev->pcm_rate = hsi2s_core->macro->regfield_pcmrate_8;
 			if (hs_dev->lpaif_mode == HS_PCM) {
 				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_one;
@@ -914,7 +1070,7 @@ static void configure_pcm_rate(struct hsi2s_device *hs_dev, u8 rate)
 			}
 			break;
 		case PCM_RATE_16_BIT_CLKS:
-			pr_err("[HSI2S] Setting pcm rate as 16 bit clocks per frame sync");
+			dev_info(hs_dev->dev, "Setting pcm rate as 16 bit clocks per frame sync");
 			hs_dev->pcm_rate = hsi2s_core->macro->regfield_pcmrate_16;
 			if (hs_dev->lpaif_mode == HS_PCM) {
 				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_one;
@@ -922,7 +1078,7 @@ static void configure_pcm_rate(struct hsi2s_device *hs_dev, u8 rate)
 			}
 			break;
 		case PCM_RATE_32_BIT_CLKS:
-			pr_err("[HSI2S] Setting pcm rate as 32 bit clocks per frame sync");
+			dev_info(hs_dev->dev, "Setting pcm rate as 32 bit clocks per frame sync");
 			hs_dev->pcm_rate = hsi2s_core->macro->regfield_pcmrate_32;
 			if (hs_dev->lpaif_mode == HS_PCM) {
 				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_one;
@@ -930,7 +1086,7 @@ static void configure_pcm_rate(struct hsi2s_device *hs_dev, u8 rate)
 			}
 			break;
 		case PCM_RATE_64_BIT_CLKS:
-			pr_err("[HSI2S] Setting pcm rate as 64 bit clocks per frame sync");
+			dev_info(hs_dev->dev, "Setting pcm rate as 64 bit clocks per frame sync");
 			hs_dev->pcm_rate = hsi2s_core->macro->regfield_pcmrate_64;
 			if (hs_dev->lpaif_mode == HS_PCM) {
 				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_two;
@@ -938,7 +1094,7 @@ static void configure_pcm_rate(struct hsi2s_device *hs_dev, u8 rate)
 			}
 			break;
 		case PCM_RATE_128_BIT_CLKS:
-			pr_err("[HSI2S] Setting pcm rate as 128 bit clocks per frame sync");
+			dev_info(hs_dev->dev, "Setting pcm rate as 128 bit clocks per frame sync");
 			hs_dev->pcm_rate = hsi2s_core->macro->regfield_pcmrate_128;
 			if (hs_dev->lpaif_mode == HS_PCM) {
 				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_four;
@@ -946,7 +1102,7 @@ static void configure_pcm_rate(struct hsi2s_device *hs_dev, u8 rate)
 			}
 			break;
 		case PCM_RATE_256_BIT_CLKS:
-			pr_err("[HSI2S] Setting pcm rate as 256 bit clocks per frame sync");
+			dev_info(hs_dev->dev, "Setting pcm rate as 256 bit clocks per frame sync");
 			hs_dev->pcm_rate = hsi2s_core->macro->regfield_pcmrate_256;
 			if (hs_dev->lpaif_mode == HS_PCM) {
 				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_eight;
@@ -954,7 +1110,7 @@ static void configure_pcm_rate(struct hsi2s_device *hs_dev, u8 rate)
 			}
 			break;
 		default:
-			pr_err("[HSI2S] Undefined PCM rate. Setting default value of 256 bit clocks per frame sync");
+			dev_warn(hs_dev->dev, "Undefined PCM rate. Setting default value of 256 bit clocks per frame sync");
 			hs_dev->pcm_rate = hsi2s_core->macro->regfield_pcmrate_256;
 			if (hs_dev->lpaif_mode == HS_PCM) {
 				hs_dev->wpscnt_rddma = hsi2s_core->macro->regfield_rddma_wpscnt_eight;
@@ -969,15 +1125,15 @@ static void configure_pcm_sync_src(struct hsi2s_device *hs_dev, u8 sync_src)
 {
 	switch (sync_src) {
 		case PCM_SYNC_EXT:
-			pr_warn("[HSI2S] Setting pcm sync source as external");
+			dev_info(hs_dev->dev, "Setting pcm sync source as external");
 			clearbits(hs_dev->pcm_ctl, hsi2s_core->macro->bit_sync_src);
 			break;
 		case PCM_SYNC_INT:
-			pr_warn("[HSI2S] Setting pcm sync source as internal");
+			dev_info(hs_dev->dev, "Setting pcm sync source as internal");
 			setbits(hs_dev->pcm_ctl, hsi2s_core->macro->bit_sync_src);
 			break;
 		default:
-			pr_warn("[HSI2S] Undefined sync source input. Setting default source(internal)");
+			dev_warn(hs_dev->dev, "Undefined sync source input. Setting default source(internal)");
 			setbits(hs_dev->pcm_ctl, hsi2s_core->macro->bit_sync_src);
 			break;
 	}
@@ -988,20 +1144,20 @@ static void configure_pcm_aux_mode(struct hsi2s_device *hs_dev, u8 aux_mode)
 {
 	switch (aux_mode) {
 		case PCM_AUXMODE_PCM:
-			pr_warn("[HSI2S] Setting PCM mode(short sync)");
+			dev_info(hs_dev->dev, "Setting PCM mode(short sync)");
 			clearbits(hs_dev->pcm_ctl, hsi2s_core->macro->bit_aux_mode);
 			break;
 		case PCM_AUXMODE_AUX:
-			pr_warn("[HSI2S] Setting AUX mode(long sync)");
+			dev_info(hs_dev->dev, "Setting AUX mode(long sync)");
 			setbits(hs_dev->pcm_ctl, hsi2s_core->macro->bit_aux_mode);
 			if (hs_dev->tdm_inv_sync) {
-				pr_warn("[HSI2S] Inverting frame sync pulses");
+				dev_info(hs_dev->dev, "Inverting frame sync pulses");
 				setbits(hs_dev->tdm_ctl, hsi2s_core->macro->bit_tdm_inv_rpcm_sync);
 				setbits(hs_dev->tdm_ctl, hsi2s_core->macro->bit_tdm_inv_tpcm_sync);
 			}
 			break;
 		default:
-			pr_warn("[HSI2S] Undefined AUX mode input. Setting default mode(PCM)");
+			dev_warn(hs_dev->dev, "Undefined AUX mode input. Setting default mode(PCM)");
 			clearbits(hs_dev->pcm_ctl, hsi2s_core->macro->bit_aux_mode);
 			break;
 	}
@@ -1012,15 +1168,15 @@ static void configure_pcm_rpcm_width(struct hsi2s_device *hs_dev, u8 rpcm_width)
 {
 	switch (rpcm_width) {
 		case RPCM_WIDTH_8:
-			pr_warn("[HSI2S] Setting RPCM width as 8 bits");
+			dev_info(hs_dev->dev, "Setting RPCM width as 8 bits");
 			clearbits(hs_dev->pcm_ctl, hsi2s_core->macro->bit_rpcm_width);
 			break;
 		case RPCM_WIDTH_16:
-			pr_warn("[HSI2S] Setting RPCM width as 16 bits");
+			dev_info(hs_dev->dev, "Setting RPCM width as 16 bits");
 			setbits(hs_dev->pcm_ctl, hsi2s_core->macro->bit_rpcm_width);
 			break;
 		default:
-			pr_warn("[HSI2S] Undefined RPCM width input. Setting default width(16)");
+			dev_warn(hs_dev->dev, "Undefined RPCM width input. Setting default width(16)");
 			setbits(hs_dev->pcm_ctl, hsi2s_core->macro->bit_rpcm_width);
 			break;
 	}
@@ -1031,15 +1187,15 @@ static void configure_pcm_tpcm_width(struct hsi2s_device *hs_dev, u8 tpcm_width)
 {
 	switch (tpcm_width) {
 		case TPCM_WIDTH_8:
-			pr_warn("[HSI2S] Setting TPCM width as 8 bits");
+			dev_info(hs_dev->dev, "Setting TPCM width as 8 bits");
 			clearbits(hs_dev->pcm_ctl, hsi2s_core->macro->bit_tpcm_width);
 			break;
 		case TPCM_WIDTH_16:
-			pr_warn("[HSI2S] Setting TPCM width as 16 bits");
+			dev_info(hs_dev->dev, "Setting TPCM width as 16 bits");
 			setbits(hs_dev->pcm_ctl, hsi2s_core->macro->bit_tpcm_width);
 			break;
 		default:
-			pr_warn("[HSI2S] Undefined TPCM width input. Setting default width(16)");
+			dev_warn(hs_dev->dev, "Undefined TPCM width input. Setting default width(16)");
 			setbits(hs_dev->pcm_ctl, hsi2s_core->macro->bit_tpcm_width);
 			break;
 	}
@@ -1052,9 +1208,13 @@ static int configure_pcm_params(struct hsi2s_device *hs_dev, struct hspcm_params
 
 	if (params) {
 		/* Set the periodic length */
+		if (params->bit_clk > BIT_CLK_MAX) {
+			dev_err(hs_dev->dev, "Bit clock rate exceeds maximum supported rate of 73.728MHz");
+			return -EINVAL;
+		}
 		hs_dev->wrdma_periodic_length_bytes = set_periodic_length(params->bit_clk, params->buffer_ms);
 		hs_dev->wrdma_periodic_length = hs_dev->wrdma_periodic_length_bytes / BYTES_PER_SAMPLE;
-		pr_warn("[HSI2S] Periodic length configured as %u words", hs_dev->wrdma_periodic_length);
+		dev_info(hs_dev->dev, "Periodic length configured as %u words", hs_dev->wrdma_periodic_length);
 		/* Set PCM rate */
 		configure_pcm_rate(hs_dev, params->rate);
 		/* Set PCM sync source */
@@ -1066,7 +1226,7 @@ static int configure_pcm_params(struct hsi2s_device *hs_dev, struct hspcm_params
 		/* Set PCM tpcm width */
 		hs_dev->pcm_tpcm_width = params->tpcm_width;
 	} else {
-		pr_err("[HSI2S] Passed null hspcm_params structure");
+		dev_err(hs_dev->dev, "Passed null hspcm_params structure");
 		ret = -EINVAL;
 	}
 
@@ -1102,10 +1262,8 @@ static void configure_pcm_rx(struct hsi2s_device *hs_dev)
 static void configure_rpcm_slot(struct hsi2s_device *hs_dev, u32 slot, int enable)
 {
 	if (enable) {
-		pr_warn("[HSI2S] Enabling slot %d", slot);
 		setbits(hs_dev->rpcm_slot_num, 1 << slot);
 	} else {
-		pr_warn("[HSI2S] Disabling slot %d", slot);
 		clearbits(hs_dev->rpcm_slot_num, 1 << slot);
 	}
 }
@@ -1114,10 +1272,8 @@ static void configure_rpcm_slot(struct hsi2s_device *hs_dev, u32 slot, int enabl
 static void configure_tpcm_slot(struct hsi2s_device *hs_dev, u32 slot, int enable)
 {
 	if (enable) {
-		pr_warn("[HSI2S] Enabling slot %d", slot);
 		setbits(hs_dev->tpcm_slot_num, 1 << slot);
 	} else {
-		pr_warn("[HSI2S] Disabling slot %d", slot);
 		clearbits(hs_dev->tpcm_slot_num, 1 << slot);
 	}
 }
@@ -1129,15 +1285,15 @@ static void configure_pcm_lane(struct hsi2s_device *hs_dev, u32 lane, int enable
 		case LANE0:
 			if (enable) {
 				if (direction) {
-					pr_warn("[HSI2S] Enabling mic on lane 0");
+					dev_info(hs_dev->dev, "Enabling mic on lane 0");
 					setbits(hs_dev->pcm_lane_config, hsi2s_core->macro->bit_lane0_dir);
 				} else {
-					pr_warn("[HSI2S] Enabling speaker on lane 0");
+					dev_info(hs_dev->dev, "Enabling speaker on lane 0");
 					clearbits(hs_dev->pcm_lane_config, hsi2s_core->macro->bit_lane0_dir);
 				}
 				setbits(hs_dev->pcm_lane_config, hsi2s_core->macro->bit_lane0_en);
 			} else {
-				pr_warn("[HSI2S] Disabling lane 0");
+				dev_info(hs_dev->dev, "Disabling lane 0");
 				clearbits(hs_dev->pcm_lane_config, hsi2s_core->macro->bit_lane0_en);
 			}
 			break;
@@ -1145,15 +1301,15 @@ static void configure_pcm_lane(struct hsi2s_device *hs_dev, u32 lane, int enable
 		case LANE1:
 			if (enable) {
 				if (direction) {
-					pr_warn("[HSI2S] Enabling mic on lane 1");
+					dev_info(hs_dev->dev, "Enabling mic on lane 1");
 					setbits(hs_dev->pcm_lane_config, hsi2s_core->macro->bit_lane1_dir);
 				} else {
-					pr_warn("[HSI2S] Enabling speaker on lane 1");
+					dev_info(hs_dev->dev, "Enabling speaker on lane 1");
 					clearbits(hs_dev->pcm_lane_config, hsi2s_core->macro->bit_lane1_dir);
 				}
 				setbits(hs_dev->pcm_lane_config, hsi2s_core->macro->bit_lane1_en);
 			} else {
-				pr_warn("[HSI2S] Disabling lane 1");
+				dev_info(hs_dev->dev, "Disabling lane 1");
 				clearbits(hs_dev->pcm_lane_config, hsi2s_core->macro->bit_lane1_en);
 			}
 			break;
@@ -1161,15 +1317,15 @@ static void configure_pcm_lane(struct hsi2s_device *hs_dev, u32 lane, int enable
 		case LANE2:
 			if (enable) {
 				if (direction) {
-					pr_warn("[HSI2S] Enabling mic on lane 2");
+					dev_info(hs_dev->dev, "Enabling mic on lane 2");
 					setbits(hs_dev->pcm_lane_config, hsi2s_core->macro->bit_lane2_dir);
 				} else {
-					pr_warn("[HSI2S] Enabling speaker on lane 2");
+					dev_info(hs_dev->dev, "Enabling speaker on lane 2");
 					clearbits(hs_dev->pcm_lane_config, hsi2s_core->macro->bit_lane2_dir);
 				}
 				setbits(hs_dev->pcm_lane_config, hsi2s_core->macro->bit_lane2_en);
 			} else {
-				pr_warn("[HSI2S] Disabling lane 2");
+				dev_info(hs_dev->dev, "Disabling lane 2");
 				clearbits(hs_dev->pcm_lane_config, hsi2s_core->macro->bit_lane2_en);
 			}
 			break;
@@ -1177,20 +1333,20 @@ static void configure_pcm_lane(struct hsi2s_device *hs_dev, u32 lane, int enable
 		case LANE3:
 			if (enable) {
 				if (direction) {
-					pr_warn("[HSI2S] Enabling mic on lane 3");
+					dev_info(hs_dev->dev, "Enabling mic on lane 3");
 					setbits(hs_dev->pcm_lane_config, hsi2s_core->macro->bit_lane3_dir);
 				} else {
-					pr_warn("[HSI2S] Enabling speaker on lane 3");
+					dev_info(hs_dev->dev, "Enabling speaker on lane 3");
 					clearbits(hs_dev->pcm_lane_config, hsi2s_core->macro->bit_lane3_dir);
 				}
 				setbits(hs_dev->pcm_lane_config, hsi2s_core->macro->bit_lane3_en);
 			} else {
-				pr_warn("[HSI2S] Disabling lane 3");
+				dev_info(hs_dev->dev, "Disabling lane 3");
 				clearbits(hs_dev->pcm_lane_config, hsi2s_core->macro->bit_lane3_en);
 			}
 			break;
 		default:
-			pr_err("[HSI2S] Undefined PCM lane");
+			dev_warn(hs_dev->dev, "Undefined PCM lane");
 	}
 }
 
@@ -1200,25 +1356,25 @@ static void set_pcm_lane_config(struct hsi2s_device *hs_dev, u32 config)
 	switch (config) {
 		case SINGLE_LANE:
 			/* Single lane */
-			pr_warn("[HSI2S] Single lane configuration");
+			dev_info(hs_dev->dev, "Single lane configuration");
 			configure_pcm_lane(hs_dev, LANE0, 1, MIC);
 			configure_pcm_lane(hs_dev, LANE1, 1, SPKR);
 			break;
 		case MULTI_LANE_RX:
 			/* Multi lane Rx */
-			pr_warn("[HSI2S] Multi lane Rx configuration");
+			dev_info(hs_dev->dev, "Multi lane Rx configuration");
 			configure_pcm_lane(hs_dev, LANE0, 1, MIC);
 			configure_pcm_lane(hs_dev, LANE1, 1, MIC);
 			break;
 		case MULTI_LANE_TX:
 			/* Multi lane Tx */
-			pr_warn("[HSI2S] Multi lane Tx configuration");
+			dev_info(hs_dev->dev, "Multi lane Tx configuration");
 			configure_pcm_lane(hs_dev, LANE0, 1, SPKR);
 			configure_pcm_lane(hs_dev, LANE1, 1, SPKR);
 			break;
 		default:
 			/* Single lane */
-			pr_warn("[HSI2S] Single lane configuration");
+			dev_warn(hs_dev->dev, "Setting default lane configuration(single lane)");
 			configure_pcm_lane(hs_dev, LANE0, 1, MIC);
 			configure_pcm_lane(hs_dev, LANE1, 1, SPKR);
 	}
@@ -1249,19 +1405,19 @@ static void configure_tdm_sync_delay(struct hsi2s_device *hs_dev, u8 sync_delay)
 {
 	switch (sync_delay) {
 		case DELAY_2_CYCLE:
-			pr_warn("[HSI2S] Setting 2 cycle delay");
+			dev_info(hs_dev->dev, "Setting 2 cycle delay");
 			hs_dev->tdm_sync_delay = hsi2s_core->macro->regfield_sync_delay_2;
 			break;
 		case DELAY_1_CYCLE:
-			pr_warn("[HSI2S] Setting 1 cycle delay");
+			dev_info(hs_dev->dev, "Setting 1 cycle delay");
 			hs_dev->tdm_sync_delay = hsi2s_core->macro->regfield_sync_delay_1;
 			break;
 		case DELAY_0_CYCLE:
-			pr_warn("[HSI2S] Setting 0 cycle delay");
+			dev_info(hs_dev->dev, "Setting 0 cycle delay");
 			hs_dev->tdm_sync_delay = hsi2s_core->macro->regfield_sync_delay_0;
 			break;
 		default:
-			pr_warn("[HSI2S] Undefined sync delay input. Setting 1 cycle delay");
+			dev_warn(hs_dev->dev, "Undefined sync delay input. Setting 1 cycle delay");
 			hs_dev->tdm_sync_delay = hsi2s_core->macro->regfield_sync_delay_1;
 			break;
 	}
@@ -1287,11 +1443,11 @@ static int configure_tdm_params(struct hsi2s_device *hs_dev, struct hstdm_params
 		/* Check whether different sample width is enabled */
 		hs_dev->tdm_en_diff_sample_width = params->en_diff_sample_width;
 		if (hs_dev->tdm_en_diff_sample_width) {
-			hs_dev->tdm_tpcm_sample_width = params->tpcm_sample_width << 5;
-			hs_dev->tdm_rpcm_sample_width = params->rpcm_sample_width;
+			hs_dev->tdm_tpcm_sample_width = (params->tpcm_sample_width - 1) << 5;
+			hs_dev->tdm_rpcm_sample_width = params->rpcm_sample_width - 1;
 		}
 	} else {
-		pr_err("[HSI2S] Passed null hstdm_params structure");
+		dev_err(hs_dev->dev, "Passed null hstdm_params structure");
 		ret = -EINVAL;
 	}
 
@@ -1331,7 +1487,7 @@ static void configure_rddma(struct hsi2s_device *hs_dev, int intf)
 		setbits(hsi2s_core->irq_en, IRQ_PER_RDDMA_CH0 |
 					IRQ_UNDR_RDDMA_CH0 |
 					IRQ_ERR_RDDMA_CH0);
-		pr_warn("[HSI2S] Configured rddma channel for sdr0");
+		dev_info(hs_dev->dev, "Configured rddma channel for sdr0");
 	} else if (intf == HS1_I2S) {
 		setbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_burst_en |
 					   hsi2s_core->macro->bit_rddma_dyn_clk |
@@ -1341,7 +1497,7 @@ static void configure_rddma(struct hsi2s_device *hs_dev, int intf)
 		setbits(hsi2s_core->irq_en, IRQ_PER_RDDMA_CH1 |
 					IRQ_UNDR_RDDMA_CH1 |
 					IRQ_ERR_RDDMA_CH1);
-		pr_warn("[HSI2S] Configured rddma channel for sdr1");
+		dev_info(hs_dev->dev, "Configured rddma channel for sdr1");
 	} else if (intf == HS2_I2S) {
 		setbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_burst_en |
 					   hsi2s_core->macro->bit_rddma_dyn_clk |
@@ -1351,7 +1507,7 @@ static void configure_rddma(struct hsi2s_device *hs_dev, int intf)
 		setbits(hsi2s_core->irq_en, IRQ_PER_RDDMA_CH2 |
 					IRQ_UNDR_RDDMA_CH2 |
 					IRQ_ERR_RDDMA_CH2);
-		pr_warn("[HSI2S] Configured rddma channel for sdr2");
+		dev_info(hs_dev->dev, "Configured rddma channel for sdr2");
 	}
 }
 
@@ -1381,7 +1537,7 @@ static void configure_wrdma(struct hsi2s_device *hs_dev, int intf)
 		setbits(hsi2s_core->irq_en, IRQ_PER_WRDMA_CH0 |
 					IRQ_OVR_WRDMA_CH0 |
 					IRQ_ERR_WRDMA_CH0);
-		pr_warn("[HSI2S] Enabling wrdma channel for sdr0");
+		dev_info(hs_dev->dev, "Enabling wrdma channel for sdr0");
 	} else if (intf == HS1_I2S) {
 		setbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_dyn_clk |
 					   hsi2s_core->macro->bit_wrdma_burst_en |
@@ -1391,7 +1547,7 @@ static void configure_wrdma(struct hsi2s_device *hs_dev, int intf)
 		setbits(hsi2s_core->irq_en, IRQ_PER_WRDMA_CH1 |
 					IRQ_OVR_WRDMA_CH1 |
 					IRQ_ERR_WRDMA_CH1);
-		pr_warn("[HSI2S] Enabling wrdma channel for sdr1");
+		dev_info(hs_dev->dev, "Enabling wrdma channel for sdr1");
 	} else if (intf == HS2_I2S) {
 		setbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_dyn_clk |
 					   hsi2s_core->macro->bit_wrdma_burst_en |
@@ -1401,7 +1557,7 @@ static void configure_wrdma(struct hsi2s_device *hs_dev, int intf)
 		setbits(hsi2s_core->irq_en, IRQ_PER_WRDMA_CH2 |
 					IRQ_OVR_WRDMA_CH2 |
 					IRQ_ERR_WRDMA_CH2);
-		pr_warn("[HSI2S] Enabling wrdma channel for sdr2");
+		dev_info(hs_dev->dev, "Enabling wrdma channel for sdr2");
 	}
 
 	setbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_en);
@@ -1456,7 +1612,7 @@ static void configure_rddma_int_lb(struct hsi2s_device *hs_dev, int intf)
 		setbits(hsi2s_core->irq_en, IRQ_PER_RDDMA_CH0 |
 					IRQ_UNDR_RDDMA_CH0 |
 					IRQ_ERR_RDDMA_CH0);
-		pr_warn("[HSI2S] Configured rddma channel for sdr0");
+		dev_info(hs_dev->dev, "Configured rddma channel for sdr0");
 	} else if (intf == HS1_I2S) {
 		setbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_burst_en |
 					   hsi2s_core->macro->bit_rddma_dyn_clk |
@@ -1466,7 +1622,7 @@ static void configure_rddma_int_lb(struct hsi2s_device *hs_dev, int intf)
 		setbits(hsi2s_core->irq_en, IRQ_PER_RDDMA_CH1 |
 					IRQ_UNDR_RDDMA_CH1 |
 					IRQ_ERR_RDDMA_CH1);
-		pr_warn("[HSI2S] Configured rddma channel for sdr1");
+		dev_info(hs_dev->dev, "Configured rddma channel for sdr1");
 	} else if (intf == HS2_I2S) {
 		setbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_burst_en |
 					   hsi2s_core->macro->bit_rddma_dyn_clk |
@@ -1476,7 +1632,7 @@ static void configure_rddma_int_lb(struct hsi2s_device *hs_dev, int intf)
 		setbits(hsi2s_core->irq_en, IRQ_PER_RDDMA_CH2 |
 					IRQ_UNDR_RDDMA_CH2 |
 					IRQ_ERR_RDDMA_CH2);
-		pr_warn("[HSI2S] Configured rddma channel for sdr2");
+		dev_info(hs_dev->dev, "Configured rddma channel for sdr2");
 	}
 }
 
@@ -1498,7 +1654,7 @@ static void configure_wrdma_int_lb(struct hsi2s_device *hs_dev, int intf)
 		setbits(hsi2s_core->irq_en, IRQ_PER_WRDMA_CH0 |
 					IRQ_OVR_WRDMA_CH0 |
 					IRQ_ERR_WRDMA_CH0);
-		pr_warn("[HSI2S] Enabling wrdma channel for sdr0");
+		dev_info(hs_dev->dev, "Enabling wrdma channel for sdr0");
 	} else if (intf == HS1_I2S) {
 		setbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_dyn_clk |
 					   hsi2s_core->macro->bit_wrdma_burst_en |
@@ -1508,7 +1664,7 @@ static void configure_wrdma_int_lb(struct hsi2s_device *hs_dev, int intf)
 		setbits(hsi2s_core->irq_en, IRQ_PER_WRDMA_CH1 |
 					IRQ_OVR_WRDMA_CH1 |
 					IRQ_ERR_WRDMA_CH1);
-		pr_warn("[HSI2S] Enabling wrdma channel for sdr1");
+		dev_info(hs_dev->dev, "Enabling wrdma channel for sdr1");
 	} else if (intf == HS2_I2S) {
 		setbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_dyn_clk |
 					   hsi2s_core->macro->bit_wrdma_burst_en |
@@ -1518,7 +1674,7 @@ static void configure_wrdma_int_lb(struct hsi2s_device *hs_dev, int intf)
 		setbits(hsi2s_core->irq_en, IRQ_PER_WRDMA_CH2 |
 					IRQ_OVR_WRDMA_CH2 |
 					IRQ_ERR_WRDMA_CH2);
-		pr_warn("[HSI2S] Enabling wrdma channel for sdr2");
+		dev_info(hs_dev->dev, "Enabling wrdma channel for sdr2");
 	}
 
 	setbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_en);
@@ -1550,7 +1706,7 @@ static void configure_pcm_ext_lb(struct hsi2s_device *hs_dev)
 /* Function to configure HS-I2S registers in normal mode */
 static void configure_normal_mode(struct hsi2s_device *hs_dev, int intf)
 {
-	pr_warn("[HSI2S] Configuring normal mode operation");
+	dev_info(hs_dev->dev, "Configuring normal mode operation");
 	/* Set operational mode */
 	hs_dev->mode = NORMAL;
 	/* Reset the DMA registers */
@@ -1593,7 +1749,7 @@ static void configure_normal_mode(struct hsi2s_device *hs_dev, int intf)
 /* Function to configure HS-I2S registers in loopback mode */
 static void configure_int_loopback_mode(struct hsi2s_device *hs_dev, int intf)
 {
-	pr_warn("[HSI2S] Configuring loopback mode operation");
+	dev_info(hs_dev->dev, "Configuring loopback mode operation");
 	/* Set operational mode */
 	hs_dev->mode = INTERNAL_LB;
 	/* Reset the DMA registers */
@@ -1632,7 +1788,7 @@ static void configure_int_loopback_mode(struct hsi2s_device *hs_dev, int intf)
 /* Function to configure HS-I2S registers in external loopback mode */
 static void configure_ext_loopback_mode(struct hsi2s_device *hs_dev, int intf)
 {
-	pr_warn("[HSI2S] Configuring external loopback mode operation");
+	dev_info(hs_dev->dev, "Configuring external loopback mode operation");
 	/* Set operational mode */
 	hs_dev->mode = EXTERNAL_LB_MASTER;
 	/* Reset the DMA registers */
@@ -1675,12 +1831,12 @@ static void configure_muxmode(struct hsi2s_device *hs_dev, int mode)
 		/* Configure slave */
 		setbits(hs_dev->lpaif_muxmode, BIT(0));
 		setbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_ws_src);
-		pr_warn("[HSI2S] hs%d configured as slave", hs_dev->minor_num);
+		dev_info(hs_dev->dev, "hs%d configured as slave", hs_dev->minor_num);
 	} else {
 		/* Configure master */
 		clearbits(hs_dev->lpaif_muxmode, BIT(0));
 		clearbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_ws_src);
-		pr_warn("[HSI2S] hs%d configured as master", hs_dev->minor_num);
+		dev_info(hs_dev->dev, "hs%d configured as master", hs_dev->minor_num);
 	}
 
 }
@@ -1693,7 +1849,7 @@ static int hsi2s_buffer_init(struct hsi2s_device *hs_dev)
 	int ret = 0;
 
 	/* Allocate read buffer */
-	pr_warn("[HSI2S] Allocating kernel buffer for write DMA");
+	dev_info(hs_dev->dev, "Allocating kernel buffer for read DMA");
 	hs_dev->read_buffer = kzalloc(sizeof(*hs_dev->read_buffer),
 				       GFP_KERNEL);
 	if (!hs_dev->read_buffer) {
@@ -1710,7 +1866,7 @@ static int hsi2s_buffer_init(struct hsi2s_device *hs_dev)
 
 	hs_dev->read_buffer->handle = dma_map_single(hs_dev->dev, hs_dev->read_buffer->buffer, dma_buffer_length, DMA_TO_DEVICE);
         if (dma_mapping_error(hs_dev->dev, hs_dev->read_buffer->handle)) {
-                pr_err("[HSI2S] Failed to perform dma_map_single");
+                dev_err(hs_dev->dev, "Failed to perform dma_map_single");
                 ret = -EINVAL;
                 goto err_read_dma_map;
         }
@@ -1722,7 +1878,7 @@ static int hsi2s_buffer_init(struct hsi2s_device *hs_dev)
 	hs_dev->read_buffer->last_xfer = 1;
 
 	/* Allocate write buffer */
-	pr_warn("[HSI2S] Allocating kernel buffer for write DMA");
+	dev_info(hs_dev->dev, "Allocating kernel buffer for write DMA");
 	hs_dev->write_buffer = kzalloc(sizeof(*hs_dev->write_buffer),
 				       GFP_KERNEL);
 	if (!hs_dev->write_buffer) {
@@ -1739,7 +1895,7 @@ static int hsi2s_buffer_init(struct hsi2s_device *hs_dev)
 
 	hs_dev->write_buffer->handle = dma_map_single(hs_dev->dev, hs_dev->write_buffer->buffer, dma_buffer_length, DMA_FROM_DEVICE);
         if (dma_mapping_error(hs_dev->dev, hs_dev->write_buffer->handle)) {
-                pr_err("[HSI2S] Failed to perform dma_map_single");
+                dev_err(hs_dev->dev, "Failed to perform dma_map_single");
                 ret = -EINVAL;
                 goto err_write_dma_map;
         }
@@ -1820,7 +1976,7 @@ static int init_default(struct hsi2s_device *hs_dev, int intf)
 	/* Map the hs-i2s registers */
 	ret = map_registers(hs_dev, intf);
 	if (ret < 0) {
-		pr_err("[HSI2S] Unable to map device registers");
+		dev_err(hs_dev->dev, "Unable to map device registers");
 		return ret;
 	}
 
@@ -1829,14 +1985,13 @@ static int init_default(struct hsi2s_device *hs_dev, int intf)
 	/* Allocate kernel buffers */
 	ret = hsi2s_buffer_init(hs_dev);
 	if (ret < 0) {
-		pr_err("[HSI2S] Buffer allocation failed");
+		dev_err(hs_dev->dev, "Buffer allocation failed");
 		return ret;
 	}
 
 	/* Initialize the wait queues */
 	init_waitqueue_head(&hs_dev->wq_rddma);
 	init_waitqueue_head(&hs_dev->wq_wrdma);
-	init_waitqueue_head(&hs_dev->wq_copy);
 
 	return ret;
 }
@@ -1863,7 +2018,7 @@ static int hsi2s_smmu_init(struct platform_device *pdev, int minor)
 	ret = of_property_read_u32_array(dev->of_node, "qcom,iova-mapping",
 					 iova_ap_mapping, 2);
 	if (ret) {
-		pr_err("[HSI2S] Failed to read smmu start/size iova addresses");
+		dev_err(hs_dev->dev, "Failed to read smmu start/size iova addresses");
 		goto err_smmu_probe;
 	}
 
@@ -1876,12 +2031,12 @@ static int hsi2s_smmu_init(struct platform_device *pdev, int minor)
 					 hs_dev->hsi2s_smmu_ctx->va_start,
 					 hs_dev->hsi2s_smmu_ctx->va_size);
 	if (IS_ERR_OR_NULL(hs_dev->hsi2s_smmu_ctx->mapping)) {
-		pr_err("[HSI2S] Fail to create mapping");
+		dev_err(hs_dev->dev, "Fail to create mapping");
 		/* assume this failure is because iommu driver is not ready */
 		ret = -EPROBE_DEFER;
 		goto err_smmu_probe;
 	}
-	pr_err("[HSI2S] Successfully Created SMMU mapping");
+	dev_info(hs_dev->dev, "Successfully Created SMMU mapping");
 	hs_dev->hsi2s_smmu_ctx->valid = true;
 	mapping = hs_dev->hsi2s_smmu_ctx->mapping;
 
@@ -1889,7 +2044,7 @@ static int hsi2s_smmu_init(struct platform_device *pdev, int minor)
 		if (iommu_domain_set_attr(mapping->domain,
 					  DOMAIN_ATTR_S1_BYPASS,
 					  &bypass)) {
-			pr_err("[HSI2S] Couldn't set SMMU S1 bypass\n");
+			dev_err(hs_dev->dev, "Couldn't set SMMU S1 bypass\n");
 			ret = -EIO;
 			goto err_smmu_probe;
 		}
@@ -1898,14 +2053,14 @@ static int hsi2s_smmu_init(struct platform_device *pdev, int minor)
 	ret = arm_iommu_attach_device(&hs_dev->hsi2s_smmu_ctx->smmu_pdev->dev,
 				      mapping);
 	if (ret) {
-		pr_err("[HSI2S] couldn't attach to IOMMU ret=%d", ret);
+		dev_err(hs_dev->dev, "couldn't attach to IOMMU ret=%d", ret);
 		goto err_smmu_probe;
 	}
 
 	hs_dev->hsi2s_smmu_ctx->iommu_domain =
 	iommu_get_domain_for_dev(&hs_dev->hsi2s_smmu_ctx->smmu_pdev->dev);
 
-	pr_warn("[HSI2S] Successfully attached to IOMMU");
+	dev_info(hs_dev->dev, "Successfully attached to IOMMU");
 	return ret;
 
 err_smmu_probe:
@@ -1932,29 +2087,60 @@ static int hsi2s_configure_gpio_pins(struct platform_device *pdev)
 	pinctrl = devm_pinctrl_get(&pdev->dev);
 	if (IS_ERR_OR_NULL(pinctrl)) {
 		ret = PTR_ERR(pinctrl);
-		pr_err("[HSI2S] Failed to get pinctrl, err = %d", ret);
+		dev_err(&pdev->dev, "Failed to get pinctrl, err = %d", ret);
 		return ret;
 	}
-	pr_warn("[HSI2S] get pinctrl succeed\n");
+	dev_info(&pdev->dev, "get pinctrl succeed\n");
 
 	hsi2s_active_state = pinctrl_lookup_state(pinctrl, "default");
 	if (IS_ERR_OR_NULL(hsi2s_active_state)) {
 		ret = PTR_ERR(hsi2s_active_state);
-		pr_err("[HSI2S] Failed to get default state, err = %d\n", ret);
+		dev_err(&pdev->dev, "Failed to get default state, err = %d\n", ret);
 		return ret;
 	}
-	pr_warn("[HSI2S] Get default state succeed\n");
+	dev_info(&pdev->dev, "Get default state succeed\n");
 	ret = pinctrl_select_state(pinctrl, hsi2s_active_state);
 	if (ret)
-		pr_err("[HSI2S] Unable to set default state, err = %d", ret);
+		dev_err(&pdev->dev, "Unable to set default state, err = %d", ret);
 	else
-		pr_err("[HSI2S] Set default pinctrl state succeeded");
+		dev_info(&pdev->dev, "Set default pinctrl state succeeded");
 
 	return ret;
 }
 
 /* Clock management functions */
 
+#ifndef CONFIG_QTI_GVM
+/* Function to disable clocks for SA8155/SA8195 using QMI */
+static int hsi2s_adsp_disable_clks(void)
+{
+	int ret = 0;
+
+	dev_info(hsi2s_core->dev, "Disabling LPASS clocks via QMI");
+	ret = pgs_clk_ctrl_send_sync_msg(hsi2s_core->qmi_dev, 0);
+
+	if (ret < 0)
+		dev_err(hsi2s_core->dev, "Failed to disable LPASS clocks\n");
+
+	return ret;
+}
+
+/* Function to enable clocks for SA8155/SA8195 using QMI */
+static int hsi2s_adsp_enable_clks(void)
+{
+	int ret = 0;
+
+	dev_info(hsi2s_core->dev, "Enabling LPASS clocks via QMI");
+	ret = pgs_clk_ctrl_send_sync_msg(hsi2s_core->qmi_dev, 1);
+
+	if (ret < 0)
+		dev_err(hsi2s_core->dev, "Failed to enable LPASS clocks\n");
+
+	return ret;
+}
+#endif
+
+/* Function to enable/disable core clocks for SA8155/SA8195 */
 static void h_modify_core_clks(int enable)
 {
 	void __iomem *lpass_core_cbcr;
@@ -1968,7 +2154,7 @@ static void h_modify_core_clks(int enable)
 	lpass_mport = ioremap(0x17023000, 4);
 
 	if (enable) {
-		pr_warn("[HSI2S] Enable core clocks for SA8155/SA8195");
+		dev_info(hsi2s_core->dev, "Enable core clocks for SA8155/SA8195");
 		if (!(readl_relaxed(lpass_core_cbcr) & 0x1))
 			setbits(lpass_core_cbcr, 0x1);
 		if (!(readl_relaxed(hs_rdmem) & 0x1))
@@ -1977,12 +2163,12 @@ static void h_modify_core_clks(int enable)
 			setbits(hs_wrmem, 0x1);
 		if (!(readl_relaxed(lpass_mport) & 0x1))
 			setbits(lpass_mport, 0x1);
-		pr_warn("[HSI2S] Core clocks enabled for SA8155/SA8195");
+		dev_info(hsi2s_core->dev, "Core clocks enabled for SA8155/SA8195");
 	} else {
-		pr_warn("[HSI2S] Disable core clocks for SA8155/SA8195");
+		dev_info(hsi2s_core->dev, "Disable core clocks for SA8155/SA8195");
 		clearbits(hs_wrmem, 0x1);
 		clearbits(hs_rdmem, 0x1);
-		pr_warn("[HSI2S] Core clocks disabled for SA8155/SA8195");
+		dev_info(hsi2s_core->dev, "Core clocks disabled for SA8155/SA8195");
 	}
 
 	iounmap(lpass_core_cbcr);
@@ -1991,6 +2177,7 @@ static void h_modify_core_clks(int enable)
 	iounmap(lpass_mport);
 }
 
+/* Function to enable/disable interface clocks for SA8155/SA8195 */
 static void h_modify_interface_clks(int enable)
 {
 	void __iomem *hs_if0_ibit;
@@ -2014,7 +2201,7 @@ static void h_modify_interface_clks(int enable)
 	hs_if2_mclk = ioremap(0x17022014, 4);
 
 	if (enable) {
-		pr_warn("[HSI2S] Enable interface clocks for SA8155/SA8195");
+		dev_info(hsi2s_core->dev, "Enable interface clocks for SA8155/SA8195");
 		setbits(hs_if0_ibit, 0x1);
 		setbits(hs_if1_ibit, 0x1);
 		setbits(hs_if2_ibit, 0x1);
@@ -2024,9 +2211,9 @@ static void h_modify_interface_clks(int enable)
 		setbits(hs_if0_mclk, 0x1);
 		setbits(hs_if1_mclk, 0x1);
 		setbits(hs_if2_mclk, 0x1);
-		pr_warn("[HSI2S] Interface clocks enabled for SA8155/SA8195");
+		dev_info(hsi2s_core->dev, "Interface clocks enabled for SA8155/SA8195");
 	} else {
-		pr_warn("[HSI2S] Disable interface clocks for SA8155/SA8195");
+		dev_info(hsi2s_core->dev, "Disable interface clocks for SA8155/SA8195");
 		clearbits(hs_if0_ibit, 0x1);
 		clearbits(hs_if1_ibit, 0x1);
 		clearbits(hs_if2_ibit, 0x1);
@@ -2036,7 +2223,7 @@ static void h_modify_interface_clks(int enable)
 		clearbits(hs_if0_mclk, 0x1);
 		clearbits(hs_if1_mclk, 0x1);
 		clearbits(hs_if2_mclk, 0x1);
-		pr_warn("[HSI2S] Interface clocks disabled for SA8155/SA8195");
+		dev_info(hsi2s_core->dev, "Interface clocks disabled for SA8155/SA8195");
 	}
 
 	iounmap(hs_if0_ibit);
@@ -2050,7 +2237,7 @@ static void h_modify_interface_clks(int enable)
 	iounmap(hs_if2_mclk);
 }
 
-/* Function to disable core clocks */
+/* Function to disable core clocks for SA6155 */
 static void hsi2s_disable_core_clks(struct platform_device *pdev)
 {
 	struct hsi2s_core *hs_core;
@@ -2094,7 +2281,7 @@ static void hsi2s_disable_core_clks(struct platform_device *pdev)
 	hs_core->wr2_mem_clk = NULL;
 }
 
-/* Function to enable core clocks */
+/* Function to enable core clocks for SA6155 */
 static int hsi2s_enable_core_clks(struct platform_device *pdev)
 {
 	struct hsi2s_core *hs_core;
@@ -2105,61 +2292,61 @@ static int hsi2s_enable_core_clks(struct platform_device *pdev)
 
 	hs_core->core_clk = devm_clk_get(dev, "core_clk");
 	if (!hs_core->core_clk) {
-		pr_err("[HSI2S] Unable to get sdr_core clock ");
+		dev_err(hsi2s_core->dev, "Unable to get sdr_core clock ");
 		return -EIO;
 	}
 
 	hs_core->csr_hclk = devm_clk_get(dev, "csr_hclk");
 	if (!hs_core->csr_hclk) {
-		pr_err("[HSI2S] Unable to get sdr_csr_hclk clock ");
+		dev_err(hsi2s_core->dev, "Unable to get sdr_csr_hclk clock ");
 		return -EIO;
 	}
 
 	hs_core->wr0_mem_clk = devm_clk_get(dev, "wr0_mem_clk");
 	if (!hs_core->wr0_mem_clk) {
-		pr_err("[HSI2S] Unable to get sdr_wr0_mem_clk clock ");
+		dev_err(hsi2s_core->dev, "Unable to get sdr_wr0_mem_clk clock ");
 		return -EIO;
 	}
 
 	hs_core->wr1_mem_clk = devm_clk_get(dev, "wr1_mem_clk");
 	if (!hs_core->wr1_mem_clk) {
-		pr_err("[HSI2S] Unable to get sdr_wr1_mem_clk clock ");
+		dev_err(hsi2s_core->dev, "Unable to get sdr_wr1_mem_clk clock ");
 		return -EIO;
 	}
 
 	hs_core->wr2_mem_clk = devm_clk_get(dev, "wr2_mem_clk");
 	if (!hs_core->wr2_mem_clk) {
-		pr_err("[HSI2S] Unable to get sdr_wr2_mem_clk clock ");
+		dev_err(hsi2s_core->dev, "Unable to get sdr_wr2_mem_clk clock ");
 		return -EIO;
 	}
 
 	ret = clk_prepare_enable(hs_core->core_clk);
 	if (ret) {
-		pr_err("[HSI2S] Failed to enable sdr_core clock");
+		dev_err(hsi2s_core->dev, "Failed to enable sdr_core clock");
 		goto fail_clk;
 	}
 
 	ret = clk_prepare_enable(hs_core->csr_hclk);
 	if (ret) {
-		pr_err("[HSI2S] Failed to enable sdr_csr_hclk clock");
+		dev_err(hsi2s_core->dev, "Failed to enable sdr_csr_hclk clock");
 		goto fail_clk;
 	}
 
 	ret = clk_prepare_enable(hs_core->wr0_mem_clk);
 	if (ret) {
-		pr_err("[HSI2S] Failed to enable sdr_wr0_mem_clk clock");
+		dev_err(hsi2s_core->dev, "Failed to enable sdr_wr0_mem_clk clock");
 		goto fail_clk;
 	}
 
 	ret = clk_prepare_enable(hs_core->wr1_mem_clk);
 	if (ret) {
-		pr_err("[HSI2S] Failed to enable sdr_wr1_mem_clk clock");
+		dev_err(hsi2s_core->dev, "Failed to enable sdr_wr1_mem_clk clock");
 		goto fail_clk;
 	}
 
 	ret = clk_prepare_enable(hs_core->wr2_mem_clk);
 	if (ret) {
-		pr_err("[HSI2S] Failed to enable sdr_wr2_mem_clk clock");
+		dev_err(hsi2s_core->dev, "Failed to enable sdr_wr2_mem_clk clock");
 		goto fail_clk;
 	}
 
@@ -2170,7 +2357,7 @@ fail_clk:
 	return ret;
 }
 
-/* Function to suspend core clocks */
+/* Function to suspend core clocks for SA6155 */
 static void hsi2s_suspend_core_clks(struct platform_device *pdev)
 {
 	struct hsi2s_core *hs_core;
@@ -2193,7 +2380,7 @@ static void hsi2s_suspend_core_clks(struct platform_device *pdev)
 		clk_disable_unprepare(hs_core->wr2_mem_clk);
 }
 
-/* Function to resume core clocks */
+/* Function to resume core clocks SA6155 */
 static int hsi2s_resume_core_clks(struct platform_device *pdev)
 {
 	struct hsi2s_core *hs_core;
@@ -2204,7 +2391,7 @@ static int hsi2s_resume_core_clks(struct platform_device *pdev)
 	if (hs_core->core_clk) {
 		ret = clk_prepare_enable(hs_core->core_clk);
 		if (ret) {
-			pr_err("[HSI2S] Failed to enable sdr_core clock");
+			dev_err(hsi2s_core->dev, "Failed to enable sdr_core clock");
 			goto fail_clk;
 		}
 	}
@@ -2212,7 +2399,7 @@ static int hsi2s_resume_core_clks(struct platform_device *pdev)
 	if (hs_core->csr_hclk) {
 		ret = clk_prepare_enable(hs_core->csr_hclk);
 		if (ret) {
-			pr_err("[HSI2S] Failed to enable sdr_csr_hclk clock");
+			dev_err(hsi2s_core->dev, "Failed to enable sdr_csr_hclk clock");
 			goto fail_clk;
 		}
 	}
@@ -2220,7 +2407,7 @@ static int hsi2s_resume_core_clks(struct platform_device *pdev)
 	if (hs_core->wr0_mem_clk) {
 		ret = clk_prepare_enable(hs_core->wr0_mem_clk);
 		if (ret) {
-			pr_err("[HSI2S] Failed to enable sdr_wr0_mem_clk clock");
+			dev_err(hsi2s_core->dev, "Failed to enable sdr_wr0_mem_clk clock");
 			goto fail_clk;
 		}
 	}
@@ -2228,7 +2415,7 @@ static int hsi2s_resume_core_clks(struct platform_device *pdev)
 	if (hs_core->wr1_mem_clk) {
 		ret = clk_prepare_enable(hs_core->wr1_mem_clk);
 		if (ret) {
-			pr_err("[HSI2S] Failed to enable sdr_wr1_mem_clk clock");
+			dev_err(hsi2s_core->dev, "Failed to enable sdr_wr1_mem_clk clock");
 			goto fail_clk;
 		}
 	}
@@ -2236,19 +2423,19 @@ static int hsi2s_resume_core_clks(struct platform_device *pdev)
 	if (hs_core->wr2_mem_clk) {
 		ret = clk_prepare_enable(hs_core->wr2_mem_clk);
 		if (ret) {
-			pr_err("[HSI2S] Failed to enable sdr_wr2_mem_clk clock");
+			dev_err(hsi2s_core->dev, "Failed to enable sdr_wr2_mem_clk clock");
 			goto fail_clk;
 		}
 	}
 
 	return ret;
 fail_clk:
-	pr_err("[HSI2S] Failed to enable some core clocks");
+	dev_err(hsi2s_core->dev, "Failed to enable some core clocks");
 	hsi2s_disable_core_clks(pdev);
 	return ret;
 }
 
-/* Function to disable interface clocks */
+/* Function to disable interface clocks SA6155 */
 static void hsi2s_disable_intf_clks(struct platform_device *pdev)
 {
 	struct hsi2s_device *hs_dev;
@@ -2264,7 +2451,7 @@ static void hsi2s_disable_intf_clks(struct platform_device *pdev)
 	hs_dev->intf_clk = NULL;
 }
 
-/* Function to enable interface clocks */
+/* Function to enable interface clocks SA6155 */
 static int hsi2s_enable_intf_clks(struct platform_device *pdev)
 {
 	struct hsi2s_device *hs_dev;
@@ -2281,14 +2468,14 @@ static int hsi2s_enable_intf_clks(struct platform_device *pdev)
 
 	hs_dev->intf_clk = devm_clk_get(dev, intf_clock_name);
 	if (!hs_dev->intf_clk) {
-		pr_err("[HSI2S] Unable to get interface clock for SDR%d interface",
+		dev_err(hs_dev->dev, "Unable to get interface clock for SDR%d interface",
 		       hs_dev->minor_num);
 		return -EIO;
 	}
 
 	ret = clk_prepare_enable(hs_dev->intf_clk);
 	if (ret) {
-		pr_err("[HSI2S] Failed to enable interface clock for SDR%d interface",
+		dev_err(hs_dev->dev, "Failed to enable interface clock for SDR%d interface",
 		       hs_dev->minor_num);
 		goto fail_clk;
 	}
@@ -2297,7 +2484,7 @@ fail_clk:
 	return ret;
 }
 
-/* Function to suspend interface clocks */
+/* Function to suspend interface clocks SA6155 */
 static void hsi2s_suspend_intf_clks(struct platform_device *pdev)
 {
 	struct hsi2s_device *hs_dev;
@@ -2307,7 +2494,7 @@ static void hsi2s_suspend_intf_clks(struct platform_device *pdev)
 		clk_disable_unprepare(hs_dev->intf_clk);
 }
 
-/* Function to resume interface clocks */
+/* Function to resume interface clocks SA6155 */
 static int hsi2s_resume_intf_clks(struct platform_device *pdev)
 {
 	struct hsi2s_device *hs_dev;
@@ -2317,7 +2504,7 @@ static int hsi2s_resume_intf_clks(struct platform_device *pdev)
 	if (hs_dev->intf_clk) {
 		ret = clk_prepare_enable(hs_dev->intf_clk);
 		if (ret) {
-			pr_err("[HSI2S] Failed to enable interface clock for SDR%d",
+			dev_err(hs_dev->dev, "Failed to enable interface clock for SDR%d",
 			       hs_dev->minor_num);
 		}
 	}
@@ -2331,11 +2518,11 @@ static int rddma_schedule(void *data)
 	struct hsi2s_device *hs_dev;
 
 	hs_dev = (struct hsi2s_device *)data;
-	pr_warn("[HSI2S] Starting RDDMA scheduler...");
+	dev_info(hs_dev->dev, "Starting RDDMA scheduler...");
 
 	while (1) {
 		if (kthread_should_stop()) {
-			pr_warn("[HSI2S] RDDMA scheduler asked to exit...");
+			dev_info(hs_dev->dev, "RDDMA scheduler asked to exit...");
 			break;
 		}
 
@@ -2353,7 +2540,7 @@ static int rddma_schedule(void *data)
 				setbits(hs_dev->pcm_ctl, hsi2s_core->macro->bit_pcm_en_tx);
 			/* Set the RDDMA busy flag */
 			hs_dev->rddma_xfer_busy = 1;
-			pr_warn("[HSI2S] DMA scheduled on hs%d interface",hs_dev->minor_num);
+			dev_info(hs_dev->dev, "DMA scheduled on hs%d interface", hs_dev->minor_num);
 		}
 	}
 
@@ -2484,13 +2671,104 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 		}
 	}
 
+	/* Check for DMA errors on HS0 interface */
+	if (hs_arr[0]) {
+		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
+		/* Error on read channel 0 */
+		if (irq_stat & (IRQ_UNDR_RDDMA_CH0 | IRQ_ERR_RDDMA_CH0)) {
+			dev_err(hsi2s_core->dev, "Error on read DMA channel 0");
+			if (irq_stat & IRQ_UNDR_RDDMA_CH0) {
+				setbits(hsi2s_core->irq_clear, IRQ_UNDR_RDDMA_CH0);
+				dev_err(hsi2s_core->dev, "Underrun detected");
+			}
+			if (irq_stat & IRQ_ERR_RDDMA_CH0) {
+				setbits(hsi2s_core->irq_clear, IRQ_ERR_RDDMA_CH0);
+				dev_err(hsi2s_core->dev, "Bus error detected");
+			}
+		}
+		/* Error on write channel 0 */
+		if (irq_stat & (IRQ_OVR_WRDMA_CH0 | IRQ_ERR_WRDMA_CH0)) {
+			dev_err(hsi2s_core->dev, "Error on write DMA channel 0");
+			if (irq_stat & IRQ_OVR_WRDMA_CH0) {
+				setbits(hsi2s_core->irq_clear, IRQ_OVR_WRDMA_CH0);
+				dev_err(hsi2s_core->dev, "Overrun detected");
+			}
+			if (irq_stat & IRQ_ERR_WRDMA_CH0) {
+				setbits(hsi2s_core->irq_clear, IRQ_ERR_WRDMA_CH0);
+				dev_err(hsi2s_core->dev, "Bus error detected");
+			}
+		}
+
+	}
+
+	/* Check for DMA errors on HS1 interface */
+	if (hs_arr[1]) {
+		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
+		/* Error on read channel 1 */
+		if (irq_stat & (IRQ_UNDR_RDDMA_CH1 | IRQ_ERR_RDDMA_CH1)) {
+			dev_err(hsi2s_core->dev, "Error on read DMA channel 1");
+			if (irq_stat & IRQ_UNDR_RDDMA_CH1) {
+				setbits(hsi2s_core->irq_clear, IRQ_UNDR_RDDMA_CH1);
+				dev_err(hsi2s_core->dev, "Underrun detected");
+			}
+			if (irq_stat & IRQ_ERR_RDDMA_CH1) {
+				setbits(hsi2s_core->irq_clear, IRQ_ERR_RDDMA_CH1);
+				dev_err(hsi2s_core->dev, "Bus error detected");
+			}
+		}
+		/* Error on write channel 1 */
+		if (irq_stat & (IRQ_OVR_WRDMA_CH1 | IRQ_ERR_WRDMA_CH1)) {
+			dev_err(hsi2s_core->dev, "Error on write DMA channel 1");
+			if (irq_stat & IRQ_OVR_WRDMA_CH1) {
+				setbits(hsi2s_core->irq_clear, IRQ_OVR_WRDMA_CH1);
+				dev_err(hsi2s_core->dev, "Overrun detected");
+			}
+			if (irq_stat & IRQ_ERR_WRDMA_CH1) {
+				setbits(hsi2s_core->irq_clear, IRQ_ERR_WRDMA_CH1);
+				dev_err(hsi2s_core->dev, "Bus error detected");
+			}
+		}
+
+	}
+
+	/* Check for DMA errors on HS2 interface */
+	if (hs_arr[2]) {
+		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
+		/* Error on read channel 2 */
+		if (irq_stat & (IRQ_UNDR_RDDMA_CH2 | IRQ_ERR_RDDMA_CH2)) {
+			dev_err(hsi2s_core->dev, "Error on read DMA channel 2");
+			if (irq_stat & IRQ_UNDR_RDDMA_CH2) {
+				setbits(hsi2s_core->irq_clear, IRQ_UNDR_RDDMA_CH2);
+				dev_err(hsi2s_core->dev, "Underrun detected");
+			}
+			if (irq_stat & IRQ_ERR_RDDMA_CH2) {
+				setbits(hsi2s_core->irq_clear, IRQ_ERR_RDDMA_CH2);
+				dev_err(hsi2s_core->dev, "Bus error detected");
+			}
+		}
+		/* Error on write channel 2 */
+		if (irq_stat & (IRQ_OVR_WRDMA_CH2 | IRQ_ERR_WRDMA_CH2)) {
+			dev_err(hsi2s_core->dev, "Error on write DMA channel 2");
+			if (irq_stat & IRQ_OVR_WRDMA_CH2) {
+				setbits(hsi2s_core->irq_clear, IRQ_OVR_WRDMA_CH2);
+				dev_err(hsi2s_core->dev, "Overrun detected");
+			}
+			if (irq_stat & IRQ_ERR_WRDMA_CH2) {
+				setbits(hsi2s_core->irq_clear, IRQ_ERR_WRDMA_CH2);
+				dev_err(hsi2s_core->dev, "Bus error detected");
+			}
+		}
+
+	}
+
+	/* Rate detection */
 	if (hsi2s_core->is_rate_enabled) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		if (irq_stat & IRQ_PRI_RD_DIFF_RATE) {
 			setbits(hsi2s_core->irq_clear, IRQ_PRI_RD_DIFF_RATE);
 			/* Get the new WS rate */
 			hsi2s_core->pri_ws_rate = get_ws_rate(PRI_RATE_DET);
-			pr_warn("[HSI2S] WS rate detected as %lu Hz ", hsi2s_core->pri_ws_rate);
+			dev_info(hsi2s_core->dev, "WS rate detected as %lu Hz ", hsi2s_core->pri_ws_rate);
 			if (hsi2s_core->pri_ws_rate) {
 				slave = hsi2s_core->pri_rate_interface;
 				/* Disable mic */
@@ -2503,7 +2781,7 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 				hs_arr[slave]->wrdma_periodic_length_bytes = (set_periodic_length(calculate_bit_rate(hs_arr[slave], PRI_RATE_DET),
 															  hs_arr[slave]->data_buffer_ms_val));
 				hs_arr[slave]->wrdma_periodic_length = hs_arr[slave]->wrdma_periodic_length_bytes / BYTES_PER_SAMPLE;
-				pr_warn("[HSI2S] Periodic length reconfigured to %lu words", hs_arr[slave]->wrdma_periodic_length);
+				dev_info(hsi2s_core->dev, "Periodic length reconfigured to %lu words", hs_arr[slave]->wrdma_periodic_length);
 				writel_relaxed(hs_arr[slave]->wrdma_periodic_length, hs_arr[slave]->wrdma_per_len);
 				/* Enable mic */
 				setbits(hs_arr[slave]->wrdma_ctl, hsi2s_core->macro->bit_wrdma_en);
@@ -2519,7 +2797,7 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 			setbits(hsi2s_core->irq_clear, IRQ_SEC_RD_DIFF_RATE);
 			/* Get the new WS rate */
 			hsi2s_core->sec_ws_rate = get_ws_rate(SEC_RATE_DET);
-			pr_warn("[HSI2S] WS rate detected as %lu Hz ", hsi2s_core->sec_ws_rate);
+			dev_info(hsi2s_core->dev, "WS rate detected as %lu Hz ", hsi2s_core->sec_ws_rate);
 			if (hsi2s_core->sec_ws_rate) {
 				slave = hsi2s_core->sec_rate_interface;
 				/* Disable mic */
@@ -2532,7 +2810,7 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 				hs_arr[slave]->wrdma_periodic_length_bytes = (set_periodic_length(calculate_bit_rate(hs_arr[slave],SEC_RATE_DET),
 															  hs_arr[slave]->data_buffer_ms_val));
 				hs_arr[slave]->wrdma_periodic_length = hs_arr[slave]->wrdma_periodic_length_bytes / BYTES_PER_SAMPLE;
-				pr_warn("[HSI2S] Periodic length reconfigured to %lu words", hs_arr[slave]->wrdma_periodic_length);
+				dev_info(hsi2s_core->dev, "Periodic length reconfigured to %lu words", hs_arr[slave]->wrdma_periodic_length);
 				writel_relaxed(hs_arr[slave]->wrdma_periodic_length, hs_arr[slave]->wrdma_per_len);
 				/* Enable mic */
 				setbits(hs_arr[slave]->wrdma_ctl, hsi2s_core->macro->bit_wrdma_en);
@@ -2591,7 +2869,7 @@ static ssize_t device_read(struct file *file, char *buffer,
 					   head,
 					   copy_len);
 			if (ret) {
-				pr_err("[HSI2S] Error copying data to userspace");
+				dev_err(hs_dev->dev, "Error copying data to userspace");
 				return -ret;
 			}
 			bytes_read += copy_len;
@@ -2600,7 +2878,7 @@ static ssize_t device_read(struct file *file, char *buffer,
 				   hs_dev->lpass_wrdma_start,
 				   temp_length - copy_len);
 			if (ret) {
-				pr_err("[HSI2S] Error copying data to userspace");
+				dev_err(hs_dev->dev, "Error copying data to userspace");
 				return -ret;
 			}
 			head = hs_dev->lpass_wrdma_start + (temp_length - copy_len);
@@ -2612,7 +2890,7 @@ static ssize_t device_read(struct file *file, char *buffer,
 					   head,
 					   temp_length);
 			if (ret) {
-				pr_err("[HSI2S] Error copying data to userspace");
+				dev_err(hs_dev->dev, "Error copying data to userspace");
 				return -ret;
 			}
 			head += temp_length;
@@ -2637,7 +2915,7 @@ static ssize_t device_read(struct file *file, char *buffer,
 				   head,
 				   copy_len);
 		if (ret) {
-			pr_err("[HSI2S] Error copying data to userspace");
+			dev_err(hs_dev->dev, "Error copying data to userspace");
 			return -ret;
 		}
 		bytes_read += copy_len;
@@ -2646,7 +2924,7 @@ static ssize_t device_read(struct file *file, char *buffer,
 			   hs_dev->lpass_wrdma_start,
 			   length - copy_len);
 		if (ret) {
-			pr_err("[HSI2S] Error copying data to userspace");
+			dev_err(hs_dev->dev, "Error copying data to userspace");
 			return -ret;
 		}
 		head = hs_dev->lpass_wrdma_start + (length - copy_len);
@@ -2659,7 +2937,7 @@ static ssize_t device_read(struct file *file, char *buffer,
 				   head,
 				   length);
 		if (ret) {
-			pr_err("[HSI2S] Error copying data to userspace");
+			dev_err(hs_dev->dev, "Error copying data to userspace");
 			return -ret;
 		}
 		head += length;
@@ -2669,7 +2947,7 @@ static ssize_t device_read(struct file *file, char *buffer,
 
 	return bytes_read;
 #else
-	pr_err("[HSI2S] device_read() is disabled. Use shared memory read using poll()");
+	pr_err("[hsi2s] device_read() is disabled. Use shared memory read using poll()");
 	return -EINVAL;
 #endif
 }
@@ -2745,20 +3023,22 @@ static ssize_t device_write(struct file *file, const char *buffer,
 /* Called when a process attempts to open the device file */
 static int device_open(struct inode *inode, struct file *file)
 {
+	struct hsi2s_device *hs_dev;
 	int minor_num;
 
 	/* Find the minor number of the device */
 	minor_num = MINOR(inode->i_rdev);
+	hs_dev = hsi2s_core->hsi2s_arr[minor_num];
 
-	if (hsi2s_core->hsi2s_arr[minor_num]->client_count) {
-		pr_warn("[HSI2S] Device busy");
+	if (hs_dev->client_count) {
+		dev_err(hs_dev->dev, "Device busy");
 		return -EBUSY;
 	}
 
 	/* Increment client count */
-	hsi2s_core->hsi2s_arr[minor_num]->client_count++;
-	pr_warn("[HSI2S] Client connected. Active clients : %d",
-		hsi2s_core->hsi2s_arr[minor_num]->client_count);
+	hs_dev->client_count++;
+	dev_err(hs_dev->dev, "Client connected. Active clients : %d",
+		hs_dev->client_count);
 
 	/* Store the platform device pointer */
 	file->private_data = hsi2s_core->hsi2s_arr[minor_num];
@@ -2777,7 +3057,7 @@ static int device_release(struct inode *inode, struct file *file)
 	/* Decrement client count */
 	hs_dev = (struct hsi2s_device *)file->private_data;
 	hs_dev->client_count--;
-	pr_warn("[HSI2S] Client disconnected. Active clients : %d",
+	dev_err(hs_dev->dev, "Client disconnected. Active clients : %d",
 		hs_dev->client_count);
 
 	/* Decrement usage count to be able to properly close the module. */
@@ -2804,7 +3084,7 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 	switch (cmd) {
 		case LPAIF_NORMAL_MODE:
-			pr_warn("[HSI2S] Triggering normal operation");
+			dev_err(hs_dev->dev, "Triggering normal operation");
 			if (hs_dev->client_count == 1) {
 				/* Setting slave mode for SA8155/SA8195 targets */
 				if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195)
@@ -2813,48 +3093,48 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				hs_dev->slave = minor;
 			}
 			else
-				pr_warn("[HSI2S] Mode already set by previous client");
+				dev_warn(hs_dev->dev, "Mode already set by previous client");
 			break;
 
 		case LPAIF_INTERNAL_LOOPBACK:
-			pr_warn("[HSI2S] Triggering internal loopback");
+			dev_info(hs_dev->dev, "Triggering internal loopback");
 			if (hs_dev->client_count == 1) {
 				configure_int_loopback_mode(hs_dev, minor);
 				hs_dev->slave = minor;
 			}
 			else
-				pr_warn("[HSI2S] Mode already set by previous client");
+				dev_warn(hs_dev->dev, "Mode already set by previous client");
 			break;
 
 		case LPAIF_EXTERNAL_LOOPBACK:
 			if (hsi2s_core->target == 6155) {
-				pr_warn("[HSI2S] Mode not supported by target");
+				dev_err(hs_dev->dev, "Mode not supported by target");
 				return -EINVAL;
 			}
-			pr_warn("[HSI2S] Triggering external loopback on master");
+			dev_warn(hs_dev->dev, "Triggering external loopback on master");
 			if (hs_dev->client_count == 1) {
 				configure_muxmode(hs_dev, 0);
 				configure_ext_loopback_mode(hs_dev, minor);
 				hs_dev->slave = minor;
 			}
 			else
-				pr_warn("[HSI2S] Mode already set by previous client");
+				dev_warn(hs_dev->dev, "Mode already set by previous client");
 			break;
 
 		case LPAIF_MUXMODE:
 			if (hsi2s_core->target == 6155) {
-				pr_warn("[HSI2S] Mode not supported by target");
+				dev_err(hs_dev->dev, "Mode not supported by target");
 				return -EINVAL;
 			}
-			pr_warn("[HSI2S] Setting master/slave muxmode configuration");
+			dev_info(hs_dev->dev, "Setting master/slave muxmode configuration");
 			if (hs_dev->client_count == 1)
 				configure_muxmode(hs_dev, arg);
 			else
-				pr_warn("[HSI2S] Mode already set by previous client");
+				dev_warn(hs_dev->dev, "Mode already set by previous client");
 			break;
 
 		case LPAIF_SPEAKER:
-			pr_warn("[HSI2S] Configuring hs%d as speaker",hs_dev->minor_num);
+			dev_info(hs_dev->dev, "Configuring hs%d as speaker",hs_dev->minor_num);
 			if (hs_dev->client_count == 1) {
 				if (hs_dev->lpaif_mode == HS_I2S) {
 					configure_i2s_spkr(hs_dev);
@@ -2867,11 +3147,11 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				configure_rddma(hs_dev, minor);
 			}
 			else
-				pr_warn("[HSI2S] Mode already set by previous client");
+				dev_warn(hs_dev->dev, "Mode already set by previous client");
 			break;
 
 		case LPAIF_MIC:
-			pr_warn("[HSI2S] Configuring hs%d as mic",hs_dev->minor_num);
+			dev_info(hs_dev->dev, "Configuring hs%d as mic",hs_dev->minor_num);
 			if (hs_dev->client_count == 1) {
 				if (hs_dev->lpaif_mode == HS_I2S) {
 					configure_i2s_mic(hs_dev);
@@ -2889,22 +3169,22 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 					setbits(hs_dev->pcm_ctl, hsi2s_core->macro->bit_pcm_en_rx);
 			}
 			else
-				pr_warn("[HSI2S] Mode already set by previous client");
+				dev_warn(hs_dev->dev, "Mode already set by previous client");
 			break;
 
 		case LPAIF_SET_SLAVE:
 			if (hsi2s_core->target == 6155) {
-				pr_warn("[HSI2S] Mode not supported by target");
+				dev_err(hs_dev->dev, "Mode not supported by target");
 				return -EINVAL;
 			}
-			pr_warn("[HSI2S] Triggering external loopback with hs%d master and hs%d slave", hs_dev->minor_num, arg);
+			dev_info(hs_dev->dev, "Triggering external loopback with hs%d master and hs%d slave", hs_dev->minor_num, arg);
 			if (hs_dev->client_count == 1) {
 				hs_dev->slave = arg;
 				hs_dev->mode = EXTERNAL_LB_MASTER_SLAVE;
 				hsi2s_core->hsi2s_arr[arg]->mode = EXTERNAL_LB_MASTER_SLAVE;
 			}
 			else
-				pr_warn("[HSI2S] Mode already set by previous client");
+				dev_warn(hs_dev->dev, "Mode already set by previous client");
 			break;
 
 		case LPAIF_INIT_TX:
@@ -2922,12 +3202,12 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				hs_dev->rddma_in_progress = 1;
 			}
 			else
-				pr_warn("[HSI2S] Mode already set by previous client");
+				dev_warn(hs_dev->dev, "Mode already set by previous client");
 			break;
 
 		case LPAIF_DEINIT_TX:
 			if (hs_dev->client_count == 1) {
-				pr_warn("[HSI2S] Stopping rddma");
+				dev_info(hs_dev->dev, "Stopping rddma");
 				hs_dev->rddma_copy_busy = 1;
 				/* Disable speaker */
 				if (hs_dev->lpaif_mode == HS_I2S)
@@ -2941,16 +3221,16 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				hs_dev->rddma_in_progress = 0;
 			}
 			else
-				pr_warn("[HSI2S] Mode already set by previous client");
+				dev_warn(hs_dev->dev, "Mode already set by previous client");
 			break;
 
 		case LPAIF_SET_CLOCK:
 			if (hsi2s_core->target == 6155) {
-				pr_warn("[HSI2S] Master mode not supported by target");
+				dev_err(hs_dev->dev, "Master mode not supported by target");
 				return -EINVAL;
 			}
 
-			pr_warn("[HSI2S] Configuring master clock on HS%d interface", hs_dev->minor_num);
+			dev_info(hs_dev->dev, "Configuring master clock on HS%d interface", hs_dev->minor_num);
 
 			if (hs_dev->client_count == 1) {
 				if (hs_dev->minor_num == 0) {
@@ -2977,18 +3257,18 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 					setbits(clk_val_reg, arg);
 					setbits(clk_update_reg, HS_BITCLK_UPDATE);
 				}
-				pr_warn("[HSI2S] Re-configured master clock");
+				dev_info(hs_dev->dev, "Re-configured master clock");
 			}
 			else
-				pr_warn("[HSI2S] Clock already set by previous client");
+				dev_warn(hs_dev->dev, "Clock already set by previous client");
 			break;
 
 		case LPAIF_RESET:
 			if (hs_dev->client_count == 1) {
 				if (hs_dev->lpaif_mode == HS_I2S) {
-					pr_warn("[HSI2S] Resetting I2S control register");
+					dev_info(hs_dev->dev, "Resetting I2S control register");
 					reg_clear(hs_dev->i2s_ctl);
-					pr_warn("[HSI2S] Resetting DMA registers");
+					dev_info(hs_dev->dev, "Resetting DMA registers");
 					reset_rddma_registers(hs_dev);
 					reset_wrdma_registers(hs_dev);
 					/* Clear IRQs */
@@ -3006,11 +3286,11 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 					hs_dev->rddma_copy_busy = 1;
 					hs_dev->rddma_in_progress = 0;
 				} else {
-					pr_warn("[HSI2S] Resetting PCM control registers");
+					dev_info(hs_dev->dev, "Resetting PCM control registers");
 					reg_clear(hs_dev->pcm_ctl);
 					reg_clear(hs_dev->tdm_ctl);
 					reg_clear(hs_dev->tdm_sample_width);
-					pr_warn("[HSI2S] Resetting DMA registers");
+					dev_info(hs_dev->dev, "Resetting DMA registers");
 					reset_rddma_registers(hs_dev);
 					reset_wrdma_registers(hs_dev);
 					/* Clear IRQs */
@@ -3030,99 +3310,98 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				}
 			}
 			else
-				pr_warn("[HSI2S] Mode already set by previous client");
+				dev_warn(hs_dev->dev, "Mode already set by previous client");
 			break;
 
 		case LPAIF_MODE:
-			pr_warn("[HSI2S] Setting LPAIF mode");
+			dev_info(hs_dev->dev, "Setting LPAIF mode");
 			if (hs_dev->client_count == 1)
 				configure_lpaif_mode(hs_dev, (u8)arg);
 			else
-				pr_warn("[HSI2S] Mode already set by previous client");
+				dev_warn(hs_dev->dev, "Mode already set by previous client");
 			break;
 
 		case I2S_CONFIG_PARAMS:
 			if (hs_dev->client_count == 1) {
-				pr_warn("[HSI2S] Configuring I2S parameters from test application");
+				dev_info(hs_dev->dev, "Configuring I2S parameters from test application");
 				i2s_params = kzalloc(sizeof(struct hsi2s_params), GFP_KERNEL);
 				if (!i2s_params) {
-					pr_err("[HSI2S] Failed to allocate params structure");
+					dev_err(hs_dev->dev, "Failed to allocate params structure");
 					ret = -ENOMEM;
 					break;
 				}
 				copy_from_user(i2s_params, (void *)arg, sizeof(struct hsi2s_params));
 				ret = configure_i2s_params(hs_dev, i2s_params);
 				if (ret < 0) {
-					pr_err("[HSI2S] Failed to configure I2S parameters");
+					dev_err(hs_dev->dev, "Failed to configure I2S parameters");
 					ret = -EINVAL;
 				}
 				kfree(i2s_params);
 				i2s_params = NULL;
 			}
 			else
-				pr_warn("[HSI2S] Mode already set by previous client");
+				dev_warn(hs_dev->dev, "Mode already set by previous client");
 			break;
 
 		case PCM_CONFIG_PARAMS:
 			if (hs_dev->client_count == 1) {
-				pr_warn("[HSI2S] Configuring PCM parameters from test application");
+				dev_info(hs_dev->dev, "Configuring PCM parameters from test application");
 				pcm_params = kzalloc(sizeof(struct hspcm_params), GFP_KERNEL);
 				if (!pcm_params) {
-					pr_err("[HSI2S] Failed to allocate params structure");
+					dev_err(hs_dev->dev, "Failed to allocate params structure");
 					ret = -ENOMEM;
 					break;
 				}
 				copy_from_user(pcm_params, (void *)arg, sizeof(struct hspcm_params));
 				ret = configure_pcm_params(hs_dev, pcm_params);
 				if (ret < 0) {
-					pr_err("[HSI2S] Failed to configure PCM parameters");
+					dev_err(hs_dev->dev, "Failed to configure PCM parameters");
 					ret = -EINVAL;
 				}
 				kfree(pcm_params);
 				pcm_params = NULL;
 			} else {
-				pr_warn("[HSI2S] Mode already set by previous client");
+				dev_warn(hs_dev->dev, "Mode already set by previous client");
 			}
 			break;
 
 		case TDM_CONFIG_PARAMS:
-			pr_warn("[HSI2S] Setting TDM params");
 			if (hs_dev->client_count == 1) {
-				pr_warn("[HSI2S] Configuring TDM parameters from test application");
+				dev_info(hs_dev->dev, "Configuring TDM parameters from test application");
 				tdm_params = kzalloc(sizeof(struct hstdm_params), GFP_KERNEL);
 				if (!tdm_params) {
-					pr_err("[HSI2S] Failed to allocate params structure");
+					dev_err(hs_dev->dev, "Failed to allocate params structure");
 					ret = -ENOMEM;
 					break;
 				}
 				copy_from_user(tdm_params, (void *)arg, sizeof(struct hstdm_params));
 				ret = configure_tdm_params(hs_dev, tdm_params);
 				if (ret < 0) {
-					pr_err("[HSI2S] Failed to configure TDM parameters");
+					dev_err(hs_dev->dev, "Failed to configure TDM parameters");
 					ret = -EINVAL;
 				}
 				kfree(tdm_params);
 				tdm_params = NULL;
 			} else {
-				pr_warn("[HSI2S] Mode already set by previous client");
+				dev_warn(hs_dev->dev, "Mode already set by previous client");
 			}
 			break;
 
 		case PCM_CONFIG_LANE:
-			pr_warn("[HSI2S] Setting PCM lane configuration");
+			dev_info(hs_dev->dev, "Setting PCM lane configuration");
 			if (hs_dev->client_count == 1)
 				set_pcm_lane_config(hs_dev, arg);
 			else
-				pr_warn("[HSI2S] Mode already set by previous client");
+				dev_warn(hs_dev->dev, "Mode already set by previous client");
 			break;
 
 		case LPAIF_INVERT_BIT_CLOCK:
 			if (hsi2s_core->target == 6155) {
-				pr_err("[HSI2S] Bit clock configuration is not supported by target");
+				dev_err(hs_dev->dev, "Bit clock configuration is not supported by target");
 				return -EINVAL;
 			}
 
-			pr_info("[HSI2S] Re-configuring bit clock on HS%d interface", hs_dev->minor_num);
+			dev_info(hs_dev->dev, "Re-configuring bit clock on HS%d interface", hs_dev->minor_num);
 			if (hs_dev->client_count == 1) {
 				if (hs_dev->minor_num == 0)
 					clk_inv_reg = ioremap(HS0_BITCLK_INV_REG, 4);
@@ -3133,32 +3412,32 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 				switch (arg) {
 					case INVERT_INT_BIT_CLOCK:
-						pr_info("[HSI2S] Inverting internal bit clock");
+						dev_info(hs_dev->dev, "Inverting internal bit clock");
 						setbits(clk_inv_reg, INV_INT_CLK);
 						break;
 					case INVERT_EXT_BIT_CLOCK:
-						pr_info("[HSI2S] Inverting external bit clock");
+						dev_info(hs_dev->dev, "Inverting external bit clock");
 						setbits(clk_inv_reg, INV_EXT_CLK);
 						break;
 					case DONT_INVERT_INT_BIT_CLOCK:
-						pr_info("[HSI2S] Non-inverting internal bit clock");
+						dev_info(hs_dev->dev, "Non-inverting internal bit clock");
 						clearbits(clk_inv_reg, INV_INT_CLK);
 						break;
 					case DONT_INVERT_EXT_BIT_CLOCK:
-						pr_info("[HSI2S] Non-inverting external bit clock");
+						dev_info(hs_dev->dev, "Non-inverting external bit clock");
 						clearbits(clk_inv_reg, INV_EXT_CLK);
 						break;
 					default:
-						pr_err("[HSI2S] Invalid argument provided");
+						dev_err(hs_dev->dev, "Invalid argument provided");
 						ret = -EINVAL;
 						break;
 				}
 
 				iounmap(clk_inv_reg);
-				pr_info("[HSI2S] Re-configured bit clock");
+				dev_info(hs_dev->dev, "Re-configured bit clock");
 			}
 			else
-				pr_warn("[HSI2S] Clock already set by previous client");
+				dev_warn(hs_dev->dev, "Clock already set by previous client");
 			break;
 
 		default:
@@ -3199,12 +3478,12 @@ static int device_mmap(struct file *file, struct vm_area_struct *vma)
 	pfn = (pa >> PAGE_SHIFT) + vma->vm_pgoff;
 
 	if (len > dma_buffer_length) {
-		pr_err("[HSI2S] Size of map area exceeds DMA buffer length");
+		dev_err(hs_dev->dev, "Size of map area exceeds DMA buffer length");
 		ret = -EINVAL;
 	} else {
 		ret = remap_pfn_range(vma, vma->vm_start, pfn, len, vma->vm_page_prot);
 		if (ret)
-			pr_err("[HSI2S] %s failed", __func__);
+			dev_err(hs_dev->dev, "%s failed", __func__);
 	}
 
 	return ret;
@@ -3259,7 +3538,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	ret = of_property_read_u32(dev->of_node, "minor-number",
 				   &minor);
 	if (ret) {
-		pr_err("[HSI2S] Resource 'minor-number' unavailable in dtsi");
+		dev_err(hsi2s_core->dev, "Resource 'minor-number' unavailable in dtsi");
 		goto err_out;
 	}
 
@@ -3299,13 +3578,19 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	ret = of_property_read_u32(dev->of_node, "bit-clock-hz",
 				   &bit_clk);
 	if (ret)
-		pr_warn("[HSI2S] Resource 'bit-clock-hz' unavailable in dtsi");
+		dev_warn(hs_dev->dev, "Resource 'bit-clock-hz' unavailable in dtsi");
 
 	if (bit_clock_hz)
 		bit_clk = bit_clock_hz;
 
 	if (!bit_clk) {
-		pr_err("[HSI2S] Bit clock not configured. Exiting...");
+		dev_err(hs_dev->dev, "Bit clock not configured. Exiting...");
+		ret = -EINVAL;
+		goto err_disable_intf_clock;
+	}
+
+	if (bit_clk > BIT_CLK_MAX) {
+		dev_err(hs_dev->dev, "Bit clock rate exceeds maximum supported rate of 73.728MHz. Exiting...");
 		ret = -EINVAL;
 		goto err_disable_intf_clock;
 	}
@@ -3314,13 +3599,13 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	ret = of_property_read_u32(dev->of_node, "data-buffer-ms",
 				   &buffer_ms);
 	if (ret)
-		pr_warn("[HSI2S] Resource 'data-buffer-ms' unavailable in dtsi");
+		dev_warn(hs_dev->dev, "Resource 'data-buffer-ms' unavailable in dtsi");
 
 	if (data_buffer_ms)
 		buffer_ms = data_buffer_ms;
 
 	if (!buffer_ms) {
-		pr_err("[HSI2S] Data buffer in ms not configured. Exiting...");
+		dev_err(hs_dev->dev, "Data buffer in ms not configured. Exiting...");
 		ret = -EINVAL;
 		goto err_disable_intf_clock;
 	}
@@ -3329,13 +3614,13 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	/* Set the periodic length */
 	hs_dev->wrdma_periodic_length_bytes = set_periodic_length(bit_clk, buffer_ms);
 	hs_dev->wrdma_periodic_length = hs_dev->wrdma_periodic_length_bytes / BYTES_PER_SAMPLE;
-	pr_warn("[HSI2S] Periodic length configured as %u words", hs_dev->wrdma_periodic_length);
+	dev_info(hs_dev->dev, "Periodic length configured as %u words", hs_dev->wrdma_periodic_length);
 
 	/* Bit depth */
 	ret = of_property_read_u32(dev->of_node, "bit-depth",
 				  &b_depth);
 	if (ret)
-		pr_warn("[HSI2S] Resource 'bit-depth' unavailable in dtsi");
+		dev_warn(hs_dev->dev, "Resource 'bit-depth' unavailable in dtsi");
 
 	if (bit_depth)
 		b_depth = bit_depth;
@@ -3346,7 +3631,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	ret = of_property_read_u32(dev->of_node, "spkr-channel-count",
 				   &ch_count);
 	if (ret)
-		pr_warn("[HSI2S] Resource 'spkr-channel-count' unavailable in dtsi");
+		dev_warn(hs_dev->dev, "Resource 'spkr-channel-count' unavailable in dtsi");
 
 	if (channel_count)
 		ch_count = channel_count;
@@ -3357,7 +3642,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	ret = of_property_read_u32(dev->of_node, "mic-channel-count",
 				   &ch_count);
 	if (ret)
-		pr_warn("[HSI2S] Resource 'spkr-channel-count' unavailable in dtsi");
+		dev_warn(hs_dev->dev, "Resource 'spkr-channel-count' unavailable in dtsi");
 
 	if (channel_count)
 		ch_count = channel_count;
@@ -3370,7 +3655,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	ret = of_property_read_u32(dev->of_node, "pcm-rate",
 				   &pcm_rate);
 	if (ret)
-		pr_warn("[HSI2S] Resource 'pcm-rate' unavailable in dtsi");
+		dev_warn(hs_dev->dev, "Resource 'pcm-rate' unavailable in dtsi");
 
 	configure_pcm_rate(hs_dev, (u8)pcm_rate);
 
@@ -3378,7 +3663,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	ret = of_property_read_u32(dev->of_node, "pcm-sync-src",
 				   &pcm_sync_src);
 	if (ret)
-		pr_warn("[HSI2S] Resource 'pcm-sync-src' unavailable in dtsi");
+		dev_warn(hs_dev->dev, "Resource 'pcm-sync-src' unavailable in dtsi");
 
 	hs_dev->pcm_sync_src = (u8)pcm_sync_src;
 
@@ -3386,7 +3671,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	ret = of_property_read_u32(dev->of_node, "aux-mode",
 				   &aux_mode);
 	if (ret)
-		pr_warn("[HSI2S] Resource 'aux-mode' unavailable in dtsi");
+		dev_warn(hs_dev->dev, "Resource 'aux-mode' unavailable in dtsi");
 
 	hs_dev->pcm_aux_mode = (u8)aux_mode;
 
@@ -3394,7 +3679,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	ret = of_property_read_u32(dev->of_node, "rpcm-width",
 				   &rpcm_width);
 	if (ret)
-		pr_warn("[HSI2S] Resource 'rpcm-width' unavailable in dtsi");
+		dev_warn(hs_dev->dev, "Resource 'rpcm-width' unavailable in dtsi");
 
 	hs_dev->pcm_rpcm_width = (u8)rpcm_width;
 
@@ -3402,7 +3687,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	ret = of_property_read_u32(dev->of_node, "tpcm-width",
 				   &tpcm_width);
 	if (ret)
-		pr_warn("[HSI2S] Resource 'tpcm-width' unavailable in dtsi");
+		dev_warn(hs_dev->dev, "Resource 'tpcm-width' unavailable in dtsi");
 
 	hs_dev->pcm_tpcm_width = (u8)tpcm_width;
 
@@ -3412,7 +3697,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	ret = of_property_read_u32(dev->of_node, "enable-tdm",
 				   &en_tdm);
 	if (ret)
-		pr_warn("[HSI2S] Resource 'enable-tdm' unavailable in dtsi");
+		dev_warn(hs_dev->dev, "Resource 'enable-tdm' unavailable in dtsi");
 
 	hs_dev->tdm_en = (u8)en_tdm;
 
@@ -3420,7 +3705,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	ret = of_property_read_u32(dev->of_node, "tdm-rate",
 				   &tdm_rate);
 	if (ret)
-		pr_warn("[HSI2S] Resource 'tdm-rate' unavailable in dtsi");
+		dev_warn(hs_dev->dev, "Resource 'tdm-rate' unavailable in dtsi");
 
 	if (tdm_rate <= TDM_MAX_RATE)
 		hs_dev->tdm_rate = tdm_rate - 1;
@@ -3433,7 +3718,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	ret = of_property_read_u32(dev->of_node, "tdm-rpcm-width",
 				   &tdm_rpcm_width);
 	if (ret)
-		pr_warn("[HSI2S] Resource 'tdm-rpcm-width' unavailable in dtsi");
+		dev_warn(hs_dev->dev, "Resource 'tdm-rpcm-width' unavailable in dtsi");
 
 	if (tdm_rpcm_width <= TDM_MAX_SLOT_SIZE)
 		hs_dev->tdm_rpcm_width = (tdm_rpcm_width - 1) << 9;
@@ -3444,7 +3729,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	ret = of_property_read_u32(dev->of_node, "tdm-tpcm-width",
 				   &tdm_tpcm_width);
 	if (ret)
-		pr_warn("[HSI2S] Resource 'tdm-tpcm-width' unavailable in dtsi");
+		dev_warn(hs_dev->dev, "Resource 'tdm-tpcm-width' unavailable in dtsi");
 
 	if (tdm_tpcm_width <= TDM_MAX_SLOT_SIZE)
 		hs_dev->tdm_tpcm_width = (tdm_tpcm_width - 1) << 14;
@@ -3455,7 +3740,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	ret = of_property_read_u32(dev->of_node, "tdm-sync-delay",
 				   &tdm_sync_delay);
 	if (ret)
-		pr_warn("[HSI2S] Resource 'tdm-sync-delay' unavailable in dtsi");
+		dev_warn(hs_dev->dev, "Resource 'tdm-sync-delay' unavailable in dtsi");
 
 	configure_tdm_sync_delay(hs_dev, (u8)tdm_sync_delay);
 
@@ -3463,14 +3748,14 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	ret = of_property_read_u32(dev->of_node, "tdm-inv-sync",
 				   &tdm_inv_sync);
 	if (ret)
-		pr_warn("[HSI2S] Resource 'tdm-inv-sync' unavailable in dtsi");
+		dev_warn(hs_dev->dev, "Resource 'tdm-inv-sync' unavailable in dtsi");
 
 	hs_dev->tdm_inv_sync = (u8)tdm_inv_sync;
 
 	/* Map the interface registers */
 	ret = init_default(hs_dev, minor);
 	if (ret < 0) {
-		pr_err("[HSI2S] Failed to set default settings for hsi2s device");
+		dev_err(hs_dev->dev, "Failed to set default settings for hsi2s device");
 		goto err_deinit_default;
 	}
 
@@ -3478,7 +3763,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	/* Configure SMMU */
 	ret = hsi2s_smmu_init(pdev, minor);
 	if (ret) {
-		pr_err("[HSI2S] Failed to init smmu");
+		dev_err(hs_dev->dev, "Failed to init smmu");
 		goto err_free_smmu;
 	}
 	#endif
@@ -3488,7 +3773,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 		hs_dev->is_pinctrl_names = true;
 		ret = hsi2s_configure_gpio_pins(pdev);
 		if (ret < 0) {
-			pr_err("[HSI2S] Failed to configure gpios");
+			dev_err(hs_dev->dev, "Failed to configure gpios");
 			goto err_free_smmu;
 		}
 	}
@@ -3506,7 +3791,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	ret = of_property_read_u32(dev->of_node, "pcm-lane-config",
 				   &lane_config);
 	if (ret)
-		pr_warn("[HSI2S] Resource 'pcm-lane-config' unavailable in dtsi");
+		dev_warn(hs_dev->dev, "Resource 'pcm-lane-config' unavailable in dtsi");
 
 	set_pcm_lane_config(hs_dev, lane_config);
 
@@ -3522,7 +3807,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 		wake_up_process(hs_dev->rddma_thread);
 	} else {
 		ret = -EINVAL;
-		pr_err("Cannot create rddma scheduler thread");
+		dev_err(hs_dev->dev, "Cannot create rddma scheduler thread");
 		goto err_free_smmu;
 	}
 
@@ -3545,7 +3830,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	hs_dev->cdev_sdr->owner = THIS_MODULE;
 	ret = cdev_add(hs_dev->cdev_sdr, hs_dev->curr_devid, 1);
 	if (ret < 0) {
-		pr_err("[HSI2S] Unable to add cdev for sdr%d interface"
+		dev_err(hs_dev->dev, "Unable to add cdev for sdr%d interface"
 		       , minor);
 		goto err_free_cdev;
 	}
@@ -3560,14 +3845,14 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	hs_dev->class_sdr = class_create(THIS_MODULE,
 					 devname);
 	if (!hs_dev->class_sdr) {
-		pr_err("[HSI2S] Failed to create device class %d"
+		dev_err(hs_dev->dev, "Failed to create device class %d"
 		       , minor);
 		ret = -EEXIST;
 		goto err_delete_cdev;
 	}
 	if (!device_create(hs_dev->class_sdr, NULL, hs_dev->curr_devid,
 			   NULL, "hs%d_i2s", minor)) {
-		pr_err("[HSI2S] Failed to create device file for sdr%d interface"
+		dev_err(hs_dev->dev, "Failed to create device file for sdr%d interface"
 		       , minor);
 		ret = -EINVAL;
 		goto err_class_destroy;
@@ -3598,7 +3883,7 @@ err_free_smmu:
 		hs_dev->hsi2s_smmu_ctx->mapping = NULL;
 		hs_dev->hsi2s_smmu_ctx->pdev_master = NULL;
 		hs_dev->hsi2s_smmu_ctx->smmu_pdev = NULL;
-		pr_warn("[HSI2S] Detach and release iommu mapping");
+		dev_info(hs_dev->dev, "Detached and released iommu mapping");
 	}
 	kfree(hs_dev->hsi2s_smmu_ctx);
 	hs_dev->hsi2s_smmu_ctx = NULL;
@@ -3618,10 +3903,10 @@ err_out:
 		if (hsi2s_core->irq0 > 0) {
 			hsi2s_core->desc = irq_to_desc(hsi2s_core->irq0);
 			if (hsi2s_core->desc->core_internal_state__do_not_mess_with_it & 0x00000200) {
-				pr_warn("[HSI2S] Removing pending IRQs");
+				dev_info(hsi2s_core->dev, "Removing pending IRQs");
 				hsi2s_core->desc->core_internal_state__do_not_mess_with_it &= ~(0x00000200);
 			}
-			pr_warn("[HSI2S] Enabling IRQ line");
+			dev_info(hsi2s_core->dev, "Enabling IRQ line");
 			enable_irq(hsi2s_core->irq0);
 			hsi2s_core->is_irq_enabled = true;
 		}
@@ -3650,6 +3935,9 @@ static int hsi2s_probe(struct platform_device *pdev)
 	/* Set the hsi2s_core structure as platform data */
 	platform_set_drvdata(pdev, hsi2s_core);
 
+	/* Set the device pointer */
+	hsi2s_core->dev = &pdev->dev;
+
 	/* Read the target property */
 	if (of_device_is_compatible(pdev->dev.of_node, "qcom,sa6155-hsi2s"))
 		target = 6155;
@@ -3658,7 +3946,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 	else if (of_device_is_compatible(pdev->dev.of_node, "qcom,sa8195-hsi2s"))
 		target = 8195;
 	else {
-		pr_err("[HSI2S] Uncompatible target");
+		dev_err(hsi2s_core->dev, "Uncompatible target");
 		goto err_free_core;
 	}
 
@@ -3669,11 +3957,11 @@ static int hsi2s_probe(struct platform_device *pdev)
 
 	/* Assign target specific macros */
 	if (target == 6155) {
-		pr_warn("[HSI2S] Talos target detected");
+		dev_info(hsi2s_core->dev, "Talos target detected");
 		t_assign_macros();
 	}
 	else if (target == 8155 || target == 8195) {
-		pr_warn("[HSI2S] Hana/Poipu target detected");
+		dev_info(hsi2s_core->dev, "Hana/Poipu target detected");
 		h_assign_macros();
 	}
 
@@ -3683,7 +3971,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 	ret = of_property_read_u32(dev->of_node, "number-of-interfaces",
 				   &interface_count);
 	if (ret) {
-		pr_err("[HSI2S] Resource 'number-of-interfaces' unavailable in dtsi");
+		dev_err(hsi2s_core->dev, "Resource 'number-of-interfaces' unavailable in dtsi");
 		goto err_free_macro;
 	}
 
@@ -3692,13 +3980,13 @@ static int hsi2s_probe(struct platform_device *pdev)
 
 	/* Set the write DMA buffer length */
 	if (dma_buffer_length < 1 || dma_buffer_length > 4) {
-		pr_warn("[HSI2S] No valid buffer length entered. Setting 4MB default");
+		dev_warn(hsi2s_core->dev, "No valid buffer length entered. Setting 4MB default");
 		dma_buffer_length = DEFAULT_BUFF_LEN_BYTES;
 	} else {
 		/* Converting into bytes */
 		dma_buffer_length *= (1024 * 1024);
 	}
-	pr_warn("[HSI2S] Write DMA buffer length set to %u bytes", dma_buffer_length);
+	dev_info(hsi2s_core->dev, "Write DMA buffer length set to %u bytes", dma_buffer_length);
 
 	dma_buffer_length_words = ((dma_buffer_length / 4) - 1);
 
@@ -3706,7 +3994,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 	ret = alloc_chrdev_region(&devid, 0, interface_count,
 				  "hsi2s_dev");
 	if (ret < 0) {
-		pr_err("[HSI2S] Major number allocation failed");
+		dev_err(hsi2s_core->dev, "Major number allocation failed");
 		goto err_free_macro;
 	}
 
@@ -3722,15 +4010,60 @@ static int hsi2s_probe(struct platform_device *pdev)
 			goto err_free_macro;
 	}
 	else if (target == 8155 || target == 8195) {
+#ifndef CONFIG_QTI_GVM
+		if (enable_qmi) {
+			/* Allocate QMI handle */
+			hsi2s_core->qmi_dev = kzalloc(sizeof(*hsi2s_core->qmi_dev), GFP_KERNEL);
+			if (!hsi2s_core->qmi_dev) {
+				dev_err(hsi2s_core->dev, "Failed to allocate QMI handle");
+				ret = -ENOMEM;
+				goto err_free_macro;
+			}
+
+			/* Initialize QMI wait queue */
+			init_waitqueue_head(&hsi2s_core->wq_qmi);
+
+			/* Initialize QMI connection flag */
+			hsi2s_core->qmi_connection = false;
+
+			ret = qmi_handle_init(hsi2s_core->qmi_dev,
+					PROD_HSI2S_CLK_CTRL_REQ_MSG_V01_MAX_MSG_LEN,
+					&hsi2s_qmi_adsp_ops, NULL);
+
+			if (ret < 0) {
+				dev_err(hsi2s_core->dev, "Failed to initialize the qmi_handle for the client");
+				goto err_disable_core_clocks;
+			}
+
+			/* Register a new lookup with the service PGS_SERVICE_ID_V01 */
+			ret = qmi_add_lookup(hsi2s_core->qmi_dev, PGS_SERVICE_ID_V01,
+					PGS_SERVICE_VERS_V01, 0);
+
+			if (ret < 0) {
+				dev_err(hsi2s_core->dev, "Failed to add QMI lookup");
+				goto err_disable_core_clocks;
+			}
+
+			/* Enable clocks */
+			ret = hsi2s_adsp_enable_clks();
+			if (ret < 0) {
+				goto err_disable_core_clocks;
+			}
+		} else {
+			h_modify_core_clks(1);
+			h_modify_interface_clks(1);
+		}
+#else
 		h_modify_core_clks(1);
 		h_modify_interface_clks(1);
+#endif
 	}
 
 	/* Map the register memory region */
 	resource = platform_get_resource_byname(pdev, IORESOURCE_MEM,
 						"lpa_if");
 	if (!resource) {
-		pr_err("[HSI2S] get lpa_if resource failed");
+		dev_err(hsi2s_core->dev, "get lpa_if resource failed");
 		ret = -ENODEV;
 		goto err_disable_core_clocks;
 	}
@@ -3738,7 +4071,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 	hsi2s_core->lpaif_base_va = devm_ioremap_resource(&pdev->dev,
 								  resource);
 	if (IS_ERR(hsi2s_core->lpaif_base_va)) {
-		pr_err("[HSI2S] ioremap failed");
+		dev_err(hsi2s_core->dev, "ioremap failed");
 		ret = PTR_ERR(hsi2s_core->lpaif_base_va);
 		goto err_disable_core_clocks;
 	}
@@ -3747,7 +4080,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 		resource = platform_get_resource_byname(pdev, IORESOURCE_MEM,
 						"lpass_tcsr");
 		if (!resource) {
-			pr_err("[HSI2S] get lpass_tcsr resource failed");
+			dev_err(hsi2s_core->dev, "get lpass_tcsr resource failed");
 			ret = -ENODEV;
 			goto err_iounmap_lpaif;
 		}
@@ -3756,7 +4089,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 		devm_ioremap_resource(&pdev->dev, resource);
 
 		if (IS_ERR(hsi2s_core->lpass_tcsr_base_va)) {
-			pr_err("[HSI2S] ioremap failed");
+			dev_err(hsi2s_core->dev, "ioremap failed");
 			ret = PTR_ERR(hsi2s_core->lpass_tcsr_base_va);
 			goto err_iounmap_lpaif;
 		}
@@ -3766,7 +4099,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 	/* Map the core registers */
 	ret = map_core_registers();
 	if (ret < 0) {
-		pr_err("[HSI2S] Unable to map core registers");
+		dev_err(hsi2s_core->dev, "Unable to map core registers");
 		goto err_iounmap_lpass_tcsr;
 	}
 
@@ -3774,7 +4107,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 	ret = of_property_read_u32(dev->of_node, "number-of-rate-detectors",
 				   &rate_detector_count);
 	if (ret)
-		pr_warn("[HSI2S] Resource 'number-of-rate-detectors' unavailable in dtsi");
+		dev_warn(hsi2s_core->dev, "Resource 'number-of-rate-detectors' unavailable in dtsi");
 #else
 	rate_detector_count = 0;
 #endif
@@ -3785,10 +4118,10 @@ static int hsi2s_probe(struct platform_device *pdev)
 			case 1:
 				ret = of_property_read_u32(dev->of_node, "rate-detector-interfaces", &hsi2s_core->pri_rate_interface);
 				if (ret) {
-					pr_warn("[HSI2S] Resource 'rate-detector-interfaces' unavailable in dtsi");
+					dev_warn(hsi2s_core->dev, "Resource 'rate-detector-interfaces' unavailable in dtsi");
 					hsi2s_core->is_rate_enabled = false;
 				} else if (hsi2s_core->pri_rate_interface >= interface_count) {
-					pr_warn("[HSI2S] Invalid minor number for the rate detector");
+					dev_warn(hsi2s_core->dev, "Invalid minor number for the rate detector");
 					hsi2s_core->is_rate_enabled = false;
 				} else {
 					/* Configure rate detection */
@@ -3798,10 +4131,10 @@ static int hsi2s_probe(struct platform_device *pdev)
 			case 2:
 				ret = of_property_read_u32_array(dev->of_node, "rate-detector-interfaces", rate_array, 2);
 				if (ret) {
-					pr_warn("[HSI2S] Resource 'rate-detector-interfaces' unavailable in dtsi");
+					dev_warn(hsi2s_core->dev, "Resource 'rate-detector-interfaces' unavailable in dtsi");
 					hsi2s_core->is_rate_enabled = false;
 				} else if (rate_array[0] >= interface_count && rate_array[1] >= interface_count) {
-					pr_warn("[HSI2S] Invalid minor numbers for the rate detector");
+					dev_warn(hsi2s_core->dev, "Invalid minor numbers for the rate detector");
 					hsi2s_core->is_rate_enabled = false;
 				} else {
 					if (rate_array[0] < interface_count) {
@@ -3817,7 +4150,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 				}
 				break;
 			default:
-				pr_warn("[HSI2S] Invalid rate detector count specified. Check device tree");
+				dev_warn(hsi2s_core->dev, "Invalid rate detector count specified. Check device tree");
 				hsi2s_core->is_rate_enabled = false;
 				break;
 		}
@@ -3831,7 +4164,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 	/* Enable the interrupt line 0 */
 	hsi2s_core->irq0 = platform_get_irq(pdev, 0);
 	if (hsi2s_core->irq0 < 0) {
-		pr_err("[HSI2S] Err getting IRQ0");
+		dev_err(hsi2s_core->dev, "Err getting IRQ0");
 		ret = hsi2s_core->irq0;
 		goto err_iounmap_lpass_tcsr;
 	}
@@ -3844,7 +4177,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 				  IRQF_TRIGGER_HIGH | IRQF_ONESHOT,
 				  "lpaif_hs_out0_irq", hsi2s_core);
 	if (ret) {
-		pr_err("[HSI2S] Request_irq failed:%d: err:%d\n",
+		dev_err(hsi2s_core->dev, "Request_irq failed:%d: err:%d\n",
 		       hsi2s_core->irq0, ret);
 		goto err_iounmap_lpass_tcsr;
 	}
@@ -3856,9 +4189,9 @@ static int hsi2s_probe(struct platform_device *pdev)
 	/* Probe child devices */
 	ret = of_platform_populate(dev->of_node, NULL, NULL, dev);
 	if (ret)
-		pr_err("[HSI2S] Failed to add child devices");
+		dev_err(hsi2s_core->dev, "Failed to add child devices");
 	else
-		pr_warn("[HSI2S] Added child devices");
+		dev_info(hsi2s_core->dev, "Added child devices");
 
 	return ret;
 
@@ -3867,8 +4200,16 @@ err_iounmap_lpass_tcsr:
 err_iounmap_lpaif:
 	iounmap(hsi2s_core->lpaif_base_va);
 err_disable_core_clocks:
-	if (target == 6155)
+	if (target == 6155) {
 		hsi2s_disable_core_clks(pdev);
+	} else {
+#ifndef CONFIG_QTI_GVM
+		if (enable_qmi) {
+			if (hsi2s_core->qmi_dev)
+				kfree(hsi2s_core->qmi_dev);
+		}
+#endif
+	}
 err_free_macro:
 	kfree(hsi2s_core->macro);
 	hsi2s_core->macro = NULL;
@@ -3916,7 +4257,7 @@ static int hsi2s_interface_remove(struct platform_device *pdev)
 			hs_dev->hsi2s_smmu_ctx->mapping = NULL;
 			hs_dev->hsi2s_smmu_ctx->pdev_master = NULL;
 			hs_dev->hsi2s_smmu_ctx->smmu_pdev = NULL;
-			pr_warn("[HSI2S] Detach and release iommu mapping");
+			dev_info(hs_dev->dev, "Detached and released iommu mapping");
 		}
 		kfree(hs_dev->hsi2s_smmu_ctx);
 		hs_dev->hsi2s_smmu_ctx = NULL;
@@ -3928,12 +4269,12 @@ static int hsi2s_interface_remove(struct platform_device *pdev)
 		hs_dev = NULL;
 		hsi2s_core->hsi2s_arr[minor] = NULL;
 	} else {
-		pr_warn("[HSI2S] Platform driver data is NULL");
+		dev_warn(hsi2s_core->dev, "Platform driver data is NULL");
 	}
 
 	mutex_unlock(&hsi2s_core->irqlock);
 
-	pr_warn("[HSI2S] Child device removed");
+	dev_info(hsi2s_core->dev, "Child device removed");
 
 	return 0;
 }
@@ -3961,8 +4302,21 @@ static int hsi2s_remove(struct platform_device *pdev)
 	if (hs_core->target == 6155)
 		hsi2s_disable_core_clks(pdev);
 	else if (hs_core->target == 8155 || hs_core->target == 8195) {
+#ifndef CONFIG_QTI_GVM
+		if (enable_qmi) {
+			if (hs_core->qmi_dev) {
+				hsi2s_adsp_disable_clks();
+				qmi_handle_release(hs_core->qmi_dev);
+				kfree(hs_core->qmi_dev);
+			}
+		} else {
+			h_modify_interface_clks(0);
+			h_modify_core_clks(0);
+		}
+#else
 		h_modify_interface_clks(0);
 		h_modify_core_clks(0);
+#endif
 	}
 	/* Unregister the device numbers */
 	unregister_chrdev_region(devid, 1);
@@ -3975,7 +4329,7 @@ static int hsi2s_remove(struct platform_device *pdev)
 	hs_core = NULL;
 	hsi2s_core = NULL;
 
-	pr_warn("[HSI2S] Core device removed");
+	pr_info("[hsi2s] Core device removed");
 
 	return 0;
 }
@@ -3993,12 +4347,22 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 		if (hsi2s_core->target == 6155)
 			hsi2s_suspend_core_clks(pdev);
 		else if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195) {
-			h_modify_interface_clks(0);
-			h_modify_core_clks(0);
+#ifndef CONFIG_QTI_GVM
+			if (enable_qmi) {
+				if (hsi2s_core->qmi_dev)
+					hsi2s_adsp_disable_clks();
+			} else {
+				h_modify_interface_clks(0);
+				h_modify_core_clks(0);
+			}
+#else
+		h_modify_interface_clks(0);
+		h_modify_core_clks(0);
+#endif
 		}
 	}
 
-	pr_warn("[HSI2S] Device entering suspend state");
+	dev_info(&pdev->dev, "Device entering suspend state");
 
 	return 0;
 }
@@ -4014,7 +4378,7 @@ static int hsi2s_resume(struct platform_device *pdev)
 		if (hsi2s_core->target == 6155) {
 			ret = hsi2s_resume_intf_clks(pdev);
 			if (ret) {
-				pr_warn("[HSI2S] Failed to resume interface clocks");
+				dev_err(&pdev->dev, "Failed to resume interface clocks");
 				return ret;
 			}
 		}
@@ -4023,16 +4387,31 @@ static int hsi2s_resume(struct platform_device *pdev)
 		if (hsi2s_core->target == 6155) {
 			ret = hsi2s_resume_core_clks(pdev);
 			if (ret) {
-				pr_warn("[HSI2S] Failed to resume core clocks");
+				dev_err(&pdev->dev, "Failed to resume core clocks");
 				return ret;
 			}
 		} else if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195) {
-			h_modify_core_clks(1);
+#ifndef CONFIG_QTI_GVM
+			if (enable_qmi) {
+				if (hsi2s_core->qmi_dev) {
+					ret = hsi2s_adsp_enable_clks();
+					if (ret) {
+						dev_err(&pdev->dev, "Failed to resume core clocks");
+						return ret;
+					}
+				}
+			} else {
+				h_modify_interface_clks(1);
+				h_modify_core_clks(1);
+			}
+#else
 			h_modify_interface_clks(1);
+			h_modify_core_clks(1);
+#endif
 		}
 	}
 
-	pr_warn("[HSI2S] Device resuming from suspend state");
+	dev_info(&pdev->dev, "Device resuming from suspend state");
 
 	return ret;
 }
@@ -4057,7 +4436,7 @@ static int __init hsi2s_init_module(void)
 
 	ret = platform_driver_register(&hsi2s_driver);
 	if (ret < 0) {
-		pr_err("[HSI2S] Driver registration failed");
+		pr_err("[hsi2s] Driver registration failed");
 		return ret;
 	}
 
@@ -4068,7 +4447,7 @@ static void __exit hsi2s_exit_module(void)
 {
 	platform_driver_unregister(&hsi2s_driver);
 
-	pr_warn("[HSI2S] Driver removed");
+	pr_info("[hsi2s] Driver removed");
 }
 
 module_init(hsi2s_init_module);
