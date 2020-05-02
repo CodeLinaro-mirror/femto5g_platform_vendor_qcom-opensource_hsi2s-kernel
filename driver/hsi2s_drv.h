@@ -1,4 +1,4 @@
-/* Copyright (c) 2019, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -41,6 +41,7 @@
 #include <linux/irqdesc.h>
 #include <linux/io.h>
 #include <linux/poll.h>
+#include <linux/soc/qcom/qmi.h>
 #include <asm/dma-iommu.h>
 
 /* Register offsets */
@@ -116,12 +117,14 @@
 #define T_I2S_MIC_EN				BIT(9)
 #define T_I2S_SPKR_EN				BIT(16)
 #define T_I2S_LOOPBACK				BIT(17)
+#define T_I2S_EN_LONG_RATE			BIT(24)
 #define T_I2S_RESET				BIT(31)
 
 #define H_I2S_WS_SRC				BIT(2)
 #define H_I2S_MIC_EN				BIT(8)
 #define H_I2S_SPKR_EN				BIT(14)
 #define H_I2S_LOOPBACK				BIT(15)
+#define H_I2S_EN_LONG_RATE			BIT(22)
 #define H_I2S_RESET				BIT(31)
 
 /* Bits for PCM control register */
@@ -254,42 +257,6 @@
 #define INV_INT_CLK				BIT(0)
 #define INV_EXT_CLK				BIT(1)
 
-/* IOCTLs */
-/* Configures I2S/PCM and DMA registers for normal data transfer on the interface */
-#define LPAIF_NORMAL_MODE _IOWR('i', 0, int)
-/* Configures I2S/PCM and DMA registers for internal loopback on the interface */
-#define LPAIF_INTERNAL_LOOPBACK _IOWR('i', 1, int)
-/* Configures I2S/PCM and DMA registers for external loopback on the interface */
-#define LPAIF_EXTERNAL_LOOPBACK _IOWR('i', 2, int)
-/* Configures the interface as either master or slave */
-#define LPAIF_MUXMODE _IOWR('i', 3, int)
-/* Configures I2S/PCM and DMA registers for speaker operation on the interface */
-#define LPAIF_SPEAKER _IOWR('i', 4, int)
-/* Configures I2S/PCM and DMA registers for mic operation on the interface */
-#define LPAIF_MIC _IOWR('i', 5, int)
-/* Used in master-slave external loopback to set slave field of master interface data structure */
-#define LPAIF_SET_SLAVE _IOWR('i', 6, int)
-/* Enables read DMA channel and speaker */
-#define LPAIF_INIT_TX _IOWR('i', 7, int)
-/* Disables read DMA channel and speaker */
-#define LPAIF_DEINIT_TX _IOWR('i', 8, int)
-/* Configures the master clock on the interface */
-#define LPAIF_SET_CLOCK _IOWR('i', 9, int)
-/* Resets the I2S/PCM and DMA registers */
-#define LPAIF_RESET _IOWR('i', 10, int)
-/* Configures LPAIF to be in I2S/PCM mode */
-#define LPAIF_MODE _IOWR('i', 11, int)
-/* Configures I2S parameters on the interface */
-#define I2S_CONFIG_PARAMS _IOWR('i', 12, int)
-/* Configures PCM parameters on the interface */
-#define PCM_CONFIG_PARAMS _IOWR('i', 13, int)
-/* Configures TDM parameters on the interface */
-#define TDM_CONFIG_PARAMS _IOWR('i', 14, int)
-/* Sets PCM lane configuration */
-#define PCM_CONFIG_LANE  _IOWR('i', 15, int)
-/* Inverts the bit clock on the interface */
-#define LPAIF_INVERT_BIT_CLOCK _IOWR('i', 16, int)
-
 /* Additional macros */
 #define DEVICE_NAME "hsi2s_driver"
 #define SDR0 "hs0_i2s"
@@ -348,8 +315,12 @@
 #define INVERT_EXT_BIT_CLOCK 0x1
 #define DONT_INVERT_INT_BIT_CLOCK 0x2
 #define DONT_INVERT_EXT_BIT_CLOCK 0x3
+#define PGS_TIMEOUT msecs_to_jiffies(3000)
+#define LONG_RATE_MIN 0
+#define LONG_RATE_MAX 63
+#define BIT_CLK_MAX 73728000
 
-#define T_I2S_LONG_RATE_15 0x3C0000
+#define T_I2S_LONG_RATE_OFFSET 18
 #define T_I2S_SPKR_MODE_SD0 0x800
 #define T_I2S_SPKR_MODE_SD1 0x1000
 #define T_I2S_SPKR_MODE_QUAD01 0x2800
@@ -404,7 +375,7 @@
 #define T_SYNC_SEL_PRI 0x1
 #define T_SYNC_SEL_SEC 0x2
 
-#define H_I2S_LONG_RATE_15 0xF0000
+#define H_I2S_LONG_RATE_OFFSET 16
 #define H_I2S_SPKR_MODE_SD0 0x400
 #define H_I2S_SPKR_MODE_SD1 0x800
 #define H_I2S_SPKR_MODE_QUAD01 0x1400
@@ -486,6 +457,9 @@ enum operation_mode {
 
 /* LPAIF HS-I2S core structure */
 struct hsi2s_core {
+	/* Device pointer */
+	struct device *dev;
+
 	/* HS-I2S device structure */
 	struct hsi2s_device **hsi2s_arr;
 
@@ -519,6 +493,11 @@ struct hsi2s_core {
 	void __iomem *sec_rate_bin;
 	void __iomem *sec_rate_stc_diff;
 	void __iomem *sec_rate_sel;
+
+	/* QMI */
+	struct qmi_handle *qmi_dev;
+	wait_queue_head_t wq_qmi;
+	bool qmi_connection;
 
 	/* Clocks */
 	struct clk *core_clk;
@@ -599,7 +578,6 @@ struct hsi2s_device {
 	/* Wait queues */
 	wait_queue_head_t wq_rddma;
 	wait_queue_head_t wq_wrdma;
-	wait_queue_head_t wq_copy;
 
 	/* Minor number */
 	int minor_num;
@@ -622,6 +600,8 @@ struct hsi2s_device {
 	u32 bit_depth;
 	u32 wpscnt_rddma;
 	u32 wpscnt_wrdma;
+	u8 en_long_rate;
+	u32 long_rate;
 	/* Absolute values */
 	u32 data_buffer_ms_val;
 	u32 bit_depth_val;
@@ -658,6 +638,8 @@ struct hsi2s_params {
 	u32 bit_depth;
 	u32 spkr_channel_count;
 	u32 mic_channel_count;
+	u8 en_long_rate;
+	u32 long_rate;
 };
 
 /* PCM parameters */
@@ -759,6 +741,7 @@ struct hsi2s_macros {
 	u32 bit_spkr_en;
 	u32 bit_loopback;
 	u32 bit_i2s_reset;
+	u32 bit_en_long_rate;
 	u32 bit_tpcm_width;
 	u32 bit_rpcm_width;
 	u32 bit_aux_mode;
@@ -797,7 +780,7 @@ struct hsi2s_macros {
 	u32 bit_rate_reset;
 
 	/* Register fields */
-	u32 regfield_i2s_lrate15;
+	u32 regfield_i2s_lrate_offset;
 	u32 regfield_spkr_mode_sd0;
 	u32 regfield_spkr_mode_sd1;
 	u32 regfield_spkr_mode_quad01;
