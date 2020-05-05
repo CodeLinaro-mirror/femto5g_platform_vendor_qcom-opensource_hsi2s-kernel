@@ -3999,6 +3999,10 @@ static int hsi2s_probe(struct platform_device *pdev)
 	u32 target;
 	u32 rate_array[2];
 	int ret = 0;
+#ifdef CONFIG_QTI_GVM
+	int handle;
+	u32 resp_size = sizeof(msg_t);
+#endif
 
 	if (of_device_is_compatible(pdev->dev.of_node, "qcom,hsi2s-interface"))
 		return hsi2s_interface_probe(pdev);
@@ -4085,8 +4089,8 @@ static int hsi2s_probe(struct platform_device *pdev)
 			goto err_free_macro;
 	}
 	else if (target == 8155 || target == 8195) {
-#ifndef CONFIG_QTI_GVM
 		if (enable_qmi) {
+#ifndef CONFIG_QTI_GVM
 			/* Allocate QMI handle */
 			hsi2s_core->qmi_dev = kzalloc(sizeof(*hsi2s_core->qmi_dev), GFP_KERNEL);
 			if (!hsi2s_core->qmi_dev) {
@@ -4124,14 +4128,50 @@ static int hsi2s_probe(struct platform_device *pdev)
 			if (ret < 0) {
 				goto err_disable_core_clocks;
 			}
+#else
+			hsi2s_core->hab_req = kzalloc(sizeof(msg_t), GFP_KERNEL);
+			if (!hsi2s_core->hab_req) {
+				dev_err(hsi2s_core->dev, "Failed to allocate HAB request message");
+				ret = -ENOMEM;
+				goto err_free_macro;
+			}
+			hsi2s_core->hab_resp = kzalloc(sizeof(msg_t), GFP_KERNEL);
+			if (!hsi2s_core->hab_resp) {
+				dev_err(hsi2s_core->dev, "Failed to allocate HAB response message");
+				ret = -ENOMEM;
+				goto err_free_hab_req;
+			}
+
+			ret = habmm_socket_open(&handle, MM_HSI2S_1, 0, 0);
+			if (ret) {
+				pr_err("open habmm socket failed (%d)\n", ret);
+				goto err_free_hab_resp;
+			}
+			hsi2s_core->hab_handle = handle;
+			hsi2s_core->hab_req->clk_en = 1;
+
+			ret = habmm_socket_send(handle, hsi2s_core->hab_req, resp_size, 0);
+			if (ret) {
+				dev_err(hsi2s_core->dev, "habmm socket send failed (%d)\n", ret);
+				goto err_close_hab;
+			}
+
+			ret = habmm_socket_recv(handle, hsi2s_core->hab_resp, &resp_size, UINT_MAX, HABMM_SOCKET_RECV_FLAGS_UNINTERRUPTIBLE);
+			if (ret) {
+				dev_err(hsi2s_core->dev, "habmm socket receive failed (%d)\n", ret);
+				goto err_close_hab;
+			}
+
+			if (hsi2s_core->hab_resp->rsp) {
+				dev_err(hsi2s_core->dev, "error response (%d)\n", hsi2s_core->hab_resp->rsp);
+				ret = -EIO;
+				goto err_close_hab;
+			}
+#endif
 		} else {
 			h_modify_core_clks(1);
 			h_modify_interface_clks(1);
 		}
-#else
-		h_modify_core_clks(1);
-		h_modify_interface_clks(1);
-#endif
 	}
 
 	/* Map the register memory region */
@@ -4278,12 +4318,24 @@ err_disable_core_clocks:
 	if (target == 6155) {
 		hsi2s_disable_core_clks(pdev);
 	} else {
-#ifndef CONFIG_QTI_GVM
 		if (enable_qmi) {
+#ifndef CONFIG_QTI_GVM
 			if (hsi2s_core->qmi_dev)
 				kfree(hsi2s_core->qmi_dev);
-		}
+#else
+err_close_hab:
+			habmm_socket_close(handle);
+			hsi2s_core->hab_handle = 0;
+err_free_hab_resp:
+			kfree(hsi2s_core->hab_req);
+err_free_hab_req:
+			kfree(hsi2s_core->hab_resp);
 #endif
+		} else {
+			h_modify_interface_clks(0);
+			h_modify_core_clks(0);
+		}
+
 	}
 err_free_macro:
 	kfree(hsi2s_core->macro);
@@ -4356,6 +4408,10 @@ static int hsi2s_interface_remove(struct platform_device *pdev)
 static int hsi2s_remove(struct platform_device *pdev)
 {
 	struct hsi2s_core *hs_core;
+#ifdef CONFIG_QTI_GVM
+	int ret = 0;
+	u32 resp_size = sizeof(msg_t);
+#endif
 
 	if (of_device_is_compatible(pdev->dev.of_node, "qcom,hsi2s-interface"))
 		return hsi2s_interface_remove(pdev);
@@ -4375,21 +4431,44 @@ static int hsi2s_remove(struct platform_device *pdev)
 	if (hs_core->target == 6155)
 		hsi2s_disable_core_clks(pdev);
 	else if (hs_core->target == 8155 || hs_core->target == 8195) {
-#ifndef CONFIG_QTI_GVM
 		if (enable_qmi) {
+#ifndef CONFIG_QTI_GVM
 			if (hs_core->qmi_dev) {
 				hsi2s_adsp_disable_clks();
 				qmi_handle_release(hs_core->qmi_dev);
 				kfree(hs_core->qmi_dev);
 			}
+#else
+			hsi2s_core->hab_req->clk_en = 0;
+
+			ret = habmm_socket_send(hsi2s_core->hab_handle, hsi2s_core->hab_req, resp_size, 0);
+			if (ret) {
+				dev_err(hsi2s_core->dev, "habmm socket send failed (%d)\n", ret);
+				goto err_close_hab;
+			}
+
+			ret = habmm_socket_recv(hsi2s_core->hab_handle, hsi2s_core->hab_resp, &resp_size, UINT_MAX, HABMM_SOCKET_RECV_FLAGS_UNINTERRUPTIBLE);
+			if (ret) {
+				dev_err(hsi2s_core->dev, "habmm socket receive failed (%d)\n", ret);
+				goto err_close_hab;
+			}
+
+			if (hsi2s_core->hab_resp->rsp) {
+				dev_err(hsi2s_core->dev, "error response (%d)\n", hsi2s_core->hab_resp->rsp);
+				ret = -EIO;
+				goto err_close_hab;
+			}
+
+err_close_hab:
+			habmm_socket_close(hsi2s_core->hab_handle);
+			hsi2s_core->hab_handle = 0;
+			kfree(hsi2s_core->hab_req);
+			kfree(hsi2s_core->hab_resp);
+#endif
 		} else {
 			h_modify_interface_clks(0);
 			h_modify_core_clks(0);
 		}
-#else
-		h_modify_interface_clks(0);
-		h_modify_core_clks(0);
-#endif
 	}
 	/* Unregister the device numbers */
 	unregister_chrdev_region(devid, 1);
@@ -4410,6 +4489,11 @@ static int hsi2s_remove(struct platform_device *pdev)
 /* Function to put the device in suspend mode */
 static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 {
+	int ret = 0;
+#ifdef CONFIG_QTI_GVM
+	u32 resp_size = sizeof(msg_t);
+#endif
+
 	if (of_device_is_compatible(pdev->dev.of_node,
 				    "qcom,hsi2s-interface")) {
 		/* Suspend the interface clocks */
@@ -4420,30 +4504,57 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 		if (hsi2s_core->target == 6155)
 			hsi2s_suspend_core_clks(pdev);
 		else if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195) {
-#ifndef CONFIG_QTI_GVM
 			if (enable_qmi) {
+#ifndef CONFIG_QTI_GVM
 				if (hsi2s_core->qmi_dev)
-					hsi2s_adsp_disable_clks();
+					ret = hsi2s_adsp_disable_clks();
+					if (ret) {
+						dev_err(&pdev->dev, "Failed to suspend core clocks");
+						goto err_suspend;
+					}
+#else
+				hsi2s_core->hab_req->clk_en = 0;
+
+				ret = habmm_socket_send(hsi2s_core->hab_handle, hsi2s_core->hab_req, resp_size, 0);
+				if (ret) {
+					dev_err(hsi2s_core->dev, "habmm socket send failed (%d)", ret);
+					goto err_suspend;
+				}
+
+				ret = habmm_socket_recv(hsi2s_core->hab_handle, hsi2s_core->hab_resp, &resp_size,
+										UINT_MAX, HABMM_SOCKET_RECV_FLAGS_UNINTERRUPTIBLE);
+				if (ret) {
+					dev_err(hsi2s_core->dev, "habmm socket receive failed (%d)", ret);
+					goto err_suspend;
+				}
+
+				if (hsi2s_core->hab_resp->rsp) {
+					dev_err(hsi2s_core->dev, "error response (%d)", hsi2s_core->hab_resp->rsp);
+					ret = -EIO;
+					goto err_suspend;
+				}
+#endif
 			} else {
 				h_modify_interface_clks(0);
 				h_modify_core_clks(0);
 			}
-#else
-		h_modify_interface_clks(0);
-		h_modify_core_clks(0);
-#endif
 		}
 	}
-
 	dev_info(&pdev->dev, "Device entering suspend state");
-
 	return 0;
+
+err_suspend:
+	dev_err(hsi2s_core->dev, "Failed to suspend HS-I2S device");
+	return ret;
 }
 
 /* Function to resume the device from suspend */
 static int hsi2s_resume(struct platform_device *pdev)
 {
 	int ret = 0;
+#ifdef CONFIG_QTI_GVM
+	u32 resp_size = sizeof(msg_t);
+#endif
 
 	if (of_device_is_compatible(pdev->dev.of_node,
 				    "qcom,hsi2s-interface")) {
@@ -4464,28 +4575,49 @@ static int hsi2s_resume(struct platform_device *pdev)
 				return ret;
 			}
 		} else if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195) {
-#ifndef CONFIG_QTI_GVM
 			if (enable_qmi) {
+#ifndef CONFIG_QTI_GVM
 				if (hsi2s_core->qmi_dev) {
 					ret = hsi2s_adsp_enable_clks();
 					if (ret) {
 						dev_err(&pdev->dev, "Failed to resume core clocks");
-						return ret;
+						goto err_suspend;
 					}
 				}
+#else
+				hsi2s_core->hab_req->clk_en = 1;
+
+				ret = habmm_socket_send(hsi2s_core->hab_handle, hsi2s_core->hab_req, resp_size, 0);
+				if (ret) {
+					dev_err(hsi2s_core->dev, "habmm socket send failed (%d)", ret);
+					goto err_suspend;
+				}
+
+				ret = habmm_socket_recv(hsi2s_core->hab_handle, hsi2s_core->hab_resp, &resp_size,
+										UINT_MAX, HABMM_SOCKET_RECV_FLAGS_UNINTERRUPTIBLE);
+				if (ret) {
+					dev_err(hsi2s_core->dev, "habmm socket receive failed (%d)", ret);
+					goto err_suspend;
+				}
+
+				if (hsi2s_core->hab_resp->rsp) {
+					dev_err(hsi2s_core->dev, "error response (%d)", hsi2s_core->hab_resp->rsp);
+					ret = -EIO;
+					goto err_suspend;
+				}
+#endif
 			} else {
 				h_modify_interface_clks(1);
 				h_modify_core_clks(1);
 			}
-#else
-			h_modify_interface_clks(1);
-			h_modify_core_clks(1);
-#endif
 		}
 	}
 
 	dev_info(&pdev->dev, "Device resuming from suspend state");
+	return ret;
 
+err_suspend:
+	dev_err(hsi2s_core->dev, "Failed to resume HS-I2S device");
 	return ret;
 }
 
