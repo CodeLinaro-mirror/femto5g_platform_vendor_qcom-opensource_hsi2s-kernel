@@ -3902,9 +3902,13 @@ err_out:
 	if (minor == (hsi2s_core->i_count - 1) && !(hsi2s_core->is_irq_enabled)) {
 		if (hsi2s_core->irq0 > 0) {
 			hsi2s_core->desc = irq_to_desc(hsi2s_core->irq0);
-			if (hsi2s_core->desc->core_internal_state__do_not_mess_with_it & 0x00000200) {
-				dev_info(hsi2s_core->dev, "Removing pending IRQs");
-				hsi2s_core->desc->core_internal_state__do_not_mess_with_it &= ~(0x00000200);
+			if (hsi2s_core->desc) {
+				if (hsi2s_core->desc->core_internal_state__do_not_mess_with_it & 0x00000200) {
+					dev_info(hsi2s_core->dev, "Removing pending IRQs");
+					hsi2s_core->desc->core_internal_state__do_not_mess_with_it &= ~(0x00000200);
+				}
+			} else {
+				dev_warn(hsi2s_core->dev, "Unable to remove pending IRQs");
 			}
 			dev_info(hsi2s_core->dev, "Enabling IRQ line");
 			enable_irq(hsi2s_core->irq0);
