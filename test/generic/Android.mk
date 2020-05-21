@@ -8,7 +8,7 @@ LOCAL_SRC_FILES += \
 LOCAL_MODULE:= hsi2s_test
 
 LOCAL_MODULE_TAGS := optional
-LOCAL_CFLAGS := -Wno-unused-parameter -Wno-unused-variable
+LOCAL_CFLAGS := -Wno-unused-parameter -Wno-unused-variable -I vendor/qcom/opensource/hsi2s-kernel/driver
 
 include $(BUILD_EXECUTABLE)
 
