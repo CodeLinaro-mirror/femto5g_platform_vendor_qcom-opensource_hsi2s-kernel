@@ -2590,12 +2590,14 @@ static int rddma_schedule(void *data)
 /* Interrupt thread function */
 static irq_handler_t irq_thread_fn(int irq, void *devid)
 {
+#ifndef DISABLE_DEVICE_READ
 	u32 temp_len;
 	u32 write_len;
+	void *tail;
+#endif
 	u32 irq_stat;
 	struct hsi2s_device **hs_arr;
 	int slave;
-	void *tail;
 
 	hs_arr = hsi2s_core->hsi2s_arr;
 	mutex_lock(&hsi2s_core->irqlock);
@@ -2642,7 +2644,7 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 		/* Periodic interrupt on write channel 0 */
 		if (irq_stat & IRQ_PER_WRDMA_CH0) {
 			setbits(hsi2s_core->irq_clear, IRQ_PER_WRDMA_CH0);
-
+#ifndef DISABLE_DEVICE_READ
 			write_len = readl_relaxed(hs_arr[0]->wrdma_per_len);
 			write_len *= BYTES_PER_SAMPLE;
 
@@ -2655,6 +2657,7 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 				tail += write_len;
 			hs_arr[0]->write_buffer->tail = tail;
 			hs_arr[0]->write_buffer->data_ready = 1;
+#endif
 			hs_arr[0]->write_buffer->pollin = 1;
 			/* Notify event read */
 			wake_up_interruptible(&hs_arr[0]->wq_wrdma);
@@ -2667,7 +2670,7 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 		/* Periodic interrupt on write channel 1 */
 		if (irq_stat & IRQ_PER_WRDMA_CH1) {
 			setbits(hsi2s_core->irq_clear, IRQ_PER_WRDMA_CH1);
-
+#ifndef DISABLE_DEVICE_READ
 			write_len = readl_relaxed(hs_arr[1]->wrdma_per_len);
 			write_len *= BYTES_PER_SAMPLE;
 
@@ -2680,6 +2683,7 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 				tail += write_len;
 			hs_arr[1]->write_buffer->tail = tail;
 			hs_arr[1]->write_buffer->data_ready = 1;
+#endif
 			hs_arr[1]->write_buffer->pollin = 1;
 			/* Notify event read */
 			wake_up_interruptible(&hs_arr[1]->wq_wrdma);
@@ -2692,7 +2696,7 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 		/* Periodic interrupt on write channel 2 */
 		if (irq_stat & IRQ_PER_WRDMA_CH2) {
 			setbits(hsi2s_core->irq_clear, IRQ_PER_WRDMA_CH2);
-
+#ifndef DISABLE_DEVICE_READ
 			write_len = readl_relaxed(hs_arr[2]->wrdma_per_len);
 			write_len *= BYTES_PER_SAMPLE;
 
@@ -2705,6 +2709,7 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 				tail += write_len;
 			hs_arr[2]->write_buffer->tail = tail;
 			hs_arr[2]->write_buffer->data_ready = 1;
+#endif
 			hs_arr[2]->write_buffer->pollin = 1;
 			/* Notify event read */
 			wake_up_interruptible(&hs_arr[2]->wq_wrdma);
