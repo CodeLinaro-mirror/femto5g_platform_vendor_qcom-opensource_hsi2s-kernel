@@ -204,11 +204,15 @@ static void t_assign_macros(void)
 	hsi2s_core->macro->offset_rddma_buff_len = T_LPAIF_RDDMA_BUFF_LEN;
 	hsi2s_core->macro->offset_rddma_curr_addr = T_LPAIF_RDDMA_CURR_ADDR;
 	hsi2s_core->macro->offset_rddma_per_len = T_LPAIF_RDDMA_PER_LEN;
+	hsi2s_core->macro->offset_rddma_ram_addr = T_LPAIF_RDDMA_RAM_START_ADDR;
+	hsi2s_core->macro->offset_rddma_ram_len = T_LPAIF_RDDMA_RAM_LENGTH;
 	hsi2s_core->macro->offset_wrdma_ctl = T_LPAIF_WRDMA_CTL;
 	hsi2s_core->macro->offset_wrdma_base = T_LPAIF_WRDMA_BASE;
 	hsi2s_core->macro->offset_wrdma_buff_len = T_LPAIF_WRDMA_BUFF_LEN;
 	hsi2s_core->macro->offset_wrdma_curr_addr = T_LPAIF_WRDMA_CURR_ADDR;
 	hsi2s_core->macro->offset_wrdma_per_len = T_LPAIF_WRDMA_PER_LEN;
+	hsi2s_core->macro->offset_wrdma_ram_addr = T_LPAIF_WRDMA_RAM_START_ADDR;
+	hsi2s_core->macro->offset_wrdma_ram_len = T_LPAIF_WRDMA_RAM_LENGTH;
 	hsi2s_core->macro->offset_pri_rate_det_config = T_LPAIF_PRI_RATE_DET_CONFIG;
 	hsi2s_core->macro->offset_pri_rate_det_target1_config = T_LPAIF_PRI_RATE_DET_TARGET1_CONFIG;
 	hsi2s_core->macro->offset_pri_rate_det_target2_config = T_LPAIF_PRI_RATE_DET_TARGET2_CONFIG;
@@ -339,11 +343,15 @@ static void h_assign_macros(void)
 	hsi2s_core->macro->offset_rddma_buff_len = H_LPAIF_RDDMA_BUFF_LEN;
 	hsi2s_core->macro->offset_rddma_curr_addr = H_LPAIF_RDDMA_CURR_ADDR;
 	hsi2s_core->macro->offset_rddma_per_len = H_LPAIF_RDDMA_PER_LEN;
+	hsi2s_core->macro->offset_rddma_ram_addr = H_LPAIF_RDDMA_RAM_START_ADDR;
+	hsi2s_core->macro->offset_rddma_ram_len = H_LPAIF_RDDMA_RAM_LENGTH;
 	hsi2s_core->macro->offset_wrdma_ctl = H_LPAIF_WRDMA_CTL;
 	hsi2s_core->macro->offset_wrdma_base = H_LPAIF_WRDMA_BASE;
 	hsi2s_core->macro->offset_wrdma_buff_len = H_LPAIF_WRDMA_BUFF_LEN;
 	hsi2s_core->macro->offset_wrdma_curr_addr = H_LPAIF_WRDMA_CURR_ADDR;
 	hsi2s_core->macro->offset_wrdma_per_len = H_LPAIF_WRDMA_PER_LEN;
+	hsi2s_core->macro->offset_wrdma_ram_addr = H_LPAIF_WRDMA_RAM_START_ADDR;
+	hsi2s_core->macro->offset_wrdma_ram_len = H_LPAIF_WRDMA_RAM_LENGTH;
 	hsi2s_core->macro->offset_pri_rate_det_config = H_LPAIF_PRI_RATE_DET_CONFIG;
 	hsi2s_core->macro->offset_pri_rate_det_target1_config = H_LPAIF_PRI_RATE_DET_TARGET1_CONFIG;
 	hsi2s_core->macro->offset_pri_rate_det_target2_config = H_LPAIF_PRI_RATE_DET_TARGET2_CONFIG;
@@ -495,6 +503,12 @@ static int map_registers(struct hsi2s_device *hs_dev, int intf)
 		hs_dev->rddma_per_len = hsi2s_core->lpaif_base_va +
 								hsi2s_core->macro->offset_rddma_per_len +
 								(0x1000 * intf);
+		hs_dev->rddma_ram_addr = hsi2s_core->lpaif_base_va +
+								hsi2s_core->macro->offset_rddma_ram_addr +
+								(0x1000 * intf);
+		hs_dev->rddma_ram_len = hsi2s_core->lpaif_base_va +
+								hsi2s_core->macro->offset_rddma_ram_len +
+								(0x1000 * intf);
 		hs_dev->wrdma_ctl = hsi2s_core->lpaif_base_va +
 							hsi2s_core->macro->offset_wrdma_ctl +
 							(0x1000 * intf);
@@ -509,6 +523,12 @@ static int map_registers(struct hsi2s_device *hs_dev, int intf)
 								  (0x1000 * intf);
 		hs_dev->wrdma_per_len = hsi2s_core->lpaif_base_va +
 								hsi2s_core->macro->offset_wrdma_per_len +
+								(0x1000 * intf);
+		hs_dev->wrdma_ram_addr = hsi2s_core->lpaif_base_va +
+								hsi2s_core->macro->offset_wrdma_ram_addr +
+								(0x1000 * intf);
+		hs_dev->wrdma_ram_len = hsi2s_core->lpaif_base_va +
+								hsi2s_core->macro->offset_wrdma_ram_len +
 								(0x1000 * intf);
 		if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195) {
 			hs_dev->lpaif_muxmode = hsi2s_core->lpass_tcsr_base_va +
@@ -599,6 +619,8 @@ static void reset_registers(struct hsi2s_device *hs_dev)
 	reg_clear(hs_dev->rddma_buff_len);
 	reg_clear(hs_dev->rddma_curr_addr);
 	reg_clear(hs_dev->rddma_per_len);
+	reg_clear(hs_dev->rddma_ram_addr);
+	reg_clear(hs_dev->rddma_ram_len);
 	setbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_reset);
 	clearbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_reset);
 
@@ -609,6 +631,8 @@ static void reset_registers(struct hsi2s_device *hs_dev)
 	reg_clear(hs_dev->wrdma_buff_len);
 	reg_clear(hs_dev->wrdma_curr_addr);
 	reg_clear(hs_dev->wrdma_per_len);
+	reg_clear(hs_dev->wrdma_ram_addr);
+	reg_clear(hs_dev->wrdma_ram_len);
 	setbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_reset);
 	clearbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_reset);
 
@@ -626,6 +650,8 @@ static void reset_rddma_registers(struct hsi2s_device *hs_dev)
 	reg_clear(hs_dev->rddma_buff_len);
 	reg_clear(hs_dev->rddma_curr_addr);
 	reg_clear(hs_dev->rddma_per_len);
+	reg_clear(hs_dev->rddma_ram_addr);
+	reg_clear(hs_dev->rddma_ram_len);
 	setbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_reset);
 	clearbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_reset);
 }
@@ -638,6 +664,8 @@ static void reset_wrdma_registers(struct hsi2s_device *hs_dev)
 	reg_clear(hs_dev->wrdma_buff_len);
 	reg_clear(hs_dev->wrdma_curr_addr);
 	reg_clear(hs_dev->wrdma_per_len);
+	reg_clear(hs_dev->wrdma_ram_addr);
+	reg_clear(hs_dev->wrdma_ram_len);
 	setbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_reset);
 	clearbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_reset);
 }
@@ -1477,13 +1505,16 @@ static void configure_rddma(struct hsi2s_device *hs_dev, int intf)
 	writel_relaxed(dma_buffer_length_words, hs_dev->rddma_buff_len);
 	/* Use ping/pong size as periodic length */
 	writel_relaxed((dma_buffer_length_words + 1) / 2, hs_dev->rddma_per_len);
+	/* Increase the FIFO watermark */
+	writel_relaxed((RDDMA_RAM_LENGTH * intf), hs_dev->rddma_ram_addr);
+	writel_relaxed(RDDMA_RAM_LENGTH, hs_dev->rddma_ram_len);
 
 	if (intf == HS0_I2S) {
 		setbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_burst_en |
 					   hsi2s_core->macro->bit_rddma_dyn_clk |
 					   hsi2s_core->macro->regfield_rddma_pri_audio_intf |
 					   hs_dev->wpscnt_rddma |
-					   hsi2s_core->macro->regfield_rddma_fifo_wm8);
+					   (RDDMA_RAM_LENGTH - 1) << 1);
 		setbits(hsi2s_core->irq_en, IRQ_PER_RDDMA_CH0 |
 					IRQ_UNDR_RDDMA_CH0 |
 					IRQ_ERR_RDDMA_CH0);
@@ -1493,7 +1524,7 @@ static void configure_rddma(struct hsi2s_device *hs_dev, int intf)
 					   hsi2s_core->macro->bit_rddma_dyn_clk |
 					   hsi2s_core->macro->regfield_rddma_sec_audio_intf |
 					   hs_dev->wpscnt_rddma |
-					   hsi2s_core->macro->regfield_rddma_fifo_wm8);
+					   (RDDMA_RAM_LENGTH - 1) << 1);
 		setbits(hsi2s_core->irq_en, IRQ_PER_RDDMA_CH1 |
 					IRQ_UNDR_RDDMA_CH1 |
 					IRQ_ERR_RDDMA_CH1);
@@ -1503,7 +1534,7 @@ static void configure_rddma(struct hsi2s_device *hs_dev, int intf)
 					   hsi2s_core->macro->bit_rddma_dyn_clk |
 					   hsi2s_core->macro->regfield_rddma_ter_audio_intf |
 					   hs_dev->wpscnt_rddma |
-					   hsi2s_core->macro->regfield_rddma_fifo_wm8);
+					   (RDDMA_RAM_LENGTH - 1) << 1);
 		setbits(hsi2s_core->irq_en, IRQ_PER_RDDMA_CH2 |
 					IRQ_UNDR_RDDMA_CH2 |
 					IRQ_ERR_RDDMA_CH2);
@@ -1517,6 +1548,9 @@ static void configure_wrdma(struct hsi2s_device *hs_dev, int intf)
 	writel_relaxed(virt_to_phys(hs_dev->lpass_wrdma_start),
 		       hs_dev->wrdma_base);
 	writel_relaxed(dma_buffer_length_words, hs_dev->wrdma_buff_len);
+	/* Increase the FIFO watermark */
+	writel_relaxed((WRDMA_RAM_LENGTH * intf), hs_dev->wrdma_ram_addr);
+	writel_relaxed(WRDMA_RAM_LENGTH, hs_dev->wrdma_ram_len);
 
 	/*
 	 * Setting periodic length
@@ -1533,7 +1567,7 @@ static void configure_wrdma(struct hsi2s_device *hs_dev, int intf)
 					   hsi2s_core->macro->bit_wrdma_burst_en |
 					   hsi2s_core->macro->regfield_wrdma_pri_audio_intf |
 					   hs_dev->wpscnt_wrdma |
-					   hsi2s_core->macro->regfield_wrdma_fifo_wm8);
+					   (WRDMA_RAM_LENGTH - 1) << 1);
 		setbits(hsi2s_core->irq_en, IRQ_PER_WRDMA_CH0 |
 					IRQ_OVR_WRDMA_CH0 |
 					IRQ_ERR_WRDMA_CH0);
@@ -1543,7 +1577,7 @@ static void configure_wrdma(struct hsi2s_device *hs_dev, int intf)
 					   hsi2s_core->macro->bit_wrdma_burst_en |
 					   hsi2s_core->macro->regfield_wrdma_sec_audio_intf |
 					   hs_dev->wpscnt_wrdma |
-					   hsi2s_core->macro->regfield_wrdma_fifo_wm8);
+					   (WRDMA_RAM_LENGTH - 1) << 1);
 		setbits(hsi2s_core->irq_en, IRQ_PER_WRDMA_CH1 |
 					IRQ_OVR_WRDMA_CH1 |
 					IRQ_ERR_WRDMA_CH1);
@@ -1553,7 +1587,7 @@ static void configure_wrdma(struct hsi2s_device *hs_dev, int intf)
 					   hsi2s_core->macro->bit_wrdma_burst_en |
 					   hsi2s_core->macro->regfield_wrdma_ter_audio_intf |
 					   hs_dev->wpscnt_wrdma |
-					   hsi2s_core->macro->regfield_wrdma_fifo_wm8);
+					   (WRDMA_RAM_LENGTH - 1) << 1);
 		setbits(hsi2s_core->irq_en, IRQ_PER_WRDMA_CH2 |
 					IRQ_OVR_WRDMA_CH2 |
 					IRQ_ERR_WRDMA_CH2);
@@ -1602,13 +1636,16 @@ static void configure_rddma_int_lb(struct hsi2s_device *hs_dev, int intf)
 	writel_relaxed(dma_buffer_length_words, hs_dev->rddma_buff_len);
 	/* Use ping/pong size as periodic length */
 	writel_relaxed((dma_buffer_length_words + 1) / 2, hs_dev->rddma_per_len);
+	/* Increase the FIFO watermark */
+	writel_relaxed((RDDMA_RAM_LENGTH * intf), hs_dev->rddma_ram_addr);
+	writel_relaxed(RDDMA_RAM_LENGTH, hs_dev->rddma_ram_len);
 
 	if (intf == HS0_I2S) {
 		setbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_burst_en |
 					   hsi2s_core->macro->bit_rddma_dyn_clk |
 					   hs_dev->wpscnt_rddma |
 					   hsi2s_core->macro->regfield_rddma_pri_audio_intf |
-					   hsi2s_core->macro->regfield_rddma_fifo_wm8);
+					   (RDDMA_RAM_LENGTH - 1) << 1);
 		setbits(hsi2s_core->irq_en, IRQ_PER_RDDMA_CH0 |
 					IRQ_UNDR_RDDMA_CH0 |
 					IRQ_ERR_RDDMA_CH0);
@@ -1618,7 +1655,7 @@ static void configure_rddma_int_lb(struct hsi2s_device *hs_dev, int intf)
 					   hsi2s_core->macro->bit_rddma_dyn_clk |
 					   hs_dev->wpscnt_rddma |
 					   hsi2s_core->macro->regfield_rddma_sec_audio_intf |
-					   hsi2s_core->macro->regfield_rddma_fifo_wm8);
+					   (RDDMA_RAM_LENGTH - 1) << 1);
 		setbits(hsi2s_core->irq_en, IRQ_PER_RDDMA_CH1 |
 					IRQ_UNDR_RDDMA_CH1 |
 					IRQ_ERR_RDDMA_CH1);
@@ -1628,7 +1665,7 @@ static void configure_rddma_int_lb(struct hsi2s_device *hs_dev, int intf)
 					   hsi2s_core->macro->bit_rddma_dyn_clk |
 					   hs_dev->wpscnt_rddma |
 					   hsi2s_core->macro->regfield_rddma_ter_audio_intf |
-					   hsi2s_core->macro->regfield_rddma_fifo_wm8);
+					   (RDDMA_RAM_LENGTH - 1) << 1);
 		setbits(hsi2s_core->irq_en, IRQ_PER_RDDMA_CH2 |
 					IRQ_UNDR_RDDMA_CH2 |
 					IRQ_ERR_RDDMA_CH2);
@@ -1644,13 +1681,16 @@ static void configure_wrdma_int_lb(struct hsi2s_device *hs_dev, int intf)
 	writel_relaxed(dma_buffer_length_words, hs_dev->wrdma_buff_len);
 	/* Use ping/pong size as periodic length */
 	writel_relaxed((dma_buffer_length_words + 1) / 2, hs_dev->wrdma_per_len);
+	/* Increase the FIFO watermark */
+	writel_relaxed((WRDMA_RAM_LENGTH * intf), hs_dev->wrdma_ram_addr);
+	writel_relaxed(WRDMA_RAM_LENGTH, hs_dev->wrdma_ram_len);
 
 	if (intf == HS0_I2S) {
 		setbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_dyn_clk |
 					   hsi2s_core->macro->bit_wrdma_burst_en |
 					   hs_dev->wpscnt_wrdma |
 					   hsi2s_core->macro->regfield_wrdma_loopback_ch0 |
-					   hsi2s_core->macro->regfield_wrdma_fifo_wm8);
+					   (WRDMA_RAM_LENGTH - 1) << 1);
 		setbits(hsi2s_core->irq_en, IRQ_PER_WRDMA_CH0 |
 					IRQ_OVR_WRDMA_CH0 |
 					IRQ_ERR_WRDMA_CH0);
@@ -1660,7 +1700,7 @@ static void configure_wrdma_int_lb(struct hsi2s_device *hs_dev, int intf)
 					   hsi2s_core->macro->bit_wrdma_burst_en |
 					   hs_dev->wpscnt_wrdma |
 					   hsi2s_core->macro->regfield_wrdma_loopback_ch1 |
-					   hsi2s_core->macro->regfield_wrdma_fifo_wm8);
+					   (WRDMA_RAM_LENGTH - 1) << 1);
 		setbits(hsi2s_core->irq_en, IRQ_PER_WRDMA_CH1 |
 					IRQ_OVR_WRDMA_CH1 |
 					IRQ_ERR_WRDMA_CH1);
@@ -1670,7 +1710,7 @@ static void configure_wrdma_int_lb(struct hsi2s_device *hs_dev, int intf)
 					   hsi2s_core->macro->bit_wrdma_burst_en |
 					   hs_dev->wpscnt_wrdma |
 					   hsi2s_core->macro->regfield_wrdma_loopback_ch2 |
-					   hsi2s_core->macro->regfield_wrdma_fifo_wm8);
+					   (WRDMA_RAM_LENGTH - 1) << 1);
 		setbits(hsi2s_core->irq_en, IRQ_PER_WRDMA_CH2 |
 					IRQ_OVR_WRDMA_CH2 |
 					IRQ_ERR_WRDMA_CH2);
