@@ -2510,14 +2510,17 @@ static int hsi2s_enable_intf_clks(struct platform_device *pdev)
 	if (!hs_dev->intf_clk) {
 		dev_err(hs_dev->dev, "Unable to get interface clock for SDR%d interface",
 		       hs_dev->minor_num);
-		return -EIO;
+		ret = -EIO;
+		goto fail_clk;
 	}
 
 	ret = clk_prepare_enable(hs_dev->intf_clk);
 	if (ret) {
 		dev_err(hs_dev->dev, "Failed to enable interface clock for SDR%d interface",
 		       hs_dev->minor_num);
-		goto fail_clk;
+#ifdef SKIP_BIT_CLK_CHECK
+		ret = 0;
+#endif
 	}
 
 fail_clk:
