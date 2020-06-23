@@ -3505,6 +3505,7 @@ static unsigned int device_poll(struct file *file, poll_table *wait)
 	if (hs_dev->write_buffer->pollin) {
 		hs_dev->write_buffer->pollin = 0;
 		mask |= POLLIN | POLLRDNORM;
+		dma_sync_single_for_cpu(hs_dev->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
 	}
 
 	return mask;
