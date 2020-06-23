@@ -62,7 +62,7 @@ MODULE_PARM_DESC(enable_qmi, "Is QMI enabled: 0->Disabled 1->Enabled");
 
 #ifndef CONFIG_QTI_GVM
 /* QMI callbacks */
-static int pgs_clk_ctrl_send_sync_msg(struct qmi_handle *dev, int en)
+static int hsi2s_clk_ctrl_send_sync_msg(struct qmi_handle *dev, int en)
 {
 	int ret;
 	struct prod_hsi2s_clk_ctrl_req_msg_v01 *req;
@@ -2157,7 +2157,7 @@ static int hsi2s_adsp_disable_clks(void)
 	int ret = 0;
 
 	dev_info(hsi2s_core->dev, "Disabling LPASS clocks via QMI");
-	ret = pgs_clk_ctrl_send_sync_msg(hsi2s_core->qmi_dev, 0);
+	ret = hsi2s_clk_ctrl_send_sync_msg(hsi2s_core->qmi_dev, 0);
 
 	if (ret < 0)
 		dev_err(hsi2s_core->dev, "Failed to disable LPASS clocks\n");
@@ -2171,7 +2171,7 @@ static int hsi2s_adsp_enable_clks(void)
 	int ret = 0;
 
 	dev_info(hsi2s_core->dev, "Enabling LPASS clocks via QMI");
-	ret = pgs_clk_ctrl_send_sync_msg(hsi2s_core->qmi_dev, 1);
+	ret = hsi2s_clk_ctrl_send_sync_msg(hsi2s_core->qmi_dev, 1);
 
 	if (ret < 0)
 		dev_err(hsi2s_core->dev, "Failed to enable LPASS clocks\n");
@@ -4111,8 +4111,8 @@ static int hsi2s_probe(struct platform_device *pdev)
 			}
 
 			/* Register a new lookup with the service PGS_SERVICE_ID_V01 */
-			ret = qmi_add_lookup(hsi2s_core->qmi_dev, PGS_SERVICE_ID_V01,
-					PGS_SERVICE_VERS_V01, 0);
+			ret = qmi_add_lookup(hsi2s_core->qmi_dev, HSI2S_SERVICE_ID_V01,
+					HSI2S_SERVICE_VERS_V01, 0);
 
 			if (ret < 0) {
 				dev_err(hsi2s_core->dev, "Failed to add QMI lookup");
