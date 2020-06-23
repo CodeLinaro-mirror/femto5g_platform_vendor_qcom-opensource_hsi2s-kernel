@@ -3147,6 +3147,17 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		case LPAIF_INTERNAL_LOOPBACK:
 			dev_info(hs_dev->dev, "Triggering internal loopback");
 			if (hs_dev->client_count == 1) {
+				/* Start the read DMA scheduler */
+				dev_info(hs_dev->dev, "Creating DMA scheduler thread");
+				hs_dev->rddma_thread = kthread_create(rddma_schedule, hs_dev,
+								      "DMA scheduler thread");
+				if (hs_dev->rddma_thread) {
+					wake_up_process(hs_dev->rddma_thread);
+				} else {
+					dev_err(hs_dev->dev, "Cannot create rddma scheduler thread");
+					return -EINVAL;
+				}
+				/* Configure the interface registers */
 				configure_int_loopback_mode(hs_dev, minor);
 				hs_dev->slave = minor;
 			}
@@ -3161,6 +3172,17 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			}
 			dev_warn(hs_dev->dev, "Triggering external loopback on master");
 			if (hs_dev->client_count == 1) {
+				/* Start the read DMA scheduler */
+				dev_info(hs_dev->dev, "Creating DMA scheduler thread");
+				hs_dev->rddma_thread = kthread_create(rddma_schedule, hs_dev,
+								      "DMA scheduler thread");
+				if (hs_dev->rddma_thread) {
+					wake_up_process(hs_dev->rddma_thread);
+				} else {
+					dev_err(hs_dev->dev, "Cannot create rddma scheduler thread");
+					return -EINVAL;
+				}
+				/* Configure the interface registers */
 				configure_muxmode(hs_dev, 0);
 				configure_ext_loopback_mode(hs_dev, minor);
 				hs_dev->slave = minor;
@@ -3184,6 +3206,17 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		case LPAIF_SPEAKER:
 			dev_info(hs_dev->dev, "Configuring hs%d as speaker",hs_dev->minor_num);
 			if (hs_dev->client_count == 1) {
+				/* Start the read DMA scheduler */
+				dev_info(hs_dev->dev, "Creating DMA scheduler thread");
+				hs_dev->rddma_thread = kthread_create(rddma_schedule, hs_dev,
+								      "DMA scheduler thread");
+				if (hs_dev->rddma_thread) {
+					wake_up_process(hs_dev->rddma_thread);
+				} else {
+					dev_err(hs_dev->dev, "Cannot create rddma scheduler thread");
+					return -EINVAL;
+				}
+				/* Configure the interface registers */
 				if (hs_dev->lpaif_mode == HS_I2S) {
 					configure_i2s_spkr(hs_dev);
 				} else {
@@ -3267,6 +3300,8 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				/* Clear the RDDMA busy flags */
 				hs_dev->rddma_xfer_busy = 0;
 				hs_dev->rddma_in_progress = 0;
+				/* Stop the DMA scheduler thread */
+				kthread_stop(hs_dev->rddma_thread);
 			}
 			else
 				dev_warn(hs_dev->dev, "Mode already set by previous client");
@@ -3849,17 +3884,6 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	hs_dev->rddma_copy_busy = 1;
 	hs_dev->rddma_in_progress = 0;
 
-	/* Start the read DMA scheduler */
-	hs_dev->rddma_thread = kthread_create(rddma_schedule, hs_dev,
-					      "DMA scheduler thread");
-	if (hs_dev->rddma_thread) {
-		wake_up_process(hs_dev->rddma_thread);
-	} else {
-		ret = -EINVAL;
-		dev_err(hs_dev->dev, "Cannot create rddma scheduler thread");
-		goto err_free_smmu;
-	}
-
 	/* Configure the operational mode */
 	if (operation_mode)
 		configure_normal_mode(hs_dev, minor);
@@ -3871,7 +3895,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 				   GFP_KERNEL);
 	if (!hs_dev->cdev_sdr) {
 		ret = -ENOMEM;
-		goto err_stop_thread;
+		goto err_free_smmu;
 	}
 
 	hs_dev->curr_devid = MKDEV(MAJOR(devid), MINOR(devid) + minor);
@@ -3918,8 +3942,6 @@ err_delete_cdev:
 err_free_cdev:
 	kfree(hs_dev->cdev_sdr);
 	hs_dev->cdev_sdr = NULL;
-err_stop_thread:
-	kthread_stop(hs_dev->rddma_thread);
 err_free_smmu:
 	#ifndef CONFIG_QTI_GVM
 	/* Detach and release iommu mapping */
@@ -4294,8 +4316,6 @@ static int hsi2s_interface_remove(struct platform_device *pdev)
 		cdev_del(hs_dev->cdev_sdr);
 		kfree(hs_dev->cdev_sdr);
 		hs_dev->cdev_sdr = NULL;
-		/* Stop the DMA scheduler thread */
-		kthread_stop(hs_dev->rddma_thread);
 		/* Disable the interface clocks */
 		if (hsi2s_core->target == 6155)
 			hsi2s_disable_intf_clks(pdev);
