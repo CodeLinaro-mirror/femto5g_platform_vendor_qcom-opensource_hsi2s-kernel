@@ -1854,6 +1854,57 @@ static void configure_ext_loopback_mode(struct hsi2s_device *hs_dev, int intf)
 	hs_dev->write_buffer->tail = hs_dev->lpass_wrdma_start;
 }
 
+/* Configure DAB MRC */
+static int configure_dab_mrc(void)
+{
+	struct hsi2s_device *hs_dev;
+	int i;
+	unsigned long flags;
+	int ret = 0;
+
+	for (i = 0; i < hsi2s_core->i_count; i++) {
+		hs_dev = hsi2s_core->hsi2s_arr[i];
+		dev_info(hs_dev->dev, "Configuring normal mode operation on hs%d_i2s interface", i);
+		/* Set operational mode */
+		hs_dev->mode = NORMAL;
+		if (hs_dev->lpaif_mode == HS_I2S) {
+			/* Configure I2S control register */
+			configure_i2s_mic(hs_dev);
+		} else {
+			/* Configure PCM control register */
+			configure_pcm_ctl(hs_dev);
+			if(hs_dev->tdm_en)
+				configure_tdm_ctl(hs_dev);
+			configure_pcm_rx(hs_dev);
+		}
+
+		/* Configure WRDMA registers */
+		configure_wrdma(hs_dev, i);
+		msleep(1000);
+
+		/* Clear the IRQs */
+		clear_irqs();
+	}
+
+	/* Enable mic on different interfaces */
+	if (hsi2s_core->hsi2s_arr[0]->lpaif_mode == HS_I2S) {
+		spin_lock_irqsave(&hsi2s_core->hs_lock, flags);
+		for (i = 0; i < hsi2s_core->i_count; i++) {
+			setbits(hsi2s_core->hsi2s_arr[i]->i2s_ctl, hsi2s_core->macro->bit_mic_en);
+		}
+		spin_unlock_irqrestore(&hsi2s_core->hs_lock, flags);
+
+	} else {
+		spin_lock_irqsave(&hsi2s_core->hs_lock, flags);
+		for (i = 0; i < hsi2s_core->i_count; i++) {
+			setbits(hsi2s_core->hsi2s_arr[i]->pcm_ctl, hsi2s_core->macro->bit_pcm_en_rx);
+		}
+		spin_unlock_irqrestore(&hsi2s_core->hs_lock, flags);
+	}
+
+	return ret;
+}
+
 /* Configure interface as master/slave */
 static void configure_muxmode(struct hsi2s_device *hs_dev, int mode)
 {
@@ -3350,10 +3401,8 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 					/* Clear IRQs */
 					clear_irqs();
 					/* Reset buffer pointers */
-					memset(hs_dev->read_buffer->buffer, 0, dma_buffer_length);
 					hs_dev->read_buffer->last_copy = 1;
 					hs_dev->read_buffer->last_xfer = 1;
-					memset(hs_dev->write_buffer->buffer, 0, dma_buffer_length);
 					hs_dev->write_buffer->head = hs_dev->lpass_wrdma_start;
 					hs_dev->write_buffer->tail = hs_dev->lpass_wrdma_start;
 					hs_dev->write_buffer->data_ready = 0;
@@ -3372,10 +3421,8 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 					/* Clear IRQs */
 					clear_irqs();
 					/* Reset buffer pointers */
-					memset(hs_dev->read_buffer->buffer, 0, dma_buffer_length);
 					hs_dev->read_buffer->last_copy = 1;
 					hs_dev->read_buffer->last_xfer = 1;
-					memset(hs_dev->write_buffer->buffer, 0, dma_buffer_length);
 					hs_dev->write_buffer->head = hs_dev->lpass_wrdma_start;
 					hs_dev->write_buffer->tail = hs_dev->lpass_wrdma_start;
 					hs_dev->write_buffer->data_ready = 0;
@@ -3514,6 +3561,22 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			}
 			else
 				dev_warn(hs_dev->dev, "Clock already set by previous client");
+			break;
+
+		case CONFIGURE_DAB_MRC:
+			if (hsi2s_core->target != 6155) {
+				dev_err(hs_dev->dev, "DAB MRC configuration is not supported by target");
+				return -EINVAL;
+			}
+			if (hs_dev->client_count == 1) {
+				dev_info(hs_dev->dev, "Setting DAB MRC configuration");
+				ret = configure_dab_mrc();
+				if (ret < 0) {
+					dev_err(hs_dev->dev, "Failed to configure DAB MRC mode");
+				}
+			}
+			else
+				dev_warn(hs_dev->dev, "Mode already set by previous client");
 			break;
 
 		default:
@@ -4265,6 +4328,8 @@ static int hsi2s_probe(struct platform_device *pdev)
 	} else {
 		hsi2s_core->is_rate_enabled = false;
 	}
+
+	spin_lock_init(&hsi2s_core->hs_lock);
 
 	/* Initialize the IRQ mutex */
 	mutex_init(&hsi2s_core->irqlock);

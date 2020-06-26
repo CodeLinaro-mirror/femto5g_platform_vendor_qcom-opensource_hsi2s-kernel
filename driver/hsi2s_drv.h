@@ -539,6 +539,9 @@ struct hsi2s_core {
 
 	/* Interface count */
 	int i_count;
+
+	/* Spinlock for DAB MRC */
+	spinlock_t hs_lock;
 };
 
 /* LPAIF HS-I2S device structure */
