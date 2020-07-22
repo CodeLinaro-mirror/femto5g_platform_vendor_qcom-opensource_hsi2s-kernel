@@ -14,6 +14,8 @@
  * Test app for hs-i2s driver
  */
 
+#define _GNU_SOURCE
+
 /* Headers */
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,6 +31,7 @@
 #include <time.h>
 #include <errno.h>
 #include <getopt.h>
+#include <sched.h>
 #include "hsi2s_common.h"
 
 /* Macros */
@@ -127,7 +130,7 @@ void help()
 	printf("* Supported only on SA8155/SA8195\n\n");
 	printf("USAGE:\n\n");
 	printf("NORMAL Rx:\n");
-	printf("hsi2s_test --op_mode=0 --dev=<> --output=<> --bit_clock_hz=<> --data_buffer_ms=<> [--dma_buffer_length=<>]\n\n");
+	printf("hsi2s_test --op_mode=0 --dev=<> --output=<> --bit_clock_hz=<> --data_buffer_ms=<> [--dma_buffer_length=<>] [--set_cpu_affinity]\n\n");
 	printf("NORMAL Tx:\n");
 	printf("hsi2s_test --op_mode=1 --dev=<> --input=<>\n\n");
 	printf("INTERNAL LOOPBACK:\n");
@@ -187,7 +190,8 @@ void help()
 	printf("--invert \n\t Invert bit clock\n");
 	printf("--dont_invert \n\t Don't invert bit clock\n");
 	printf("--bit_clk_int \n\t Internal bit clock (Slave mode)\n");
-	printf("--bit_clk_ext \n\t External bit clock (Master mode)\n\n");
+	printf("--bit_clk_ext \n\t External bit clock (Master mode)\n");
+	printf("--set_cpu_affinity \n\t Set CPU affinity to one of the available high cores\n\n");
 }
 
 /* Returns the size of input file in bytes */
@@ -322,9 +326,11 @@ int main(int argc, char **argv)
 	uint8_t lpaif_mode = 0;
 	uint8_t lane_config = 0;
 	uint8_t invert = 0;
+	uint8_t set_affinity = 0;
 	int ret = 0;
 	int opt;
-	const char *short_opt = ":a:b:c:d:e:f:g:h:ijk:l:m:n:o:p:qrstu:v:w:x:y:z:A:B:CDE:FGHIJK";
+	const char *short_opt = ":a:b:c:d:e:f:g:h:ijk:l:m:n:o:p:qrstu:v:w:x:y:z:A:B:CDE:FGHIJKL";
+	cpu_set_t cpuset;
 
 	struct option   long_opt[] =
 	{
@@ -365,6 +371,7 @@ int main(int argc, char **argv)
 		{"bit_clk_int", no_argument, NULL, 'I'},
 		{"bit_clk_ext", no_argument, NULL, 'J'},
 		{"help", no_argument, NULL, 'K'},
+		{"set_cpu_affinity", no_argument, NULL, 'L'},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -574,6 +581,10 @@ int main(int argc, char **argv)
 				/* Print usage */
 				help();
 				goto exit_app;
+			case 'L':
+				/* Set CPU affinity */
+				set_affinity = 1;
+				break;
 			case ':':
 				/* Value missing for option */
 				printf("Option needs a value. Check --help for usage.\n");
@@ -587,10 +598,10 @@ int main(int argc, char **argv)
 		}
 	}
 
-    /* optind is for the extra arguments which are not parsed */
-    for(; optind < argc; optind++) {
-        printf("Extra arguments: %s\n", argv[optind]);
-    }
+	/* optind is for the extra arguments which are not parsed */
+	for(; optind < argc; optind++) {
+		printf("Extra arguments: %s\n", argv[optind]);
+	}
 
 	switch (mode)
 	{
@@ -600,6 +611,23 @@ int main(int argc, char **argv)
 				help();
 				ret = -1;
 				break;
+			}
+
+			/* Set CPU affinity to one of the available high cores */
+			if (set_affinity) {
+				printf("Setting CPU affinity \n");
+				CPU_ZERO(&cpuset);
+				for (i = 6; i < 8; i++) {
+					CPU_SET(i, &cpuset);
+					ret = sched_setaffinity(getpid(), sizeof(cpu_set_t), &cpuset);
+					if (ret) {
+						printf("Cannot set CPU affinity on CPU[%d]\n", i);
+						CPU_ZERO(&cpuset);
+						continue;
+					}
+					printf("CPU affinity set on CPU[%d]\n", i);
+					break;
+				}
 			}
 
 			printf("Setting normal mode \n");

@@ -62,7 +62,7 @@ MODULE_PARM_DESC(enable_qmi, "Is QMI enabled: 0->Disabled 1->Enabled");
 
 #ifndef CONFIG_QTI_GVM
 /* QMI callbacks */
-static int pgs_clk_ctrl_send_sync_msg(struct qmi_handle *dev, int en)
+static int hsi2s_clk_ctrl_send_sync_msg(struct qmi_handle *dev, int en)
 {
 	int ret;
 	struct prod_hsi2s_clk_ctrl_req_msg_v01 *req;
@@ -204,11 +204,15 @@ static void t_assign_macros(void)
 	hsi2s_core->macro->offset_rddma_buff_len = T_LPAIF_RDDMA_BUFF_LEN;
 	hsi2s_core->macro->offset_rddma_curr_addr = T_LPAIF_RDDMA_CURR_ADDR;
 	hsi2s_core->macro->offset_rddma_per_len = T_LPAIF_RDDMA_PER_LEN;
+	hsi2s_core->macro->offset_rddma_ram_addr = T_LPAIF_RDDMA_RAM_START_ADDR;
+	hsi2s_core->macro->offset_rddma_ram_len = T_LPAIF_RDDMA_RAM_LENGTH;
 	hsi2s_core->macro->offset_wrdma_ctl = T_LPAIF_WRDMA_CTL;
 	hsi2s_core->macro->offset_wrdma_base = T_LPAIF_WRDMA_BASE;
 	hsi2s_core->macro->offset_wrdma_buff_len = T_LPAIF_WRDMA_BUFF_LEN;
 	hsi2s_core->macro->offset_wrdma_curr_addr = T_LPAIF_WRDMA_CURR_ADDR;
 	hsi2s_core->macro->offset_wrdma_per_len = T_LPAIF_WRDMA_PER_LEN;
+	hsi2s_core->macro->offset_wrdma_ram_addr = T_LPAIF_WRDMA_RAM_START_ADDR;
+	hsi2s_core->macro->offset_wrdma_ram_len = T_LPAIF_WRDMA_RAM_LENGTH;
 	hsi2s_core->macro->offset_pri_rate_det_config = T_LPAIF_PRI_RATE_DET_CONFIG;
 	hsi2s_core->macro->offset_pri_rate_det_target1_config = T_LPAIF_PRI_RATE_DET_TARGET1_CONFIG;
 	hsi2s_core->macro->offset_pri_rate_det_target2_config = T_LPAIF_PRI_RATE_DET_TARGET2_CONFIG;
@@ -339,11 +343,15 @@ static void h_assign_macros(void)
 	hsi2s_core->macro->offset_rddma_buff_len = H_LPAIF_RDDMA_BUFF_LEN;
 	hsi2s_core->macro->offset_rddma_curr_addr = H_LPAIF_RDDMA_CURR_ADDR;
 	hsi2s_core->macro->offset_rddma_per_len = H_LPAIF_RDDMA_PER_LEN;
+	hsi2s_core->macro->offset_rddma_ram_addr = H_LPAIF_RDDMA_RAM_START_ADDR;
+	hsi2s_core->macro->offset_rddma_ram_len = H_LPAIF_RDDMA_RAM_LENGTH;
 	hsi2s_core->macro->offset_wrdma_ctl = H_LPAIF_WRDMA_CTL;
 	hsi2s_core->macro->offset_wrdma_base = H_LPAIF_WRDMA_BASE;
 	hsi2s_core->macro->offset_wrdma_buff_len = H_LPAIF_WRDMA_BUFF_LEN;
 	hsi2s_core->macro->offset_wrdma_curr_addr = H_LPAIF_WRDMA_CURR_ADDR;
 	hsi2s_core->macro->offset_wrdma_per_len = H_LPAIF_WRDMA_PER_LEN;
+	hsi2s_core->macro->offset_wrdma_ram_addr = H_LPAIF_WRDMA_RAM_START_ADDR;
+	hsi2s_core->macro->offset_wrdma_ram_len = H_LPAIF_WRDMA_RAM_LENGTH;
 	hsi2s_core->macro->offset_pri_rate_det_config = H_LPAIF_PRI_RATE_DET_CONFIG;
 	hsi2s_core->macro->offset_pri_rate_det_target1_config = H_LPAIF_PRI_RATE_DET_TARGET1_CONFIG;
 	hsi2s_core->macro->offset_pri_rate_det_target2_config = H_LPAIF_PRI_RATE_DET_TARGET2_CONFIG;
@@ -495,6 +503,12 @@ static int map_registers(struct hsi2s_device *hs_dev, int intf)
 		hs_dev->rddma_per_len = hsi2s_core->lpaif_base_va +
 								hsi2s_core->macro->offset_rddma_per_len +
 								(0x1000 * intf);
+		hs_dev->rddma_ram_addr = hsi2s_core->lpaif_base_va +
+								hsi2s_core->macro->offset_rddma_ram_addr +
+								(0x1000 * intf);
+		hs_dev->rddma_ram_len = hsi2s_core->lpaif_base_va +
+								hsi2s_core->macro->offset_rddma_ram_len +
+								(0x1000 * intf);
 		hs_dev->wrdma_ctl = hsi2s_core->lpaif_base_va +
 							hsi2s_core->macro->offset_wrdma_ctl +
 							(0x1000 * intf);
@@ -509,6 +523,12 @@ static int map_registers(struct hsi2s_device *hs_dev, int intf)
 								  (0x1000 * intf);
 		hs_dev->wrdma_per_len = hsi2s_core->lpaif_base_va +
 								hsi2s_core->macro->offset_wrdma_per_len +
+								(0x1000 * intf);
+		hs_dev->wrdma_ram_addr = hsi2s_core->lpaif_base_va +
+								hsi2s_core->macro->offset_wrdma_ram_addr +
+								(0x1000 * intf);
+		hs_dev->wrdma_ram_len = hsi2s_core->lpaif_base_va +
+								hsi2s_core->macro->offset_wrdma_ram_len +
 								(0x1000 * intf);
 		if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195) {
 			hs_dev->lpaif_muxmode = hsi2s_core->lpass_tcsr_base_va +
@@ -599,6 +619,8 @@ static void reset_registers(struct hsi2s_device *hs_dev)
 	reg_clear(hs_dev->rddma_buff_len);
 	reg_clear(hs_dev->rddma_curr_addr);
 	reg_clear(hs_dev->rddma_per_len);
+	reg_clear(hs_dev->rddma_ram_addr);
+	reg_clear(hs_dev->rddma_ram_len);
 	setbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_reset);
 	clearbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_reset);
 
@@ -609,6 +631,8 @@ static void reset_registers(struct hsi2s_device *hs_dev)
 	reg_clear(hs_dev->wrdma_buff_len);
 	reg_clear(hs_dev->wrdma_curr_addr);
 	reg_clear(hs_dev->wrdma_per_len);
+	reg_clear(hs_dev->wrdma_ram_addr);
+	reg_clear(hs_dev->wrdma_ram_len);
 	setbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_reset);
 	clearbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_reset);
 
@@ -626,6 +650,8 @@ static void reset_rddma_registers(struct hsi2s_device *hs_dev)
 	reg_clear(hs_dev->rddma_buff_len);
 	reg_clear(hs_dev->rddma_curr_addr);
 	reg_clear(hs_dev->rddma_per_len);
+	reg_clear(hs_dev->rddma_ram_addr);
+	reg_clear(hs_dev->rddma_ram_len);
 	setbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_reset);
 	clearbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_reset);
 }
@@ -638,6 +664,8 @@ static void reset_wrdma_registers(struct hsi2s_device *hs_dev)
 	reg_clear(hs_dev->wrdma_buff_len);
 	reg_clear(hs_dev->wrdma_curr_addr);
 	reg_clear(hs_dev->wrdma_per_len);
+	reg_clear(hs_dev->wrdma_ram_addr);
+	reg_clear(hs_dev->wrdma_ram_len);
 	setbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_reset);
 	clearbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_reset);
 }
@@ -1477,13 +1505,16 @@ static void configure_rddma(struct hsi2s_device *hs_dev, int intf)
 	writel_relaxed(dma_buffer_length_words, hs_dev->rddma_buff_len);
 	/* Use ping/pong size as periodic length */
 	writel_relaxed((dma_buffer_length_words + 1) / 2, hs_dev->rddma_per_len);
+	/* Increase the FIFO watermark */
+	writel_relaxed((RDDMA_RAM_LENGTH * intf), hs_dev->rddma_ram_addr);
+	writel_relaxed(RDDMA_RAM_LENGTH, hs_dev->rddma_ram_len);
 
 	if (intf == HS0_I2S) {
 		setbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_burst_en |
 					   hsi2s_core->macro->bit_rddma_dyn_clk |
 					   hsi2s_core->macro->regfield_rddma_pri_audio_intf |
 					   hs_dev->wpscnt_rddma |
-					   hsi2s_core->macro->regfield_rddma_fifo_wm8);
+					   (RDDMA_RAM_LENGTH - 1) << 1);
 		setbits(hsi2s_core->irq_en, IRQ_PER_RDDMA_CH0 |
 					IRQ_UNDR_RDDMA_CH0 |
 					IRQ_ERR_RDDMA_CH0);
@@ -1493,7 +1524,7 @@ static void configure_rddma(struct hsi2s_device *hs_dev, int intf)
 					   hsi2s_core->macro->bit_rddma_dyn_clk |
 					   hsi2s_core->macro->regfield_rddma_sec_audio_intf |
 					   hs_dev->wpscnt_rddma |
-					   hsi2s_core->macro->regfield_rddma_fifo_wm8);
+					   (RDDMA_RAM_LENGTH - 1) << 1);
 		setbits(hsi2s_core->irq_en, IRQ_PER_RDDMA_CH1 |
 					IRQ_UNDR_RDDMA_CH1 |
 					IRQ_ERR_RDDMA_CH1);
@@ -1503,7 +1534,7 @@ static void configure_rddma(struct hsi2s_device *hs_dev, int intf)
 					   hsi2s_core->macro->bit_rddma_dyn_clk |
 					   hsi2s_core->macro->regfield_rddma_ter_audio_intf |
 					   hs_dev->wpscnt_rddma |
-					   hsi2s_core->macro->regfield_rddma_fifo_wm8);
+					   (RDDMA_RAM_LENGTH - 1) << 1);
 		setbits(hsi2s_core->irq_en, IRQ_PER_RDDMA_CH2 |
 					IRQ_UNDR_RDDMA_CH2 |
 					IRQ_ERR_RDDMA_CH2);
@@ -1517,6 +1548,9 @@ static void configure_wrdma(struct hsi2s_device *hs_dev, int intf)
 	writel_relaxed(virt_to_phys(hs_dev->lpass_wrdma_start),
 		       hs_dev->wrdma_base);
 	writel_relaxed(dma_buffer_length_words, hs_dev->wrdma_buff_len);
+	/* Increase the FIFO watermark */
+	writel_relaxed((WRDMA_RAM_LENGTH * intf), hs_dev->wrdma_ram_addr);
+	writel_relaxed(WRDMA_RAM_LENGTH, hs_dev->wrdma_ram_len);
 
 	/*
 	 * Setting periodic length
@@ -1533,7 +1567,7 @@ static void configure_wrdma(struct hsi2s_device *hs_dev, int intf)
 					   hsi2s_core->macro->bit_wrdma_burst_en |
 					   hsi2s_core->macro->regfield_wrdma_pri_audio_intf |
 					   hs_dev->wpscnt_wrdma |
-					   hsi2s_core->macro->regfield_wrdma_fifo_wm8);
+					   (WRDMA_RAM_LENGTH - 1) << 1);
 		setbits(hsi2s_core->irq_en, IRQ_PER_WRDMA_CH0 |
 					IRQ_OVR_WRDMA_CH0 |
 					IRQ_ERR_WRDMA_CH0);
@@ -1543,7 +1577,7 @@ static void configure_wrdma(struct hsi2s_device *hs_dev, int intf)
 					   hsi2s_core->macro->bit_wrdma_burst_en |
 					   hsi2s_core->macro->regfield_wrdma_sec_audio_intf |
 					   hs_dev->wpscnt_wrdma |
-					   hsi2s_core->macro->regfield_wrdma_fifo_wm8);
+					   (WRDMA_RAM_LENGTH - 1) << 1);
 		setbits(hsi2s_core->irq_en, IRQ_PER_WRDMA_CH1 |
 					IRQ_OVR_WRDMA_CH1 |
 					IRQ_ERR_WRDMA_CH1);
@@ -1553,7 +1587,7 @@ static void configure_wrdma(struct hsi2s_device *hs_dev, int intf)
 					   hsi2s_core->macro->bit_wrdma_burst_en |
 					   hsi2s_core->macro->regfield_wrdma_ter_audio_intf |
 					   hs_dev->wpscnt_wrdma |
-					   hsi2s_core->macro->regfield_wrdma_fifo_wm8);
+					   (WRDMA_RAM_LENGTH - 1) << 1);
 		setbits(hsi2s_core->irq_en, IRQ_PER_WRDMA_CH2 |
 					IRQ_OVR_WRDMA_CH2 |
 					IRQ_ERR_WRDMA_CH2);
@@ -1602,13 +1636,16 @@ static void configure_rddma_int_lb(struct hsi2s_device *hs_dev, int intf)
 	writel_relaxed(dma_buffer_length_words, hs_dev->rddma_buff_len);
 	/* Use ping/pong size as periodic length */
 	writel_relaxed((dma_buffer_length_words + 1) / 2, hs_dev->rddma_per_len);
+	/* Increase the FIFO watermark */
+	writel_relaxed((RDDMA_RAM_LENGTH * intf), hs_dev->rddma_ram_addr);
+	writel_relaxed(RDDMA_RAM_LENGTH, hs_dev->rddma_ram_len);
 
 	if (intf == HS0_I2S) {
 		setbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_burst_en |
 					   hsi2s_core->macro->bit_rddma_dyn_clk |
 					   hs_dev->wpscnt_rddma |
 					   hsi2s_core->macro->regfield_rddma_pri_audio_intf |
-					   hsi2s_core->macro->regfield_rddma_fifo_wm8);
+					   (RDDMA_RAM_LENGTH - 1) << 1);
 		setbits(hsi2s_core->irq_en, IRQ_PER_RDDMA_CH0 |
 					IRQ_UNDR_RDDMA_CH0 |
 					IRQ_ERR_RDDMA_CH0);
@@ -1618,7 +1655,7 @@ static void configure_rddma_int_lb(struct hsi2s_device *hs_dev, int intf)
 					   hsi2s_core->macro->bit_rddma_dyn_clk |
 					   hs_dev->wpscnt_rddma |
 					   hsi2s_core->macro->regfield_rddma_sec_audio_intf |
-					   hsi2s_core->macro->regfield_rddma_fifo_wm8);
+					   (RDDMA_RAM_LENGTH - 1) << 1);
 		setbits(hsi2s_core->irq_en, IRQ_PER_RDDMA_CH1 |
 					IRQ_UNDR_RDDMA_CH1 |
 					IRQ_ERR_RDDMA_CH1);
@@ -1628,7 +1665,7 @@ static void configure_rddma_int_lb(struct hsi2s_device *hs_dev, int intf)
 					   hsi2s_core->macro->bit_rddma_dyn_clk |
 					   hs_dev->wpscnt_rddma |
 					   hsi2s_core->macro->regfield_rddma_ter_audio_intf |
-					   hsi2s_core->macro->regfield_rddma_fifo_wm8);
+					   (RDDMA_RAM_LENGTH - 1) << 1);
 		setbits(hsi2s_core->irq_en, IRQ_PER_RDDMA_CH2 |
 					IRQ_UNDR_RDDMA_CH2 |
 					IRQ_ERR_RDDMA_CH2);
@@ -1644,13 +1681,16 @@ static void configure_wrdma_int_lb(struct hsi2s_device *hs_dev, int intf)
 	writel_relaxed(dma_buffer_length_words, hs_dev->wrdma_buff_len);
 	/* Use ping/pong size as periodic length */
 	writel_relaxed((dma_buffer_length_words + 1) / 2, hs_dev->wrdma_per_len);
+	/* Increase the FIFO watermark */
+	writel_relaxed((WRDMA_RAM_LENGTH * intf), hs_dev->wrdma_ram_addr);
+	writel_relaxed(WRDMA_RAM_LENGTH, hs_dev->wrdma_ram_len);
 
 	if (intf == HS0_I2S) {
 		setbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_dyn_clk |
 					   hsi2s_core->macro->bit_wrdma_burst_en |
 					   hs_dev->wpscnt_wrdma |
 					   hsi2s_core->macro->regfield_wrdma_loopback_ch0 |
-					   hsi2s_core->macro->regfield_wrdma_fifo_wm8);
+					   (WRDMA_RAM_LENGTH - 1) << 1);
 		setbits(hsi2s_core->irq_en, IRQ_PER_WRDMA_CH0 |
 					IRQ_OVR_WRDMA_CH0 |
 					IRQ_ERR_WRDMA_CH0);
@@ -1660,7 +1700,7 @@ static void configure_wrdma_int_lb(struct hsi2s_device *hs_dev, int intf)
 					   hsi2s_core->macro->bit_wrdma_burst_en |
 					   hs_dev->wpscnt_wrdma |
 					   hsi2s_core->macro->regfield_wrdma_loopback_ch1 |
-					   hsi2s_core->macro->regfield_wrdma_fifo_wm8);
+					   (WRDMA_RAM_LENGTH - 1) << 1);
 		setbits(hsi2s_core->irq_en, IRQ_PER_WRDMA_CH1 |
 					IRQ_OVR_WRDMA_CH1 |
 					IRQ_ERR_WRDMA_CH1);
@@ -1670,7 +1710,7 @@ static void configure_wrdma_int_lb(struct hsi2s_device *hs_dev, int intf)
 					   hsi2s_core->macro->bit_wrdma_burst_en |
 					   hs_dev->wpscnt_wrdma |
 					   hsi2s_core->macro->regfield_wrdma_loopback_ch2 |
-					   hsi2s_core->macro->regfield_wrdma_fifo_wm8);
+					   (WRDMA_RAM_LENGTH - 1) << 1);
 		setbits(hsi2s_core->irq_en, IRQ_PER_WRDMA_CH2 |
 					IRQ_OVR_WRDMA_CH2 |
 					IRQ_ERR_WRDMA_CH2);
@@ -2117,7 +2157,7 @@ static int hsi2s_adsp_disable_clks(void)
 	int ret = 0;
 
 	dev_info(hsi2s_core->dev, "Disabling LPASS clocks via QMI");
-	ret = pgs_clk_ctrl_send_sync_msg(hsi2s_core->qmi_dev, 0);
+	ret = hsi2s_clk_ctrl_send_sync_msg(hsi2s_core->qmi_dev, 0);
 
 	if (ret < 0)
 		dev_err(hsi2s_core->dev, "Failed to disable LPASS clocks\n");
@@ -2131,7 +2171,7 @@ static int hsi2s_adsp_enable_clks(void)
 	int ret = 0;
 
 	dev_info(hsi2s_core->dev, "Enabling LPASS clocks via QMI");
-	ret = pgs_clk_ctrl_send_sync_msg(hsi2s_core->qmi_dev, 1);
+	ret = hsi2s_clk_ctrl_send_sync_msg(hsi2s_core->qmi_dev, 1);
 
 	if (ret < 0)
 		dev_err(hsi2s_core->dev, "Failed to enable LPASS clocks\n");
@@ -2470,14 +2510,17 @@ static int hsi2s_enable_intf_clks(struct platform_device *pdev)
 	if (!hs_dev->intf_clk) {
 		dev_err(hs_dev->dev, "Unable to get interface clock for SDR%d interface",
 		       hs_dev->minor_num);
-		return -EIO;
+		ret = -EIO;
+		goto fail_clk;
 	}
 
 	ret = clk_prepare_enable(hs_dev->intf_clk);
 	if (ret) {
 		dev_err(hs_dev->dev, "Failed to enable interface clock for SDR%d interface",
 		       hs_dev->minor_num);
-		goto fail_clk;
+#ifdef SKIP_BIT_CLK_CHECK
+		ret = 0;
+#endif
 	}
 
 fail_clk:
@@ -2550,12 +2593,14 @@ static int rddma_schedule(void *data)
 /* Interrupt thread function */
 static irq_handler_t irq_thread_fn(int irq, void *devid)
 {
+#ifndef DISABLE_DEVICE_READ
 	u32 temp_len;
 	u32 write_len;
+	void *tail;
+#endif
 	u32 irq_stat;
 	struct hsi2s_device **hs_arr;
 	int slave;
-	void *tail;
 
 	hs_arr = hsi2s_core->hsi2s_arr;
 	mutex_lock(&hsi2s_core->irqlock);
@@ -2602,7 +2647,7 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 		/* Periodic interrupt on write channel 0 */
 		if (irq_stat & IRQ_PER_WRDMA_CH0) {
 			setbits(hsi2s_core->irq_clear, IRQ_PER_WRDMA_CH0);
-
+#ifndef DISABLE_DEVICE_READ
 			write_len = readl_relaxed(hs_arr[0]->wrdma_per_len);
 			write_len *= BYTES_PER_SAMPLE;
 
@@ -2615,6 +2660,7 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 				tail += write_len;
 			hs_arr[0]->write_buffer->tail = tail;
 			hs_arr[0]->write_buffer->data_ready = 1;
+#endif
 			hs_arr[0]->write_buffer->pollin = 1;
 			/* Notify event read */
 			wake_up_interruptible(&hs_arr[0]->wq_wrdma);
@@ -2627,7 +2673,7 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 		/* Periodic interrupt on write channel 1 */
 		if (irq_stat & IRQ_PER_WRDMA_CH1) {
 			setbits(hsi2s_core->irq_clear, IRQ_PER_WRDMA_CH1);
-
+#ifndef DISABLE_DEVICE_READ
 			write_len = readl_relaxed(hs_arr[1]->wrdma_per_len);
 			write_len *= BYTES_PER_SAMPLE;
 
@@ -2640,6 +2686,7 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 				tail += write_len;
 			hs_arr[1]->write_buffer->tail = tail;
 			hs_arr[1]->write_buffer->data_ready = 1;
+#endif
 			hs_arr[1]->write_buffer->pollin = 1;
 			/* Notify event read */
 			wake_up_interruptible(&hs_arr[1]->wq_wrdma);
@@ -2652,7 +2699,7 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 		/* Periodic interrupt on write channel 2 */
 		if (irq_stat & IRQ_PER_WRDMA_CH2) {
 			setbits(hsi2s_core->irq_clear, IRQ_PER_WRDMA_CH2);
-
+#ifndef DISABLE_DEVICE_READ
 			write_len = readl_relaxed(hs_arr[2]->wrdma_per_len);
 			write_len *= BYTES_PER_SAMPLE;
 
@@ -2665,6 +2712,7 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 				tail += write_len;
 			hs_arr[2]->write_buffer->tail = tail;
 			hs_arr[2]->write_buffer->data_ready = 1;
+#endif
 			hs_arr[2]->write_buffer->pollin = 1;
 			/* Notify event read */
 			wake_up_interruptible(&hs_arr[2]->wq_wrdma);
@@ -3099,6 +3147,17 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		case LPAIF_INTERNAL_LOOPBACK:
 			dev_info(hs_dev->dev, "Triggering internal loopback");
 			if (hs_dev->client_count == 1) {
+				/* Start the read DMA scheduler */
+				dev_info(hs_dev->dev, "Creating DMA scheduler thread");
+				hs_dev->rddma_thread = kthread_create(rddma_schedule, hs_dev,
+								      "DMA scheduler thread");
+				if (hs_dev->rddma_thread) {
+					wake_up_process(hs_dev->rddma_thread);
+				} else {
+					dev_err(hs_dev->dev, "Cannot create rddma scheduler thread");
+					return -EINVAL;
+				}
+				/* Configure the interface registers */
 				configure_int_loopback_mode(hs_dev, minor);
 				hs_dev->slave = minor;
 			}
@@ -3113,6 +3172,17 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			}
 			dev_warn(hs_dev->dev, "Triggering external loopback on master");
 			if (hs_dev->client_count == 1) {
+				/* Start the read DMA scheduler */
+				dev_info(hs_dev->dev, "Creating DMA scheduler thread");
+				hs_dev->rddma_thread = kthread_create(rddma_schedule, hs_dev,
+								      "DMA scheduler thread");
+				if (hs_dev->rddma_thread) {
+					wake_up_process(hs_dev->rddma_thread);
+				} else {
+					dev_err(hs_dev->dev, "Cannot create rddma scheduler thread");
+					return -EINVAL;
+				}
+				/* Configure the interface registers */
 				configure_muxmode(hs_dev, 0);
 				configure_ext_loopback_mode(hs_dev, minor);
 				hs_dev->slave = minor;
@@ -3136,6 +3206,17 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		case LPAIF_SPEAKER:
 			dev_info(hs_dev->dev, "Configuring hs%d as speaker",hs_dev->minor_num);
 			if (hs_dev->client_count == 1) {
+				/* Start the read DMA scheduler */
+				dev_info(hs_dev->dev, "Creating DMA scheduler thread");
+				hs_dev->rddma_thread = kthread_create(rddma_schedule, hs_dev,
+								      "DMA scheduler thread");
+				if (hs_dev->rddma_thread) {
+					wake_up_process(hs_dev->rddma_thread);
+				} else {
+					dev_err(hs_dev->dev, "Cannot create rddma scheduler thread");
+					return -EINVAL;
+				}
+				/* Configure the interface registers */
 				if (hs_dev->lpaif_mode == HS_I2S) {
 					configure_i2s_spkr(hs_dev);
 				} else {
@@ -3219,6 +3300,8 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				/* Clear the RDDMA busy flags */
 				hs_dev->rddma_xfer_busy = 0;
 				hs_dev->rddma_in_progress = 0;
+				/* Stop the DMA scheduler thread */
+				kthread_stop(hs_dev->rddma_thread);
 			}
 			else
 				dev_warn(hs_dev->dev, "Mode already set by previous client");
@@ -3460,6 +3543,7 @@ static unsigned int device_poll(struct file *file, poll_table *wait)
 	if (hs_dev->write_buffer->pollin) {
 		hs_dev->write_buffer->pollin = 0;
 		mask |= POLLIN | POLLRDNORM;
+		dma_sync_single_for_cpu(hs_dev->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
 	}
 
 	return mask;
@@ -3800,17 +3884,6 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	hs_dev->rddma_copy_busy = 1;
 	hs_dev->rddma_in_progress = 0;
 
-	/* Start the read DMA scheduler */
-	hs_dev->rddma_thread = kthread_create(rddma_schedule, hs_dev,
-					      "DMA scheduler thread");
-	if (hs_dev->rddma_thread) {
-		wake_up_process(hs_dev->rddma_thread);
-	} else {
-		ret = -EINVAL;
-		dev_err(hs_dev->dev, "Cannot create rddma scheduler thread");
-		goto err_free_smmu;
-	}
-
 	/* Configure the operational mode */
 	if (operation_mode)
 		configure_normal_mode(hs_dev, minor);
@@ -3822,7 +3895,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 				   GFP_KERNEL);
 	if (!hs_dev->cdev_sdr) {
 		ret = -ENOMEM;
-		goto err_stop_thread;
+		goto err_free_smmu;
 	}
 
 	hs_dev->curr_devid = MKDEV(MAJOR(devid), MINOR(devid) + minor);
@@ -3869,8 +3942,6 @@ err_delete_cdev:
 err_free_cdev:
 	kfree(hs_dev->cdev_sdr);
 	hs_dev->cdev_sdr = NULL;
-err_stop_thread:
-	kthread_stop(hs_dev->rddma_thread);
 err_free_smmu:
 	#ifndef CONFIG_QTI_GVM
 	/* Detach and release iommu mapping */
@@ -3902,9 +3973,13 @@ err_out:
 	if (minor == (hsi2s_core->i_count - 1) && !(hsi2s_core->is_irq_enabled)) {
 		if (hsi2s_core->irq0 > 0) {
 			hsi2s_core->desc = irq_to_desc(hsi2s_core->irq0);
-			if (hsi2s_core->desc->core_internal_state__do_not_mess_with_it & 0x00000200) {
-				dev_info(hsi2s_core->dev, "Removing pending IRQs");
-				hsi2s_core->desc->core_internal_state__do_not_mess_with_it &= ~(0x00000200);
+			if (hsi2s_core->desc) {
+				if (hsi2s_core->desc->core_internal_state__do_not_mess_with_it & 0x00000200) {
+					dev_info(hsi2s_core->dev, "Removing pending IRQs");
+					hsi2s_core->desc->core_internal_state__do_not_mess_with_it &= ~(0x00000200);
+				}
+			} else {
+				dev_warn(hsi2s_core->dev, "Unable to remove pending IRQs");
 			}
 			dev_info(hsi2s_core->dev, "Enabling IRQ line");
 			enable_irq(hsi2s_core->irq0);
@@ -4036,8 +4111,8 @@ static int hsi2s_probe(struct platform_device *pdev)
 			}
 
 			/* Register a new lookup with the service PGS_SERVICE_ID_V01 */
-			ret = qmi_add_lookup(hsi2s_core->qmi_dev, PGS_SERVICE_ID_V01,
-					PGS_SERVICE_VERS_V01, 0);
+			ret = qmi_add_lookup(hsi2s_core->qmi_dev, HSI2S_SERVICE_ID_V01,
+					HSI2S_SERVICE_VERS_V01, 0);
 
 			if (ret < 0) {
 				dev_err(hsi2s_core->dev, "Failed to add QMI lookup");
@@ -4241,8 +4316,6 @@ static int hsi2s_interface_remove(struct platform_device *pdev)
 		cdev_del(hs_dev->cdev_sdr);
 		kfree(hs_dev->cdev_sdr);
 		hs_dev->cdev_sdr = NULL;
-		/* Stop the DMA scheduler thread */
-		kthread_stop(hs_dev->rddma_thread);
 		/* Disable the interface clocks */
 		if (hsi2s_core->target == 6155)
 			hsi2s_disable_intf_clks(pdev);

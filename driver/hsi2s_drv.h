@@ -61,11 +61,15 @@
 #define T_LPAIF_RDDMA_BUFF_LEN			0xC008
 #define T_LPAIF_RDDMA_CURR_ADDR			0xC00C
 #define T_LPAIF_RDDMA_PER_LEN			0xC010
+#define T_LPAIF_RDDMA_RAM_START_ADDR		0xC048
+#define T_LPAIF_RDDMA_RAM_LENGTH		0xC04C
 #define T_LPAIF_WRDMA_CTL			0x18000
 #define T_LPAIF_WRDMA_BASE			0x18004
 #define T_LPAIF_WRDMA_BUFF_LEN			0x18008
 #define T_LPAIF_WRDMA_CURR_ADDR			0x1800C
 #define T_LPAIF_WRDMA_PER_LEN			0x18010
+#define T_LPAIF_WRDMA_RAM_START_ADDR		0x18048
+#define T_LPAIF_WRDMA_RAM_LENGTH		0x1804C
 #define T_LPAIF_PRI_RATE_DET_CONFIG		0x22000
 #define T_LPAIF_PRI_RATE_DET_TARGET1_CONFIG	0x22004
 #define T_LPAIF_PRI_RATE_DET_TARGET2_CONFIG	0x22008
@@ -94,11 +98,15 @@
 #define H_LPAIF_RDDMA_BUFF_LEN			0xD008
 #define H_LPAIF_RDDMA_CURR_ADDR			0xD00C
 #define H_LPAIF_RDDMA_PER_LEN			0xD010
+#define H_LPAIF_RDDMA_RAM_START_ADDR		0xD044
+#define H_LPAIF_RDDMA_RAM_LENGTH		0xD048
 #define H_LPAIF_WRDMA_CTL			0x13000
 #define H_LPAIF_WRDMA_BASE			0x13004
 #define H_LPAIF_WRDMA_BUFF_LEN			0x13008
 #define H_LPAIF_WRDMA_CURR_ADDR			0x1300C
 #define H_LPAIF_WRDMA_PER_LEN			0x13010
+#define H_LPAIF_WRDMA_RAM_START_ADDR		0x13048
+#define H_LPAIF_WRDMA_RAM_LENGTH		0x1304C
 #define H_LPAIF_PRI_RATE_DET_CONFIG		0x19000
 #define H_LPAIF_PRI_RATE_DET_TARGET1_CONFIG	0x19004
 #define H_LPAIF_PRI_RATE_DET_TARGET2_CONFIG	0x19008
@@ -319,6 +327,8 @@
 #define LONG_RATE_MIN 0
 #define LONG_RATE_MAX 63
 #define BIT_CLK_MAX 73728000
+#define RDDMA_RAM_LENGTH 128
+#define WRDMA_RAM_LENGTH 512
 
 #define T_I2S_LONG_RATE_OFFSET 18
 #define T_I2S_SPKR_MODE_SD0 0x800
@@ -541,11 +551,15 @@ struct hsi2s_device {
 	void __iomem *rddma_buff_len;
 	void __iomem *rddma_curr_addr;
 	void __iomem *rddma_per_len;
+	void __iomem *rddma_ram_addr;
+	void __iomem *rddma_ram_len;
 	void __iomem *wrdma_ctl;
 	void __iomem *wrdma_base;
 	void __iomem *wrdma_buff_len;
 	void __iomem *wrdma_curr_addr;
 	void __iomem *wrdma_per_len;
+	void __iomem *wrdma_ram_addr;
+	void __iomem *wrdma_ram_len;
 	void __iomem *lpaif_muxmode;
 
 	/* GPIOs */
@@ -717,11 +731,15 @@ struct hsi2s_macros {
 	u32 offset_rddma_buff_len;
 	u32 offset_rddma_curr_addr;
 	u32 offset_rddma_per_len;
+	u32 offset_rddma_ram_addr;
+	u32 offset_rddma_ram_len;
 	u32 offset_wrdma_ctl;
 	u32 offset_wrdma_base;
 	u32 offset_wrdma_buff_len;
 	u32 offset_wrdma_curr_addr;
 	u32 offset_wrdma_per_len;
+	u32 offset_wrdma_ram_addr;
+	u32 offset_wrdma_ram_len;
 	u32 offset_pri_rate_det_config;
 	u32 offset_pri_rate_det_target1_config;
 	u32 offset_pri_rate_det_target2_config;
