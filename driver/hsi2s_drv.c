@@ -1504,7 +1504,7 @@ static void configure_rddma(struct hsi2s_device *hs_dev, int intf)
 		       hs_dev->rddma_base);
 	writel_relaxed(dma_buffer_length_words, hs_dev->rddma_buff_len);
 	/* Use ping/pong size as periodic length */
-	writel_relaxed((dma_buffer_length_words + 1) / 2, hs_dev->rddma_per_len);
+	writel_relaxed(((dma_buffer_length_words + 1) / 2) - 1, hs_dev->rddma_per_len);
 	/* Increase the FIFO watermark */
 	writel_relaxed((RDDMA_RAM_LENGTH * intf), hs_dev->rddma_ram_addr);
 	writel_relaxed(RDDMA_RAM_LENGTH, hs_dev->rddma_ram_len);
@@ -1558,9 +1558,9 @@ static void configure_wrdma(struct hsi2s_device *hs_dev, int intf)
 	 * Loopback modes - use ping/pong size
 	 */
 	if (hs_dev->mode == NORMAL)
-		writel_relaxed(hs_dev->wrdma_periodic_length, hs_dev->wrdma_per_len);
+		writel_relaxed(hs_dev->wrdma_periodic_length - 1, hs_dev->wrdma_per_len);
 	else
-		writel_relaxed((dma_buffer_length_words + 1) / 2, hs_dev->wrdma_per_len);
+		writel_relaxed(((dma_buffer_length_words + 1) / 2) - 1, hs_dev->wrdma_per_len);
 
 	if (intf == HS0_I2S) {
 		setbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_dyn_clk |
@@ -1635,7 +1635,7 @@ static void configure_rddma_int_lb(struct hsi2s_device *hs_dev, int intf)
 		       hs_dev->rddma_base);
 	writel_relaxed(dma_buffer_length_words, hs_dev->rddma_buff_len);
 	/* Use ping/pong size as periodic length */
-	writel_relaxed((dma_buffer_length_words + 1) / 2, hs_dev->rddma_per_len);
+	writel_relaxed(((dma_buffer_length_words + 1) / 2) - 1, hs_dev->rddma_per_len);
 	/* Increase the FIFO watermark */
 	writel_relaxed((RDDMA_RAM_LENGTH * intf), hs_dev->rddma_ram_addr);
 	writel_relaxed(RDDMA_RAM_LENGTH, hs_dev->rddma_ram_len);
@@ -1680,7 +1680,7 @@ static void configure_wrdma_int_lb(struct hsi2s_device *hs_dev, int intf)
 		       hs_dev->wrdma_base);
 	writel_relaxed(dma_buffer_length_words, hs_dev->wrdma_buff_len);
 	/* Use ping/pong size as periodic length */
-	writel_relaxed((dma_buffer_length_words + 1) / 2, hs_dev->wrdma_per_len);
+	writel_relaxed(((dma_buffer_length_words + 1) / 2) - 1, hs_dev->wrdma_per_len);
 	/* Increase the FIFO watermark */
 	writel_relaxed((WRDMA_RAM_LENGTH * intf), hs_dev->wrdma_ram_addr);
 	writel_relaxed(WRDMA_RAM_LENGTH, hs_dev->wrdma_ram_len);
@@ -1898,7 +1898,7 @@ static int hsi2s_buffer_init(struct hsi2s_device *hs_dev)
 	}
 
 	hs_dev->read_buffer->buffer = kzalloc(sizeof(int32_t) *
-				dma_buffer_length_words, GFP_KERNEL | GFP_DMA);
+				(dma_buffer_length_words + 1), GFP_KERNEL | GFP_DMA);
 	if (!hs_dev->read_buffer->buffer) {
 		ret = -ENOMEM;
 		goto err_read_dma_buffer;
@@ -1927,7 +1927,7 @@ static int hsi2s_buffer_init(struct hsi2s_device *hs_dev)
 	}
 
 	hs_dev->write_buffer->buffer = kzalloc(sizeof(int32_t) *
-				dma_buffer_length_words, GFP_KERNEL | GFP_DMA);
+				(dma_buffer_length_words + 1), GFP_KERNEL | GFP_DMA);
 	if (!hs_dev->write_buffer->buffer) {
 		ret = -ENOMEM;
 		goto err_write_dma_buffer;
@@ -2649,6 +2649,7 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 			setbits(hsi2s_core->irq_clear, IRQ_PER_WRDMA_CH0);
 #ifndef DISABLE_DEVICE_READ
 			write_len = readl_relaxed(hs_arr[0]->wrdma_per_len);
+			write_len += 1;
 			write_len *= BYTES_PER_SAMPLE;
 
 			tail = hs_arr[0]->write_buffer->tail;
@@ -2675,6 +2676,7 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 			setbits(hsi2s_core->irq_clear, IRQ_PER_WRDMA_CH1);
 #ifndef DISABLE_DEVICE_READ
 			write_len = readl_relaxed(hs_arr[1]->wrdma_per_len);
+			write_len += 1;
 			write_len *= BYTES_PER_SAMPLE;
 
 			tail = hs_arr[1]->write_buffer->tail;
@@ -2701,6 +2703,7 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 			setbits(hsi2s_core->irq_clear, IRQ_PER_WRDMA_CH2);
 #ifndef DISABLE_DEVICE_READ
 			write_len = readl_relaxed(hs_arr[2]->wrdma_per_len);
+			write_len += 1;
 			write_len *= BYTES_PER_SAMPLE;
 
 			tail = hs_arr[2]->write_buffer->tail;
@@ -2830,7 +2833,7 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 															  hs_arr[slave]->data_buffer_ms_val));
 				hs_arr[slave]->wrdma_periodic_length = hs_arr[slave]->wrdma_periodic_length_bytes / BYTES_PER_SAMPLE;
 				dev_info(hsi2s_core->dev, "Periodic length reconfigured to %lu words", hs_arr[slave]->wrdma_periodic_length);
-				writel_relaxed(hs_arr[slave]->wrdma_periodic_length, hs_arr[slave]->wrdma_per_len);
+				writel_relaxed(hs_arr[slave]->wrdma_periodic_length - 1, hs_arr[slave]->wrdma_per_len);
 				/* Enable mic */
 				setbits(hs_arr[slave]->wrdma_ctl, hsi2s_core->macro->bit_wrdma_en);
 				if (hs_arr[slave]->lpaif_mode == HS_I2S)
@@ -2859,7 +2862,7 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 															  hs_arr[slave]->data_buffer_ms_val));
 				hs_arr[slave]->wrdma_periodic_length = hs_arr[slave]->wrdma_periodic_length_bytes / BYTES_PER_SAMPLE;
 				dev_info(hsi2s_core->dev, "Periodic length reconfigured to %lu words", hs_arr[slave]->wrdma_periodic_length);
-				writel_relaxed(hs_arr[slave]->wrdma_periodic_length, hs_arr[slave]->wrdma_per_len);
+				writel_relaxed(hs_arr[slave]->wrdma_periodic_length - 1, hs_arr[slave]->wrdma_per_len);
 				/* Enable mic */
 				setbits(hs_arr[slave]->wrdma_ctl, hsi2s_core->macro->bit_wrdma_en);
 				if (hs_arr[slave]->lpaif_mode == HS_I2S)
@@ -2899,7 +2902,7 @@ static ssize_t device_read(struct file *file, char *buffer,
 	hs_dev = (struct hsi2s_device *)file->private_data;
 	head = hs_dev->write_buffer->head;
 
-	temp_length = readl_relaxed(hs_dev->wrdma_per_len) * 4;
+	temp_length = (readl_relaxed(hs_dev->wrdma_per_len) + 1) * 4;
 
 	while (length > temp_length) {
 		if (head == hs_dev->write_buffer->tail) {
