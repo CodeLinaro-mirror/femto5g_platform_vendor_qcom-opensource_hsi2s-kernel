@@ -452,6 +452,7 @@ int main(int argc, char **argv)
 				/* DMA buffer length */
 				read_length_bytes = (atoi(optarg) * 1024 * 1024) / 2;
 				read_length_words = read_length_bytes/BYTES_PER_WORD;
+				mmap_len = read_length_bytes;
 				break;
 			case 'i':
 				/* Master mode */
