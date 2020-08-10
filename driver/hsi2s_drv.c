@@ -2086,6 +2086,7 @@ static int init_default(struct hsi2s_device *hs_dev, int intf)
 }
 
 #ifndef CONFIG_QTI_GVM
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
 /* SMMU functions */
 
 /* Function to init smmu */
@@ -2162,6 +2163,7 @@ err_smmu_probe:
 
 	return ret;
 }
+#endif
 #endif
 
 /* GPIO management functions */
@@ -3908,12 +3910,14 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	}
 
 	#ifndef CONFIG_QTI_GVM
+	#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
 	/* Configure SMMU */
 	ret = hsi2s_smmu_init(pdev, minor);
 	if (ret) {
 		dev_err(hs_dev->dev, "Failed to init smmu");
 		goto err_free_smmu;
 	}
+	#endif
 	#endif
 
 	/* Configure the gpios */
@@ -4012,6 +4016,7 @@ err_free_cdev:
 	hs_dev->cdev_sdr = NULL;
 err_free_smmu:
 	#ifndef CONFIG_QTI_GVM
+	#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
 	/* Detach and release iommu mapping */
 	if (hs_dev->hsi2s_smmu_ctx->valid) {
 		if (hs_dev->hsi2s_smmu_ctx->smmu_pdev)
@@ -4026,6 +4031,7 @@ err_free_smmu:
 	}
 	kfree(hs_dev->hsi2s_smmu_ctx);
 	hs_dev->hsi2s_smmu_ctx = NULL;
+	#endif
 	#endif
 err_deinit_default:
 	hsi2s_buffer_free(hs_dev);
@@ -4443,6 +4449,7 @@ static int hsi2s_interface_remove(struct platform_device *pdev)
 			hsi2s_disable_intf_clks(pdev);
 		/* Detach and release iommu mapping */
 		#ifndef CONFIG_QTI_GVM
+		#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
 		if (hs_dev->hsi2s_smmu_ctx->valid) {
 			if (hs_dev->hsi2s_smmu_ctx->smmu_pdev)
 				arm_iommu_detach_device(&hs_dev->hsi2s_smmu_ctx->smmu_pdev->dev);
@@ -4456,6 +4463,7 @@ static int hsi2s_interface_remove(struct platform_device *pdev)
 		}
 		kfree(hs_dev->hsi2s_smmu_ctx);
 		hs_dev->hsi2s_smmu_ctx = NULL;
+		#endif
 		#endif
 
 		/* Free the allocated buffers and device data structures */
