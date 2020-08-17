@@ -42,6 +42,7 @@
 #include <linux/io.h>
 #include <linux/poll.h>
 #include <linux/soc/qcom/qmi.h>
+#include <linux/habmm.h>
 #include <asm/dma-iommu.h>
 
 /* Register offsets */
@@ -327,7 +328,6 @@
 #define LONG_RATE_MIN 0
 #define LONG_RATE_MAX 63
 #define BIT_CLK_MAX 73728000
-#define RDDMA_RAM_LENGTH 128
 #define WRDMA_RAM_LENGTH 512
 
 #define T_I2S_LONG_RATE_OFFSET 18
@@ -465,6 +465,13 @@ enum operation_mode {
 
 /* Structure prototypes */
 
+/* HAB */
+typedef struct
+{
+	uint32_t clk_en;
+	uint32_t rsp;
+}msg_t;
+
 /* LPAIF HS-I2S core structure */
 struct hsi2s_core {
 	/* Device pointer */
@@ -508,6 +515,11 @@ struct hsi2s_core {
 	struct qmi_handle *qmi_dev;
 	wait_queue_head_t wq_qmi;
 	bool qmi_connection;
+
+	/* HAB */
+	int hab_handle;
+	msg_t *hab_req;
+	msg_t *hab_resp;
 
 	/* Clocks */
 	struct clk *core_clk;
