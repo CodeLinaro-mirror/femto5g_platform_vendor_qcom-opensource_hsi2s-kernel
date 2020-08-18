@@ -611,8 +611,12 @@ static void clear_irqs(void)
 /* Reset the registers */
 static void reset_registers(struct hsi2s_device *hs_dev)
 {
-	reg_clear(hs_dev->i2s_ctl);
-
+	if (hs_dev->lpaif_mode == HS_I2S) {
+		reg_clear(hs_dev->i2s_ctl);
+	} else {
+		reg_clear(hs_dev->pcm_ctl);
+		reg_clear(hs_dev->tdm_ctl);
+	}
 	clear_irqs();
 	reg_clear(hs_dev->rddma_ctl);
 	reg_clear(hs_dev->rddma_base);
@@ -635,9 +639,13 @@ static void reset_registers(struct hsi2s_device *hs_dev)
 	clearbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_reset);
 
 	msleep(1000);
-
-	setbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_i2s_reset);
-	clearbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_i2s_reset);
+	if (hs_dev->lpaif_mode == HS_I2S) {
+		setbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_i2s_reset);
+		clearbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_i2s_reset);
+	} else {
+		setbits(hs_dev->pcm_ctl, hsi2s_core->macro->bit_pcm_reset);
+		clearbits(hs_dev->pcm_ctl, hsi2s_core->macro->bit_pcm_reset);
+	}
 }
 
 /* Reset the read DMA registers */
@@ -3941,10 +3949,14 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	hs_dev->rddma_in_progress = 0;
 
 	/* Configure the operational mode */
-	if (operation_mode)
+	if (operation_mode) {
+		/* Setting slave mode for SA8155/SA8195 targets */
+		if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195)
+			configure_muxmode(hs_dev, 1);
 		configure_normal_mode(hs_dev, minor);
-	else
+	} else {
 		configure_int_loopback_mode(hs_dev, minor);
+	}
 
 	/* Create device file for the interface */
 	hs_dev->cdev_sdr = kzalloc(sizeof(*hs_dev->cdev_sdr),
