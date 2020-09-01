@@ -545,6 +545,11 @@ struct hsi2s_core {
 
 	/* Spinlock for DAB MRC */
 	spinlock_t hs_lock;
+
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
+	/* SMMU context */
+	struct hsi2s_smmu_cb_ctx *hsi2s_smmu_ctx;
+#endif
 };
 
 /* LPAIF HS-I2S device structure */
@@ -603,11 +608,6 @@ struct hsi2s_device {
 	int rddma_xfer_busy;
 	int rddma_copy_busy;
 	int rddma_in_progress;
-
-	#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
-	/* SMMU context */
-	struct hsi2s_smmu_cb_ctx *hsi2s_smmu_ctx;
-	#endif
 
 	/* Wait queues */
 	wait_queue_head_t wq_rddma;

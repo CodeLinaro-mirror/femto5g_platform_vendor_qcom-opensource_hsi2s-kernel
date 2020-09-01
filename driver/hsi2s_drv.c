@@ -1953,12 +1953,12 @@ static int hsi2s_buffer_init(struct hsi2s_device *hs_dev)
 		goto err_read_dma_buffer;
 	}
 
-	hs_dev->read_buffer->handle = dma_map_single(hs_dev->dev, hs_dev->read_buffer->buffer, dma_buffer_length, DMA_TO_DEVICE);
-        if (dma_mapping_error(hs_dev->dev, hs_dev->read_buffer->handle)) {
-                dev_err(hs_dev->dev, "Failed to perform dma_map_single");
-                ret = -EINVAL;
-                goto err_read_dma_map;
-        }
+	hs_dev->read_buffer->handle = dma_map_single(hsi2s_core->dev, hs_dev->read_buffer->buffer, dma_buffer_length, DMA_TO_DEVICE);
+	if (dma_mapping_error(hsi2s_core->dev, hs_dev->read_buffer->handle)) {
+		dev_err(hs_dev->dev, "Failed to perform dma_map_single");
+		ret = -EINVAL;
+		goto err_read_dma_map;
+	}
 
 	hs_dev->read_buffer->ping_start = hs_dev->read_buffer->buffer;
 	hs_dev->read_buffer->pong_start = hs_dev->read_buffer->buffer + (dma_buffer_length / 2);
@@ -1982,12 +1982,12 @@ static int hsi2s_buffer_init(struct hsi2s_device *hs_dev)
 		goto err_write_dma_buffer;
 	}
 
-	hs_dev->write_buffer->handle = dma_map_single(hs_dev->dev, hs_dev->write_buffer->buffer, dma_buffer_length, DMA_FROM_DEVICE);
-        if (dma_mapping_error(hs_dev->dev, hs_dev->write_buffer->handle)) {
-                dev_err(hs_dev->dev, "Failed to perform dma_map_single");
-                ret = -EINVAL;
-                goto err_write_dma_map;
-        }
+	hs_dev->write_buffer->handle = dma_map_single(hsi2s_core->dev, hs_dev->write_buffer->buffer, dma_buffer_length, DMA_FROM_DEVICE);
+	if (dma_mapping_error(hsi2s_core->dev, hs_dev->write_buffer->handle)) {
+		dev_err(hs_dev->dev, "Failed to perform dma_map_single");
+		ret = -EINVAL;
+		goto err_write_dma_map;
+	}
 
 	hs_dev->lpass_wrdma_start = hs_dev->write_buffer->buffer;
 	hs_dev->lpass_wrdma_end = hs_dev->lpass_wrdma_start +
@@ -2012,7 +2012,7 @@ err_write_dma_buffer:
 	}
 err_write_buffer:
 	if (hs_dev->read_buffer) {
-		dma_unmap_single(hs_dev->dev, hs_dev->read_buffer->handle,
+		dma_unmap_single(hsi2s_core->dev, hs_dev->read_buffer->handle,
 				 dma_buffer_length, DMA_TO_DEVICE);
 	}
 err_read_dma_map:
@@ -2035,7 +2035,7 @@ static void hsi2s_buffer_free(struct hsi2s_device *hs_dev)
 	/* Freeing write DMA buffer */
 	if (hs_dev->write_buffer) {
 		if (hs_dev->write_buffer->buffer) {
-			dma_unmap_single(hs_dev->dev, hs_dev->write_buffer->handle,
+			dma_unmap_single(hsi2s_core->dev, hs_dev->write_buffer->handle,
 					 dma_buffer_length, DMA_FROM_DEVICE);
 			kfree(hs_dev->write_buffer->buffer);
 			hs_dev->write_buffer->buffer = NULL;
@@ -2047,7 +2047,7 @@ static void hsi2s_buffer_free(struct hsi2s_device *hs_dev)
 	/* Freeing read DMA buffer */
 	if (hs_dev->read_buffer) {
 		if (hs_dev->read_buffer->buffer) {
-			dma_unmap_single(hs_dev->dev, hs_dev->read_buffer->handle,
+			dma_unmap_single(hsi2s_core->dev, hs_dev->read_buffer->handle,
 					 dma_buffer_length, DMA_FROM_DEVICE);
 			kfree(hs_dev->read_buffer->buffer);
 			hs_dev->read_buffer->buffer = NULL;
@@ -2090,76 +2090,74 @@ static int init_default(struct hsi2s_device *hs_dev, int intf)
 /* SMMU functions */
 
 /* Function to init smmu */
-static int hsi2s_smmu_init(struct platform_device *pdev, int minor)
+static int hsi2s_smmu_init(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-	struct hsi2s_device *hs_dev;
 	struct dma_iommu_mapping *mapping;
 	u32 iova_ap_mapping[2];
 	int bypass = 1;
 	int ret = 0;
 
-	hs_dev = (struct hsi2s_device *)platform_get_drvdata(pdev);
-	hs_dev->hsi2s_smmu_ctx = kzalloc(sizeof(*hs_dev->hsi2s_smmu_ctx),
+	hsi2s_core->hsi2s_smmu_ctx = kzalloc(sizeof(*hsi2s_core->hsi2s_smmu_ctx),
 					 GFP_KERNEL);
-	if (!hs_dev->hsi2s_smmu_ctx)
+	if (!hsi2s_core->hsi2s_smmu_ctx)
 		return -ENOMEM;
 
 	ret = of_property_read_u32_array(dev->of_node, "qcom,iova-mapping",
 					 iova_ap_mapping, 2);
 	if (ret) {
-		dev_err(hs_dev->dev, "Failed to read smmu start/size iova addresses");
+		dev_err(hsi2s_core->dev, "Failed to read smmu start/size iova addresses");
 		goto err_smmu_probe;
 	}
 
-	hs_dev->hsi2s_smmu_ctx->va_start = iova_ap_mapping[0];
-	hs_dev->hsi2s_smmu_ctx->va_size = iova_ap_mapping[1];
-	hs_dev->hsi2s_smmu_ctx->smmu_pdev = pdev;
+	hsi2s_core->hsi2s_smmu_ctx->va_start = iova_ap_mapping[0];
+	hsi2s_core->hsi2s_smmu_ctx->va_size = iova_ap_mapping[1];
+	hsi2s_core->hsi2s_smmu_ctx->smmu_pdev = pdev;
 
-	hs_dev->hsi2s_smmu_ctx->mapping =
+	hsi2s_core->hsi2s_smmu_ctx->mapping =
 		arm_iommu_create_mapping(dev->bus,
-					 hs_dev->hsi2s_smmu_ctx->va_start,
-					 hs_dev->hsi2s_smmu_ctx->va_size);
-	if (IS_ERR_OR_NULL(hs_dev->hsi2s_smmu_ctx->mapping)) {
-		dev_err(hs_dev->dev, "Fail to create mapping");
+					 hsi2s_core->hsi2s_smmu_ctx->va_start,
+					 hsi2s_core->hsi2s_smmu_ctx->va_size);
+	if (IS_ERR_OR_NULL(hsi2s_core->hsi2s_smmu_ctx->mapping)) {
+		dev_err(hsi2s_core->dev, "Fail to create mapping");
 		/* assume this failure is because iommu driver is not ready */
 		ret = -EPROBE_DEFER;
 		goto err_smmu_probe;
 	}
-	dev_info(hs_dev->dev, "Successfully Created SMMU mapping");
-	hs_dev->hsi2s_smmu_ctx->valid = true;
-	mapping = hs_dev->hsi2s_smmu_ctx->mapping;
+	dev_info(hsi2s_core->dev, "Successfully Created SMMU mapping");
+	hsi2s_core->hsi2s_smmu_ctx->valid = true;
+	mapping = hsi2s_core->hsi2s_smmu_ctx->mapping;
 
 	if (of_property_read_bool(dev->of_node, "qcom,smmu-s1-bypass")) {
 		if (iommu_domain_set_attr(mapping->domain,
 					  DOMAIN_ATTR_S1_BYPASS,
 					  &bypass)) {
-			dev_err(hs_dev->dev, "Couldn't set SMMU S1 bypass\n");
+			dev_err(hsi2s_core->dev, "Couldn't set SMMU S1 bypass\n");
 			ret = -EIO;
 			goto err_smmu_probe;
 		}
 	}
 
-	ret = arm_iommu_attach_device(&hs_dev->hsi2s_smmu_ctx->smmu_pdev->dev,
+	ret = arm_iommu_attach_device(&hsi2s_core->hsi2s_smmu_ctx->smmu_pdev->dev,
 				      mapping);
 	if (ret) {
-		dev_err(hs_dev->dev, "couldn't attach to IOMMU ret=%d", ret);
+		dev_err(hsi2s_core->dev, "couldn't attach to IOMMU ret=%d", ret);
 		goto err_smmu_probe;
 	}
 
-	hs_dev->hsi2s_smmu_ctx->iommu_domain =
-	iommu_get_domain_for_dev(&hs_dev->hsi2s_smmu_ctx->smmu_pdev->dev);
+	hsi2s_core->hsi2s_smmu_ctx->iommu_domain =
+	iommu_get_domain_for_dev(&hsi2s_core->hsi2s_smmu_ctx->smmu_pdev->dev);
 
-	dev_info(hs_dev->dev, "Successfully attached to IOMMU");
+	dev_info(hsi2s_core->dev, "Successfully attached to IOMMU");
 	return ret;
 
 err_smmu_probe:
-	if (hs_dev->hsi2s_smmu_ctx->mapping)
-		arm_iommu_release_mapping(hs_dev->hsi2s_smmu_ctx->mapping);
-	hs_dev->hsi2s_smmu_ctx->valid = false;
+	if (hsi2s_core->hsi2s_smmu_ctx->mapping)
+		arm_iommu_release_mapping(hsi2s_core->hsi2s_smmu_ctx->mapping);
+	hsi2s_core->hsi2s_smmu_ctx->valid = false;
 
-	kfree(hs_dev->hsi2s_smmu_ctx);
-	hs_dev->hsi2s_smmu_ctx = NULL;
+	kfree(hsi2s_core->hsi2s_smmu_ctx);
+	hsi2s_core->hsi2s_smmu_ctx = NULL;
 
 	return ret;
 }
@@ -2965,7 +2963,7 @@ static ssize_t device_read(struct file *file, char *buffer,
 
 		if (head + temp_length >= hs_dev->lpass_wrdma_end) {
 			usleep_range(10000,10000);
-			dma_sync_single_for_cpu(hs_dev->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
+			dma_sync_single_for_cpu(hsi2s_core->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
 			copy_len = hs_dev->lpass_wrdma_end - head;
 			ret = copy_to_user(buffer + bytes_read,
 					   head,
@@ -2975,7 +2973,7 @@ static ssize_t device_read(struct file *file, char *buffer,
 				return -ret;
 			}
 			bytes_read += copy_len;
-			dma_sync_single_for_cpu(hs_dev->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
+			dma_sync_single_for_cpu(hsi2s_core->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
 			ret = copy_to_user(buffer + bytes_read,
 				   hs_dev->lpass_wrdma_start,
 				   temp_length - copy_len);
@@ -2987,7 +2985,7 @@ static ssize_t device_read(struct file *file, char *buffer,
 			bytes_read += (temp_length - copy_len);
 		} else  {
 			usleep_range(10000,10000);
-			dma_sync_single_for_cpu(hs_dev->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
+			dma_sync_single_for_cpu(hsi2s_core->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
 			ret = copy_to_user(buffer + bytes_read,
 					   head,
 					   temp_length);
@@ -3011,7 +3009,7 @@ static ssize_t device_read(struct file *file, char *buffer,
 
 	if (head + length >= hs_dev->lpass_wrdma_end) {
 		usleep_range(10000,10000);
-		dma_sync_single_for_cpu(hs_dev->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
+		dma_sync_single_for_cpu(hsi2s_core->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
 		copy_len = hs_dev->lpass_wrdma_end - head;
 		ret = copy_to_user(buffer + bytes_read,
 				   head,
@@ -3021,7 +3019,7 @@ static ssize_t device_read(struct file *file, char *buffer,
 			return -ret;
 		}
 		bytes_read += copy_len;
-		dma_sync_single_for_cpu(hs_dev->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
+		dma_sync_single_for_cpu(hsi2s_core->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
 		ret = copy_to_user(buffer + bytes_read,
 			   hs_dev->lpass_wrdma_start,
 			   length - copy_len);
@@ -3034,7 +3032,7 @@ static ssize_t device_read(struct file *file, char *buffer,
 	} else  {
 		usleep_range(10000,10000);
 		if (!hs_dev->minor_num)
-			dma_sync_single_for_cpu(hs_dev->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
+			dma_sync_single_for_cpu(hsi2s_core->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
 		ret = copy_to_user(buffer + bytes_read,
 				   head,
 				   length);
@@ -3082,7 +3080,7 @@ static ssize_t device_write(struct file *file, const char *buffer,
 				       temp_length);
 		}
 
-		dma_sync_single_for_device(hs_dev->dev, hs_dev->read_buffer->handle, dma_buffer_length, DMA_TO_DEVICE);
+		dma_sync_single_for_device(hsi2s_core->dev, hs_dev->read_buffer->handle, dma_buffer_length, DMA_TO_DEVICE);
 		hs_dev->read_buffer->last_copy = !hs_dev->read_buffer->last_copy;
 		bytes_written += temp_length;
 		length -= temp_length;
@@ -3110,7 +3108,7 @@ static ssize_t device_write(struct file *file, const char *buffer,
 			       buffer + bytes_written,
 			       length);
 	}
-	dma_sync_single_for_device(hs_dev->dev, hs_dev->read_buffer->handle, dma_buffer_length, DMA_TO_DEVICE);
+	dma_sync_single_for_device(hsi2s_core->dev, hs_dev->read_buffer->handle, dma_buffer_length, DMA_TO_DEVICE);
 	hs_dev->read_buffer->last_copy = !hs_dev->read_buffer->last_copy;
 	bytes_written += length;
 
@@ -3609,7 +3607,7 @@ static unsigned int device_poll(struct file *file, poll_table *wait)
 	if (hs_dev->write_buffer->pollin) {
 		hs_dev->write_buffer->pollin = 0;
 		mask |= POLLIN | POLLRDNORM;
-		dma_sync_single_for_cpu(hs_dev->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
+		dma_sync_single_for_cpu(hsi2s_core->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
 	}
 
 	return mask;
@@ -3909,24 +3907,13 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 		goto err_deinit_default;
 	}
 
-	#ifndef CONFIG_QTI_GVM
-	#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
-	/* Configure SMMU */
-	ret = hsi2s_smmu_init(pdev, minor);
-	if (ret) {
-		dev_err(hs_dev->dev, "Failed to init smmu");
-		goto err_free_smmu;
-	}
-	#endif
-	#endif
-
 	/* Configure the gpios */
 	if (of_property_read_bool(pdev->dev.of_node, "pinctrl-names")) {
 		hs_dev->is_pinctrl_names = true;
 		ret = hsi2s_configure_gpio_pins(pdev);
 		if (ret < 0) {
 			dev_err(hs_dev->dev, "Failed to configure gpios");
-			goto err_free_smmu;
+			goto err_deinit_default;
 		}
 	}
 
@@ -3967,7 +3954,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 				   GFP_KERNEL);
 	if (!hs_dev->cdev_sdr) {
 		ret = -ENOMEM;
-		goto err_free_smmu;
+		goto err_deinit_default;
 	}
 
 	hs_dev->curr_devid = MKDEV(MAJOR(devid), MINOR(devid) + minor);
@@ -4014,25 +4001,6 @@ err_delete_cdev:
 err_free_cdev:
 	kfree(hs_dev->cdev_sdr);
 	hs_dev->cdev_sdr = NULL;
-err_free_smmu:
-	#ifndef CONFIG_QTI_GVM
-	#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
-	/* Detach and release iommu mapping */
-	if (hs_dev->hsi2s_smmu_ctx->valid) {
-		if (hs_dev->hsi2s_smmu_ctx->smmu_pdev)
-			arm_iommu_detach_device(&hs_dev->hsi2s_smmu_ctx->smmu_pdev->dev);
-		if (hs_dev->hsi2s_smmu_ctx->mapping)
-			arm_iommu_release_mapping(hs_dev->hsi2s_smmu_ctx->mapping);
-		hs_dev->hsi2s_smmu_ctx->valid = false;
-		hs_dev->hsi2s_smmu_ctx->mapping = NULL;
-		hs_dev->hsi2s_smmu_ctx->pdev_master = NULL;
-		hs_dev->hsi2s_smmu_ctx->smmu_pdev = NULL;
-		dev_info(hs_dev->dev, "Detached and released iommu mapping");
-	}
-	kfree(hs_dev->hsi2s_smmu_ctx);
-	hs_dev->hsi2s_smmu_ctx = NULL;
-	#endif
-	#endif
 err_deinit_default:
 	hsi2s_buffer_free(hs_dev);
 err_disable_intf_clock:
@@ -4377,6 +4345,17 @@ static int hsi2s_probe(struct platform_device *pdev)
 	disable_irq_nosync(hsi2s_core->irq0);
 	hsi2s_core->is_irq_enabled = false;
 
+#ifndef CONFIG_QTI_GVM
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
+	/* Configure SMMU */
+	ret = hsi2s_smmu_init(pdev);
+	if (ret) {
+		dev_err(hsi2s_core->dev, "Failed to init smmu");
+		goto err_free_irq;
+	}
+#endif
+#endif
+
 	/* Probe child devices */
 	ret = of_platform_populate(dev->of_node, NULL, NULL, dev);
 	if (ret)
@@ -4386,6 +4365,12 @@ static int hsi2s_probe(struct platform_device *pdev)
 
 	return ret;
 
+#ifndef CONFIG_QTI_GVM
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
+err_free_irq:
+	devm_free_irq(hsi2s_core->dev, hsi2s_core->irq0, hsi2s_core);
+#endif
+#endif
 err_iounmap_lpass_tcsr:
 	iounmap(hsi2s_core->lpass_tcsr_base_va);
 err_iounmap_lpaif:
@@ -4447,25 +4432,6 @@ static int hsi2s_interface_remove(struct platform_device *pdev)
 		/* Disable the interface clocks */
 		if (hsi2s_core->target == 6155)
 			hsi2s_disable_intf_clks(pdev);
-		/* Detach and release iommu mapping */
-		#ifndef CONFIG_QTI_GVM
-		#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
-		if (hs_dev->hsi2s_smmu_ctx->valid) {
-			if (hs_dev->hsi2s_smmu_ctx->smmu_pdev)
-				arm_iommu_detach_device(&hs_dev->hsi2s_smmu_ctx->smmu_pdev->dev);
-			if (hs_dev->hsi2s_smmu_ctx->mapping)
-				arm_iommu_release_mapping(hs_dev->hsi2s_smmu_ctx->mapping);
-			hs_dev->hsi2s_smmu_ctx->valid = false;
-			hs_dev->hsi2s_smmu_ctx->mapping = NULL;
-			hs_dev->hsi2s_smmu_ctx->pdev_master = NULL;
-			hs_dev->hsi2s_smmu_ctx->smmu_pdev = NULL;
-			dev_info(hs_dev->dev, "Detached and released iommu mapping");
-		}
-		kfree(hs_dev->hsi2s_smmu_ctx);
-		hs_dev->hsi2s_smmu_ctx = NULL;
-		#endif
-		#endif
-
 		/* Free the allocated buffers and device data structures */
 		hsi2s_buffer_free(hs_dev);
 		kfree(hs_dev);
@@ -4498,10 +4464,30 @@ static int hsi2s_remove(struct platform_device *pdev)
 	of_platform_depopulate(&pdev->dev);
 	/* Remove the core device */
 	hs_core = (struct hsi2s_core *)platform_get_drvdata(pdev);
+#ifndef CONFIG_QTI_GVM
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
+	/* Detach and release iommu mapping */
+	if (hs_core->hsi2s_smmu_ctx) {
+		if (hs_core->hsi2s_smmu_ctx->valid) {
+			if (hs_core->hsi2s_smmu_ctx->smmu_pdev)
+				arm_iommu_detach_device(&hs_core->hsi2s_smmu_ctx->smmu_pdev->dev);
+			if (hs_core->hsi2s_smmu_ctx->mapping)
+				arm_iommu_release_mapping(hs_core->hsi2s_smmu_ctx->mapping);
+			hs_core->hsi2s_smmu_ctx->valid = false;
+			hs_core->hsi2s_smmu_ctx->mapping = NULL;
+			hs_core->hsi2s_smmu_ctx->pdev_master = NULL;
+			hs_core->hsi2s_smmu_ctx->smmu_pdev = NULL;
+			dev_info(hs_core->dev, "Detached and released iommu mapping");
+		}
+		kfree(hs_core->hsi2s_smmu_ctx);
+		hs_core->hsi2s_smmu_ctx = NULL;
+	}
+#endif
+#endif
 	/* Free IRQ */
 	devm_free_irq(&pdev->dev, hs_core->irq0, hs_core);
 	/* Reset rate detection block */
-	if (hsi2s_core->is_rate_enabled) {
+	if (hs_core->is_rate_enabled) {
 		reset_rate_detection(PRI_RATE_DET);
 		reset_rate_detection(SEC_RATE_DET);
 	}
@@ -4517,31 +4503,31 @@ static int hsi2s_remove(struct platform_device *pdev)
 				kfree(hs_core->qmi_dev);
 			}
 #else
-			hsi2s_core->hab_req->clk_en = 0;
+			hs_core->hab_req->clk_en = 0;
 
-			ret = habmm_socket_send(hsi2s_core->hab_handle, hsi2s_core->hab_req, resp_size, 0);
+			ret = habmm_socket_send(hs_core->hab_handle, hs_core->hab_req, resp_size, 0);
 			if (ret) {
-				dev_err(hsi2s_core->dev, "habmm socket send failed (%d)\n", ret);
+				dev_err(hs_core->dev, "habmm socket send failed (%d)\n", ret);
 				goto err_close_hab;
 			}
 
-			ret = habmm_socket_recv(hsi2s_core->hab_handle, hsi2s_core->hab_resp, &resp_size, UINT_MAX, HABMM_SOCKET_RECV_FLAGS_UNINTERRUPTIBLE);
+			ret = habmm_socket_recv(hs_core->hab_handle, hs_core->hab_resp, &resp_size, UINT_MAX, HABMM_SOCKET_RECV_FLAGS_UNINTERRUPTIBLE);
 			if (ret) {
-				dev_err(hsi2s_core->dev, "habmm socket receive failed (%d)\n", ret);
+				dev_err(hs_core->dev, "habmm socket receive failed (%d)\n", ret);
 				goto err_close_hab;
 			}
 
-			if (hsi2s_core->hab_resp->rsp) {
-				dev_err(hsi2s_core->dev, "error response (%d)\n", hsi2s_core->hab_resp->rsp);
+			if (hs_core->hab_resp->rsp) {
+				dev_err(hs_core->dev, "error response (%d)\n", hs_core->hab_resp->rsp);
 				ret = -EIO;
 				goto err_close_hab;
 			}
 
 err_close_hab:
-			habmm_socket_close(hsi2s_core->hab_handle);
-			hsi2s_core->hab_handle = 0;
-			kfree(hsi2s_core->hab_req);
-			kfree(hsi2s_core->hab_resp);
+			habmm_socket_close(hs_core->hab_handle);
+			hs_core->hab_handle = 0;
+			kfree(hs_core->hab_req);
+			kfree(hs_core->hab_resp);
 #endif
 		} else {
 			h_modify_interface_clks(0);
