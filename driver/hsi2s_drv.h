@@ -730,7 +730,7 @@ struct hsi2s_smmu_cb_ctx {
 	struct iommu_domain *iommu_domain;
 	u32 va_start;
 	u32 va_size;
-	int ret;
+	int bypass;
 };
 #endif
 

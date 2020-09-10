@@ -1504,8 +1504,15 @@ static void configure_tdm_ctl(struct hsi2s_device *hs_dev)
 /* Configure the read DMA registers */
 static void configure_rddma(struct hsi2s_device *hs_dev, int intf)
 {
-	writel_relaxed(virt_to_phys(hs_dev->read_buffer->ping_start),
-		       hs_dev->rddma_base);
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
+	if (hsi2s_core->hsi2s_smmu_ctx->bypass)
+		writel_relaxed(virt_to_phys(hs_dev->read_buffer->ping_start),
+			       hs_dev->rddma_base);
+	else
+		writel_relaxed(hs_dev->read_buffer->handle, hs_dev->rddma_base);
+#else
+		writel_relaxed(hs_dev->read_buffer->handle, hs_dev->rddma_base);
+#endif
 	writel_relaxed(dma_buffer_length_words, hs_dev->rddma_buff_len);
 	/* Use ping/pong size as periodic length */
 	writel_relaxed(((dma_buffer_length_words + 1) / 2) - 1, hs_dev->rddma_per_len);
@@ -1546,8 +1553,15 @@ static void configure_rddma(struct hsi2s_device *hs_dev, int intf)
 /* Configure the write DMA registers */
 static void configure_wrdma(struct hsi2s_device *hs_dev, int intf)
 {
-	writel_relaxed(virt_to_phys(hs_dev->lpass_wrdma_start),
-		       hs_dev->wrdma_base);
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
+	if (hsi2s_core->hsi2s_smmu_ctx->bypass)
+		writel_relaxed(virt_to_phys(hs_dev->lpass_wrdma_start),
+			       hs_dev->wrdma_base);
+	else
+		writel_relaxed(hs_dev->write_buffer->handle, hs_dev->wrdma_base);
+#else
+	writel_relaxed(hs_dev->write_buffer->handle, hs_dev->wrdma_base);
+#endif
 	writel_relaxed(dma_buffer_length_words, hs_dev->wrdma_buff_len);
 	/* Increase the FIFO watermark */
 	writel_relaxed((WRDMA_RAM_LENGTH * intf), hs_dev->wrdma_ram_addr);
@@ -1632,8 +1646,15 @@ static void configure_pcm_int_lb(struct hsi2s_device *hs_dev)
 /* Configure the read DMA registers */
 static void configure_rddma_int_lb(struct hsi2s_device *hs_dev, int intf)
 {
-	writel_relaxed(virt_to_phys(hs_dev->read_buffer->ping_start),
-		       hs_dev->rddma_base);
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
+	if (hsi2s_core->hsi2s_smmu_ctx->bypass)
+		writel_relaxed(virt_to_phys(hs_dev->read_buffer->ping_start),
+			       hs_dev->rddma_base);
+	else
+		writel_relaxed(hs_dev->read_buffer->handle, hs_dev->rddma_base);
+#else
+		writel_relaxed(hs_dev->read_buffer->handle, hs_dev->rddma_base);
+#endif
 	writel_relaxed(dma_buffer_length_words, hs_dev->rddma_buff_len);
 	/* Use ping/pong size as periodic length */
 	writel_relaxed(((dma_buffer_length_words + 1) / 2) - 1, hs_dev->rddma_per_len);
@@ -1674,8 +1695,15 @@ static void configure_rddma_int_lb(struct hsi2s_device *hs_dev, int intf)
 /* Configure the write DMA registers for internal loopback */
 static void configure_wrdma_int_lb(struct hsi2s_device *hs_dev, int intf)
 {
-	writel_relaxed(virt_to_phys(hs_dev->lpass_wrdma_start),
-		       hs_dev->wrdma_base);
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
+	if (hsi2s_core->hsi2s_smmu_ctx->bypass)
+		writel_relaxed(virt_to_phys(hs_dev->lpass_wrdma_start),
+			       hs_dev->wrdma_base);
+	else
+		writel_relaxed(hs_dev->write_buffer->handle, hs_dev->wrdma_base);
+#else
+	writel_relaxed(hs_dev->write_buffer->handle, hs_dev->wrdma_base);
+#endif
 	writel_relaxed(dma_buffer_length_words, hs_dev->wrdma_buff_len);
 	/* Use ping/pong size as periodic length */
 	writel_relaxed(((dma_buffer_length_words + 1) / 2) - 1, hs_dev->wrdma_per_len);
@@ -2085,7 +2113,6 @@ static int init_default(struct hsi2s_device *hs_dev, int intf)
 	return ret;
 }
 
-#ifndef CONFIG_QTI_GVM
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
 /* SMMU functions */
 
@@ -2136,6 +2163,11 @@ static int hsi2s_smmu_init(struct platform_device *pdev)
 			ret = -EIO;
 			goto err_smmu_probe;
 		}
+		dev_info(hsi2s_core->dev, "Configuring SMMU S1 bypass");
+		hsi2s_core->hsi2s_smmu_ctx->bypass = 1;
+	} else {
+		dev_info(hsi2s_core->dev, "Configuring SMMU S1");
+		hsi2s_core->hsi2s_smmu_ctx->bypass = 0;
 	}
 
 	ret = arm_iommu_attach_device(&hsi2s_core->hsi2s_smmu_ctx->smmu_pdev->dev,
@@ -2161,7 +2193,6 @@ err_smmu_probe:
 
 	return ret;
 }
-#endif
 #endif
 
 /* GPIO management functions */
@@ -4345,7 +4376,6 @@ static int hsi2s_probe(struct platform_device *pdev)
 	disable_irq_nosync(hsi2s_core->irq0);
 	hsi2s_core->is_irq_enabled = false;
 
-#ifndef CONFIG_QTI_GVM
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
 	/* Configure SMMU */
 	ret = hsi2s_smmu_init(pdev);
@@ -4353,7 +4383,6 @@ static int hsi2s_probe(struct platform_device *pdev)
 		dev_err(hsi2s_core->dev, "Failed to init smmu");
 		goto err_free_irq;
 	}
-#endif
 #endif
 
 	/* Probe child devices */
@@ -4365,11 +4394,9 @@ static int hsi2s_probe(struct platform_device *pdev)
 
 	return ret;
 
-#ifndef CONFIG_QTI_GVM
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
 err_free_irq:
 	devm_free_irq(hsi2s_core->dev, hsi2s_core->irq0, hsi2s_core);
-#endif
 #endif
 err_iounmap_lpass_tcsr:
 	iounmap(hsi2s_core->lpass_tcsr_base_va);
@@ -4464,7 +4491,6 @@ static int hsi2s_remove(struct platform_device *pdev)
 	of_platform_depopulate(&pdev->dev);
 	/* Remove the core device */
 	hs_core = (struct hsi2s_core *)platform_get_drvdata(pdev);
-#ifndef CONFIG_QTI_GVM
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
 	/* Detach and release iommu mapping */
 	if (hs_core->hsi2s_smmu_ctx) {
@@ -4482,7 +4508,6 @@ static int hsi2s_remove(struct platform_device *pdev)
 		kfree(hs_core->hsi2s_smmu_ctx);
 		hs_core->hsi2s_smmu_ctx = NULL;
 	}
-#endif
 #endif
 	/* Free IRQ */
 	devm_free_irq(&pdev->dev, hs_core->irq0, hs_core);
