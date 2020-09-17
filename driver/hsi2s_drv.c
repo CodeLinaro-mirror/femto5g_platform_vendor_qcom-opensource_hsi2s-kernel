@@ -1890,15 +1890,46 @@ static void configure_ext_loopback_mode(struct hsi2s_device *hs_dev, int intf)
 	hs_dev->write_buffer->tail = hs_dev->lpass_wrdma_start;
 }
 
+/* Mic enabler thread for DAB mode */
+static int dab_enabler(void *data)
+{
+	struct hsi2s_device *hs_dev;
+	struct sched_param param = {.sched_priority = MAX_RT_PRIO-1};
+
+	hs_dev = (struct hsi2s_device *)data;
+
+	/* Set maximum priority */
+	sched_setscheduler(current, SCHED_FIFO, &param);
+
+	while (1) {
+		if (kthread_should_stop()) {
+			dev_info(hs_dev->dev, "DAB enabler asked to exit...");
+			break;
+		}
+		if (hsi2s_core->en_mic) {
+			if (hs_dev->lpaif_mode == HS_I2S)
+				setbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_mic_en);
+			else
+				setbits(hs_dev->pcm_ctl, hsi2s_core->macro->bit_pcm_en_rx);
+		}
+	}
+	dev_info(hs_dev->dev, "Enabled mic for DAB mode");
+
+	return 0;
+}
+
 /* Configure DAB MRC */
 static int configure_dab_mrc(void)
 {
 	struct hsi2s_device *hs_dev;
 	int i;
-	unsigned long flags;
 	int ret = 0;
 
 	for (i = 0; i < hsi2s_core->i_count; i++) {
+		if (!hsi2s_core->hsi2s_arr[i]) {
+			dev_err(hsi2s_core->dev, "hs%d interface is not up", i);
+			return -EINVAL;
+		}
 		hs_dev = hsi2s_core->hsi2s_arr[i];
 		dev_info(hs_dev->dev, "Configuring normal mode operation on hs%d_i2s interface", i);
 		/* Set operational mode */
@@ -1923,20 +1954,30 @@ static int configure_dab_mrc(void)
 	}
 
 	/* Enable mic on different interfaces */
-	if (hsi2s_core->hsi2s_arr[0]->lpaif_mode == HS_I2S) {
-		spin_lock_irqsave(&hsi2s_core->hs_lock, flags);
-		for (i = 0; i < hsi2s_core->i_count; i++) {
-			setbits(hsi2s_core->hsi2s_arr[i]->i2s_ctl, hsi2s_core->macro->bit_mic_en);
+	for (i = 0; i < hsi2s_core->i_count; i++) {
+		hsi2s_core->hsi2s_arr[i]->dab_thread = kthread_create(dab_enabler, hsi2s_core->hsi2s_arr[i],
+								      "Mic enabler thread for DAB");
+		if (hsi2s_core->hsi2s_arr[i]->dab_thread) {
+			wake_up_process(hsi2s_core->hsi2s_arr[i]->dab_thread);
+		} else {
+			dev_err(hsi2s_core->hsi2s_arr[i]->dev, "Cannot create DAB enabler thread");
+			return -EINVAL;
 		}
-		spin_unlock_irqrestore(&hsi2s_core->hs_lock, flags);
-
-	} else {
-		spin_lock_irqsave(&hsi2s_core->hs_lock, flags);
-		for (i = 0; i < hsi2s_core->i_count; i++) {
-			setbits(hsi2s_core->hsi2s_arr[i]->pcm_ctl, hsi2s_core->macro->bit_pcm_en_rx);
-		}
-		spin_unlock_irqrestore(&hsi2s_core->hs_lock, flags);
 	}
+
+	msleep(1);
+
+	/* Set the flag to enable mics on the interfaces */
+	hsi2s_core->en_mic = 1;
+
+	msleep(1);
+
+	/* Stop the threads */
+	for (i = 0; i < hsi2s_core->i_count; i++)
+		kthread_stop(hsi2s_core->hsi2s_arr[i]->dab_thread);
+
+	/* Reset the mic enabler flag */
+	hsi2s_core->en_mic = 0;
 
 	return ret;
 }
@@ -4346,8 +4387,6 @@ static int hsi2s_probe(struct platform_device *pdev)
 		hsi2s_core->is_rate_enabled = false;
 	}
 
-	spin_lock_init(&hsi2s_core->hs_lock);
-
 	/* Initialize the IRQ mutex */
 	mutex_init(&hsi2s_core->irqlock);
 
@@ -4384,6 +4423,9 @@ static int hsi2s_probe(struct platform_device *pdev)
 		goto err_free_irq;
 	}
 #endif
+
+	/* Reset the mic enabler flag */
+	hsi2s_core->en_mic = 0;
 
 	/* Probe child devices */
 	ret = of_platform_populate(dev->of_node, NULL, NULL, dev);

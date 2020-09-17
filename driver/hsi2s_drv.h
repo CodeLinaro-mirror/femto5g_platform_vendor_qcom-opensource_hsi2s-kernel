@@ -44,6 +44,7 @@
 #include <linux/soc/qcom/qmi.h>
 #include <linux/habmm.h>
 #include <linux/version.h>
+#include <uapi/linux/sched/types.h>
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
 #include <asm/dma-iommu.h>
 #endif
@@ -543,8 +544,8 @@ struct hsi2s_core {
 	/* Interface count */
 	int i_count;
 
-	/* Spinlock for DAB MRC */
-	spinlock_t hs_lock;
+	/* Mic enable flag */
+	u8 en_mic;
 
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
 	/* SMMU context */
@@ -597,6 +598,7 @@ struct hsi2s_device {
 
 	/* DMA thread */
 	struct task_struct *rddma_thread;
+	struct task_struct *dab_thread;
 
 	/* DMA addresses */
 	void *lpass_rddma_start;
