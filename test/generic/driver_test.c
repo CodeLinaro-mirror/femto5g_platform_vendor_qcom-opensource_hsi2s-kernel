@@ -47,6 +47,7 @@
 #define INVERT_EXT_BIT_CLOCK 0x1
 #define DONT_INVERT_INT_BIT_CLOCK 0x2
 #define DONT_INVERT_EXT_BIT_CLOCK 0x3
+#define DAB_TUNER_COUNT 3
 
 /* Operation mode of the test utility */
 enum operation_mode {
@@ -62,7 +63,8 @@ enum operation_mode {
 	CONFIG_TDM_PARAMS,
 	CONFIG_LPAIF_MODE,
 	CONFIG_PCM_LANE,
-	CONFIG_BIT_CLK
+	CONFIG_BIT_CLK,
+	CONFIG_DAB_MRC
 };
 
 /* I2S parameters */
@@ -98,27 +100,18 @@ struct tdm_params {
 	uint32_t rpcm_sample_width;
 };
 
+/* Thread params */
+struct thread_params {
+	struct pollfd pfd;
+	void *mmap_ptr;
+	void *mmap_read;
+	void *mmap_end;
+	FILE *fd_write_op;
+};
+
 /* Global variables */
-int fd_master;
-int fd_slave;
-FILE *fd_read_ip;
-FILE *fd_write_op;
-long read_length_bytes;
-long read_length_words;
 long long read_limit;
-enum operation_mode mode;
-struct i2s_params *i_params;
-struct pcm_params *p_params;
-struct tdm_params *t_params;
-struct pollfd pfd;
-void *mmap_ptr;
-void *mmap_read;
-void *mmap_end;
 long mmap_len;
-struct timespec pread_start;
-struct timespec pread_stop;
-struct timespec nread_start;
-struct timespec nread_stop;
 
 /* Prints the usage information */
 void help()
@@ -126,8 +119,10 @@ void help()
 	printf("OPERATIONAL MODES:\n\n 0 - Normal Rx\n 1 - Normal Tx*\n 2 - Internal loopback\n 3 - External loopback on master*\n"
 	       " 4 - External loopback on master-slave*\n 5 - Set master/slave mode*\n 6 - Configure master clock*\n"
 	       " 7 - Configure I2S params\n 8 - Configure PCM params\n 9 - Configure TDM params\n"
-	       " 10 - Configure LPAIF mode\n 11 - Set PCM lane configuration\n 12 - Configure bit clock*\n");
-	printf("* Supported only on SA8155/SA8195\n\n");
+	       " 10 - Configure LPAIF mode\n 11 - Set PCM lane configuration\n 12 - Configure bit clock*\n"
+		   " 13 - Configure DAB MRC mode**\n");
+	printf("* Supported only on SA8155/SA8195\n");
+	printf("** Supported only on SA6155\n\n");
 	printf("USAGE:\n\n");
 	printf("NORMAL Rx:\n");
 	printf("hsi2s_test --op_mode=0 --dev=<> --output=<> --bit_clock_hz=<> --data_buffer_ms=<> [--dma_buffer_length=<>] [--set_cpu_affinity]\n\n");
@@ -155,10 +150,14 @@ void help()
 	printf("hsi2s_test --op_mode=11 --dev=<> --lane_config=<>\n\n");
 	printf("CONFIGURE BIT CLOCK:\n");
 	printf("hsi2s_test --op_mode=12 --dev=<> --invert/dont_invert --bit_clk_int/bit_clk_ext\n\n");
+	printf("CONFIGURE DAB MRC MODE:\n");
+	printf("hsi2s_test --op_mode=13 --output_a=<> --output_b=<> --bit_clock_hz=<> --data_buffer_ms=<> --target_type=<> [--dma_buffer_length=<>] [--set_cpu_affinity]\n\n");
 	printf("OPTIONS:\n\n");
 	printf("--dev \n\t Device file : /dev/hs0_i2s | /dev/hs1_i2s | /dev/hs2_i2s\n");
 	printf("--s_dev \n\t Slave device file used in master-slave loopback: /dev/hs0_i2s | /dev/hs1_i2s | /dev/hs2_i2s\n");
 	printf("--output \n\t Path to the output file, to store the data read from the HS-I2S interface\n");
+	printf("--output_a \n\t Path to the output file, to store the data read from tuner A\n");
+	printf("--output_b \n\t Path to the output file, to store the data read from tuner B\n");
 	printf("--input \n\t Path to the input file, to fetch data written to the HS-I2S interface\n");
 	printf("--dma_buffer_length \n\t DMA buffer length in MB (4MB by default) (Optional)\n");
 	printf("--master \n\t HS-I2S master\n");
@@ -191,7 +190,8 @@ void help()
 	printf("--dont_invert \n\t Don't invert bit clock\n");
 	printf("--bit_clk_int \n\t Internal bit clock (Slave mode)\n");
 	printf("--bit_clk_ext \n\t External bit clock (Master mode)\n");
-	printf("--set_cpu_affinity \n\t Set CPU affinity to one of the available high cores\n\n");
+	printf("--set_cpu_affinity \n\t Set CPU affinity to one of the available high cores\n");
+	printf("--target_type \n\t 0 -> 6155 1-> 8155/8195\n\n");
 }
 
 /* Returns the size of input file in bytes */
@@ -235,6 +235,26 @@ void *poll_read(void *arg)
 	double thread_start;
 	double thread_stop;
 	double delta;
+	struct timespec pread_start;
+	struct timespec pread_stop;
+	struct pollfd pfd;
+	void *mmap_ptr;
+	void *mmap_read;
+	void *mmap_end;
+	FILE *fd_write_op;
+	struct thread_params *params;
+
+	params = (struct thread_params *)arg;
+	if (params) {
+		pfd = params->pfd;
+		mmap_ptr = params->mmap_ptr;
+		mmap_read = params->mmap_read;
+		mmap_end = params->mmap_end;
+		fd_write_op = params->fd_write_op;
+	} else {
+		printf("Thread parameters are null\n");
+		return NULL;
+	}
 
 	printf("Performing poll wait...\n");
 
@@ -294,6 +314,15 @@ void *poll_read(void *arg)
 
 int main(int argc, char **argv)
 {
+	int fd_master = 0;
+	int fd_slave = 0;
+	FILE *fd_read_ip = NULL;
+	long read_length_bytes = 0;
+	long read_length_words = 0;
+	enum operation_mode mode = 0;
+	struct i2s_params *i_params = NULL;
+	struct pcm_params *p_params = NULL;
+	struct tdm_params *t_params = NULL;
 	long wav_samples = 0;
 	long no_words = 0;
 	long w_len;
@@ -329,8 +358,16 @@ int main(int argc, char **argv)
 	uint8_t set_affinity = 0;
 	int ret = 0;
 	int opt;
-	const char *short_opt = ":a:b:c:d:e:f:g:h:ijk:l:m:n:o:p:qrstu:v:w:x:y:z:A:B:CDE:FGHIJKL";
+	const char *short_opt = ":a:b:c:d:e:f:g:h:ijk:l:m:n:o:p:qrstu:v:w:x:y:z:A:B:CDE:FGHIJKL:M:N:O";
 	cpu_set_t cpuset;
+	uint8_t target_type = 0;
+	char *hs_dev[DAB_TUNER_COUNT] = {"/dev/hs0_i2s","/dev/hs1_i2s"};
+	int fd_dab[DAB_TUNER_COUNT];
+	pthread_t tid_dab[DAB_TUNER_COUNT];
+	struct thread_params *dab_params[DAB_TUNER_COUNT];
+	FILE *fd_out_a = NULL;
+	FILE *fd_out_b = NULL;
+	struct thread_params *params;
 
 	struct option   long_opt[] =
 	{
@@ -372,6 +409,9 @@ int main(int argc, char **argv)
 		{"bit_clk_ext", no_argument, NULL, 'J'},
 		{"help", no_argument, NULL, 'K'},
 		{"set_cpu_affinity", no_argument, NULL, 'L'},
+		{"target_type", required_argument, NULL, 'M'},
+		{"output_a", required_argument, NULL, 'N'},
+		{"output_b", required_argument, NULL, 'O'},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -380,6 +420,12 @@ int main(int argc, char **argv)
 	read_length_words = READ_LENGTH_WORDS;
 	mmap_len = read_length_bytes;
 
+	/*Allocate thread params structure */
+	params = (struct thread_params *) malloc(sizeof(struct thread_params));
+	if (!params) {
+		printf("Unable to allocate thread parameter structure\n");
+	}
+
 	while((opt = getopt_long(argc, argv, short_opt, long_opt, NULL)) != -1)
 	{
 		switch(opt)
@@ -387,7 +433,7 @@ int main(int argc, char **argv)
 			case 'a':
 				/* Operational mode */
 				mode = atoi(optarg);
-				if (mode > CONFIG_BIT_CLK) {
+				if (mode > CONFIG_DAB_MRC) {
 					printf("Undefined mode\n");
 					help();
 					ret = -1;
@@ -417,10 +463,16 @@ int main(int argc, char **argv)
 				break;
 			case 'd':
 				/* Output file */
-				fd_write_op = fopen(optarg, "w");
-				if (fd_write_op == NULL) {
-					printf("Cannot open output file\n");
-					help();
+				if (params) {
+					params->fd_write_op = fopen(optarg, "w");
+					if (params->fd_write_op == NULL) {
+						printf("Cannot open output file\n");
+						help();
+						ret = -1;
+						goto exit_app;
+					}
+				} else {
+					printf("Thread parameter structure is null\n");
 					ret = -1;
 					goto exit_app;
 				}
@@ -586,6 +638,30 @@ int main(int argc, char **argv)
 				/* Set CPU affinity */
 				set_affinity = 1;
 				break;
+			case 'M':
+				/* Check target type */
+				target_type = atoi(optarg);
+				break;
+			case 'N':
+				/* Output file a */
+				fd_out_a = fopen(optarg, "w");
+				if (fd_out_a == NULL) {
+					printf("Cannot open output file a\n");
+					help();
+					ret = -1;
+					goto exit_app;
+				}
+				break;
+			case 'O':
+				/* Output file b */
+				fd_out_b = fopen(optarg, "w");
+				if (fd_out_b == NULL) {
+					printf("Cannot open output file b\n");
+					help();
+					ret = -1;
+					goto exit_app;
+				}
+				break;
 			case ':':
 				/* Value missing for option */
 				printf("Option needs a value. Check --help for usage.\n");
@@ -613,7 +689,12 @@ int main(int argc, char **argv)
 				ret = -1;
 				break;
 			}
-
+			/* Check for valid inputs */
+			if (!params) {
+				printf("Thread params structure is null, exiting...\n");
+				ret = -1;
+				break;
+			}
 			/* Set CPU affinity to one of the available high cores */
 			if (set_affinity) {
 				printf("Setting CPU affinity \n");
@@ -649,23 +730,23 @@ int main(int argc, char **argv)
 			printf("Periodic length set to %ld bytes\n", mmap_len);
 
 			/* Map the device write DMA buffer */
-			pfd.fd = fd_master;
-			pfd.events = POLLIN | POLLRDNORM;
+			params->pfd.fd = fd_master;
+			params->pfd.events = POLLIN | POLLRDNORM;
 			printf("Mapping userspace memory with kernel memory\n");
-			mmap_ptr = mmap(NULL, read_length_bytes * 2, PROT_READ | PROT_WRITE, MAP_SHARED, fd_master, 0);
-			if (mmap_ptr == MAP_FAILED) {
+			params->mmap_ptr = mmap(NULL, read_length_bytes * 2, PROT_READ | PROT_WRITE, MAP_SHARED, fd_master, 0);
+			if (params->mmap_ptr == MAP_FAILED) {
 				printf("mmap failed\n");
 				ret = -1;
 				break;
 			} else {
-				mmap_read = mmap_ptr;
-				mmap_end = mmap_ptr + (read_length_bytes * 2);
+				params->mmap_read = params->mmap_ptr;
+				params->mmap_end = params->mmap_ptr + (read_length_bytes * 2);
 			}
 
 			printf("Using mmap mode...\n");
 
 			/* Create thread to read the received data */
-			ret = pthread_create(&tid, NULL, poll_read, NULL);
+			ret = pthread_create(&tid, NULL, poll_read, params);
 			if (ret) {
 				printf("Error creating poll thread\n");
 				break;
@@ -676,9 +757,9 @@ int main(int argc, char **argv)
 			printf("Threads joined \n");
 
 			printf("Closing Files \n");
-			fclose(fd_write_op);
+			fclose(params->fd_write_op);
+			free(params);
 			close(fd_master);
-
 			break;
 
 		case NORMAL_TX:
@@ -688,7 +769,12 @@ int main(int argc, char **argv)
 				ret = -1;
 				break;
 			}
-
+			/* Check for valid inputs */
+			if (!fd_read_ip) {
+				printf("Unable to open input file, exiting...\n");
+				ret = -1;
+				break;
+			}
 			printf("Setting Tx on master\n");
 			ret = ioctl(fd_master, LPAIF_RESET);
 			if (ret < 0) {
@@ -740,13 +826,23 @@ int main(int argc, char **argv)
 			free(wav_data);
 			fclose(fd_read_ip);
 			close(fd_master);
-
 			break;
 
 		case INTERNAL_LB:
 			/* Operation mode : Internal loopback */
 			if (argc < 5) {
 				help();
+				ret = -1;
+				break;
+			}
+			/* Check for valid inputs */
+			if (!params) {
+				printf("Thread params structure is null, exiting...\n");
+				ret = -1;
+				break;
+			}
+			if (!fd_read_ip) {
+				printf("Unable to open input file, exiting...\n");
 				ret = -1;
 				break;
 			}
@@ -762,23 +858,23 @@ int main(int argc, char **argv)
 				break;
 			}
 			/* Map the device write DMA buffer */
-			pfd.fd = fd_master;
-			pfd.events = POLLIN | POLLRDNORM;
+			params->pfd.fd = fd_master;
+			params->pfd.events = POLLIN | POLLRDNORM;
 			printf("Mapping userspace memory with kernel memory\n");
-			mmap_ptr = mmap(NULL, read_length_bytes * 2, PROT_READ | PROT_WRITE, MAP_SHARED, fd_master, 0);
-			if (mmap_ptr == MAP_FAILED) {
+			params->mmap_ptr = mmap(NULL, read_length_bytes * 2, PROT_READ | PROT_WRITE, MAP_SHARED, fd_master, 0);
+			if (params->mmap_ptr == MAP_FAILED) {
 				printf("mmap failed\n");
 				ret = -1;
 				break;
 			} else {
-				mmap_read = mmap_ptr;
-				mmap_end = mmap_ptr + (read_length_bytes * 2);
+				params->mmap_read = params->mmap_ptr;
+				params->mmap_end = params->mmap_ptr + (read_length_bytes * 2);
 			}
 
 			printf("Using mmap mode...\n");
 
 			/* Create thread to read the received data */
-			ret = pthread_create(&tid, NULL, poll_read, NULL);
+			ret = pthread_create(&tid, NULL, poll_read, params);
 			if (ret) {
 				printf("Error creating poll thread\n");
 				break;
@@ -821,15 +917,26 @@ int main(int argc, char **argv)
 			printf("Closing Files \n");
 			free(wav_data);
 			fclose(fd_read_ip);
-			fclose(fd_write_op);
+			fclose(params->fd_write_op);
+			free(params);
 			close(fd_master);
-
 			break;
 
 		case EXTERNAL_LB_MASTER:
 			/* Operation mode : External loopback on master interface */
 			if (argc < 5) {
 				help();
+				ret = -1;
+				break;
+			}
+			/* Check for valid inputs */
+			if (!params) {
+				printf("Thread params structure is null, exiting...\n");
+				ret = -1;
+				break;
+			}
+			if (!fd_read_ip) {
+				printf("Unable to open input file, exiting...\n");
 				ret = -1;
 				break;
 			}
@@ -846,23 +953,23 @@ int main(int argc, char **argv)
 			}
 
 			/* Map the device write DMA buffer */
-			pfd.fd = fd_master;
-			pfd.events = POLLIN | POLLRDNORM;
+			params->pfd.fd = fd_master;
+			params->pfd.events = POLLIN | POLLRDNORM;
 			printf("Mapping userspace memory with kernel memory\n");
-			mmap_ptr = mmap(NULL, read_length_bytes * 2, PROT_READ | PROT_WRITE, MAP_SHARED, fd_master, 0);
-			if (mmap_ptr == MAP_FAILED) {
+			params->mmap_ptr = mmap(NULL, read_length_bytes * 2, PROT_READ | PROT_WRITE, MAP_SHARED, fd_master, 0);
+			if (params->mmap_ptr == MAP_FAILED) {
 				printf("mmap failed\n");
 				ret = -1;
 				break;
 			} else {
-				mmap_read = mmap_ptr;
-				mmap_end = mmap_ptr + (read_length_bytes * 2);
+				params->mmap_read = params->mmap_ptr;
+				params->mmap_end = params->mmap_ptr + (read_length_bytes * 2);
 			}
 
 			printf("Using mmap mode...\n");
 
 			/* Create thread to read the received data */
-			ret = pthread_create(&tid, NULL, poll_read, NULL);
+			ret = pthread_create(&tid, NULL, poll_read, params);
 			if (ret) {
 				printf("Error creating poll thread\n");
 				break;
@@ -905,9 +1012,9 @@ int main(int argc, char **argv)
 			printf("Closing Files \n");
 			free(wav_data);
 			fclose(fd_read_ip);
-			fclose(fd_write_op);
+			fclose(params->fd_write_op);
+			free(params);
 			close(fd_master);
-
 			break;
 
 		case EXTERNAL_LB_MASTER_SLAVE:
@@ -917,7 +1024,19 @@ int main(int argc, char **argv)
 				ret = -1;
 				break;
 			}
+			/* Check for valid inputs */
+			if (!params) {
+				printf("Thread params structure is null, exiting...\n");
+				ret = -1;
+				break;
+			}
+			if (!fd_read_ip) {
+				printf("Unable to open input file, exiting...\n");
+				ret = -1;
+				break;
+			}
 			printf("Slave node is hs%d_i2s\n",slave);
+
 			printf("Setting external loopback on master/slave \n");
 			ret = ioctl(fd_master, LPAIF_RESET);
 			if (ret < 0) {
@@ -956,23 +1075,23 @@ int main(int argc, char **argv)
 			}
 
 			/* Map the slave device write DMA buffer */
-			pfd.fd = fd_slave;
-			pfd.events = POLLIN | POLLRDNORM;
+			params->pfd.fd = fd_slave;
+			params->pfd.events = POLLIN | POLLRDNORM;
 			printf("Mapping userspace memory with kernel memory\n");
-			mmap_ptr = mmap(NULL, read_length_bytes * 2, PROT_READ | PROT_WRITE, MAP_SHARED, fd_slave, 0);
-			if (mmap_ptr == MAP_FAILED) {
+			params->mmap_ptr = mmap(NULL, read_length_bytes * 2, PROT_READ | PROT_WRITE, MAP_SHARED, fd_slave, 0);
+			if (params->mmap_ptr == MAP_FAILED) {
 				printf("mmap failed\n");
 				ret = -1;
 				break;
 			} else {
-				mmap_read = mmap_ptr;
-				mmap_end = mmap_ptr + (read_length_bytes * 2);
+				params->mmap_read = params->mmap_ptr;
+				params->mmap_end = params->mmap_ptr + (read_length_bytes * 2);
 			}
 
 			printf("Using mmap mode...\n");
 
 			/* Create thread to read the received data */
-			ret = pthread_create(&tid, NULL, poll_read, NULL);
+			ret = pthread_create(&tid, NULL, poll_read, params);
 			if (ret) {
 				printf("Error creating poll thread\n");
 				break;
@@ -1015,10 +1134,10 @@ int main(int argc, char **argv)
 			printf("Closing Files \n");
 			free(wav_data);
 			fclose(fd_read_ip);
-			fclose(fd_write_op);
+			fclose(params->fd_write_op);
+			free(params);
 			close(fd_slave);
 			close(fd_master);
-
 			break;
 
 		case SET_MUXMODE:
@@ -1194,6 +1313,125 @@ int main(int argc, char **argv)
 			ret = ioctl(fd_master, LPAIF_INVERT_BIT_CLOCK, reg_val);
 			if (ret < 0) {
 				printf("Failed to configure bit clock on target\n");
+			}
+			break;
+		case CONFIG_DAB_MRC:
+			if (argc < 7) {
+				help();
+				ret = -1;
+				break;
+			}
+			/* Check for valid inputs */
+			if (!fd_out_a || !fd_out_b) {
+				printf("Unable to open output files, exiting...\n");
+				ret = -1;
+				break;
+			}
+			if (target_type) {
+				printf("DAB MRC support is not available on SA8155/SA8195 targets\n");
+				ret = -1;
+				break;
+			} else {
+				/* Set CPU affinity to one of the available high cores */
+				if (set_affinity) {
+					printf("Setting CPU affinity \n");
+					CPU_ZERO(&cpuset);
+					for (i = 6; i < 8; i++) {
+						CPU_SET(i, &cpuset);
+						ret = sched_setaffinity(getpid(), sizeof(cpu_set_t), &cpuset);
+						if (ret) {
+							printf("Cannot set CPU affinity on CPU[%d]\n", i);
+							CPU_ZERO(&cpuset);
+							continue;
+						}
+						printf("CPU affinity set on CPU[%d]\n", i);
+						break;
+					}
+				}
+
+				/* Open HS-I2S device files */
+				printf("Opening i2s device files...\n");
+				for (i = 0; i < 2; i++) {
+					fd_dab[i] = open(hs_dev[i], O_RDWR);
+					if(fd_dab[i] < 0) {
+						printf("Cannot open hs%d device file\n", i);
+						help();
+						ret = -1;
+						goto exit_app;
+					}
+				}
+
+				/* Allocate the thread parameters */
+				for (i = 0; i < 2; i++) {
+					dab_params[i] = (struct thread_params *) malloc(sizeof(struct thread_params));
+					if (dab_params[i]  == NULL) {
+						printf("Unable to allocate thread params for hs%d\n", i);
+						ret = -1;
+						goto exit_app;
+					}
+				}
+
+				/* Store the output file descriptors */
+				dab_params[0]->fd_write_op = fd_out_a;
+				dab_params[1]->fd_write_op = fd_out_b;
+
+				/* Set the read limit and periodic length */
+				read_limit = READ_LIMIT;
+				mmap_len = get_periodic_length(bit_clk, buffer_ms);
+				printf("Periodic length set to %ld bytes\n", mmap_len);
+
+				/* Reset the HS-I2S instances */
+				for (i = 0; i < 2; i++) {
+					if (ioctl(fd_dab[i], LPAIF_RESET) < 0) {
+						printf("Failed to reset hs%d instance\n", i);
+						ret = -1;
+						goto exit_app;
+					}
+				}
+
+				/* Set DAB MRC configuration */
+				printf("Setting DAB MRC configuration...\n");
+				if (ioctl(fd_dab[0], CONFIGURE_DAB_MRC) < 0) {
+					printf("Failed to set DAB MRC configuration on target\n");
+					ret = -1;
+					goto exit_app;
+				}
+
+				/* Map the write DMA buffers */
+				for (i = 0; i < 2; i++) {
+					dab_params[i]->pfd.fd = fd_dab[i];
+					dab_params[i]->pfd.events = POLLIN | POLLRDNORM;
+					printf("Mapping userspace memory with kernel memory\n");
+					dab_params[i]->mmap_ptr = mmap(NULL, read_length_bytes * 2, PROT_READ | PROT_WRITE, MAP_SHARED, fd_dab[i], 0);
+					if (dab_params[i]->mmap_ptr == MAP_FAILED) {
+						printf("mmap failed\n");
+						ret = -1;
+						goto exit_app;
+					} else {
+					dab_params[i]->mmap_read = dab_params[i]->mmap_ptr;
+					dab_params[i]->mmap_end = dab_params[i]->mmap_ptr + (read_length_bytes * 2);
+					}
+				}
+
+				/* Create thread to read the received data */
+				for (i = 0; i < 2; i++) {
+					printf("Creating thread to read the received data\n");
+					if (pthread_create(&tid_dab[i], NULL, poll_read, dab_params[i]) != 0) {
+						printf("Error creating poll thread\n");
+					}
+				}
+
+				/* Wait for the threads to join */
+				printf("Joining threads\n");
+				for (i = 0; i < 2; i++) {
+					pthread_join(tid_dab[i], NULL);
+				}
+				printf("Threads joined \n");
+
+				/* Free the thread parameter structures */
+				for (i = 0; i < 2; i++) {
+					free(dab_params[i]);
+				}
 			}
 			break;
 		default:

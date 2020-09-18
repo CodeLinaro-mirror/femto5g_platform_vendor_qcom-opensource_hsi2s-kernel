@@ -31,15 +31,24 @@ struct qmi_elem_info prod_hsi2s_clk_ctrl_req_msg_v01_ei[] = {
 		.data_type      = QMI_UNSIGNED_1_BYTE,
 		.elem_len       = 1,
 		.elem_size      = sizeof(u8),
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
 		.is_array       = NO_ARRAY,
+#else
+		.array_type     = NO_ARRAY,
+#endif
 		.tlv_type       = 0x01,
 		.offset         = offsetof(struct prod_hsi2s_clk_ctrl_req_msg_v01,
 					   enable_hsi2s_clks),
 	},
 	{
 		.data_type      = QMI_EOTI,
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
 		.is_array       = NO_ARRAY,
 		.is_array       = QMI_COMMON_TLV_TYPE,
+#else
+		.array_type     = NO_ARRAY,
+		.array_type     = QMI_COMMON_TLV_TYPE,
+#endif
 	},
 };
 
@@ -54,7 +63,11 @@ struct qmi_elem_info prod_hsi2s_clk_ctrl_resp_msg_v01_ei[] = {
 		.data_type      = QMI_STRUCT,
 		.elem_len       = 1,
 		.elem_size      = sizeof(struct qmi_response_type_v01),
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
 		.is_array       = NO_ARRAY,
+#else
+		.array_type     = NO_ARRAY,
+#endif
 		.tlv_type       = 0x02,
 		.offset         = offsetof(struct prod_hsi2s_clk_ctrl_resp_msg_v01,
 					   resp),
@@ -62,8 +75,13 @@ struct qmi_elem_info prod_hsi2s_clk_ctrl_resp_msg_v01_ei[] = {
 	},
 	{
 		.data_type      = QMI_EOTI,
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
 		.is_array       = NO_ARRAY,
 		.is_array       = QMI_COMMON_TLV_TYPE,
+#else
+		.array_type     = NO_ARRAY,
+		.array_type     = QMI_COMMON_TLV_TYPE,
+#endif
 	},
 };
 

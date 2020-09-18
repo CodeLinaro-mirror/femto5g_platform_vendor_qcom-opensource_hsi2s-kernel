@@ -49,5 +49,7 @@
 #define PCM_CONFIG_LANE  _IOWR('i', 15, int)
 /* Inverts the bit clock on the interface */
 #define LPAIF_INVERT_BIT_CLOCK _IOWR('i', 16, int)
+/* Sets DAB MRC configuration */
+#define CONFIGURE_DAB_MRC _IOWR('i', 17, int)
 
 #endif
