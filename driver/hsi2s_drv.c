@@ -626,8 +626,6 @@ static void reset_registers(struct hsi2s_device *hs_dev)
 	setbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_reset);
 	clearbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_reset);
 
-	msleep(1000);
-
 	reg_clear(hs_dev->wrdma_ctl);
 	reg_clear(hs_dev->wrdma_base);
 	reg_clear(hs_dev->wrdma_buff_len);
@@ -638,7 +636,6 @@ static void reset_registers(struct hsi2s_device *hs_dev)
 	setbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_reset);
 	clearbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_reset);
 
-	msleep(1000);
 	if (hs_dev->lpaif_mode == HS_I2S) {
 		setbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_i2s_reset);
 		clearbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_i2s_reset);
@@ -1797,7 +1794,6 @@ static void configure_normal_mode(struct hsi2s_device *hs_dev, int intf)
 	configure_rddma(hs_dev, intf);
 	/* Configure WRDMA registers */
 	configure_wrdma(hs_dev, intf);
-	msleep(1000);
 	/* Clear the IRQs */
 	clear_irqs();
 	/* Enable mic */
@@ -1836,7 +1832,6 @@ static void configure_int_loopback_mode(struct hsi2s_device *hs_dev, int intf)
 	configure_rddma_int_lb(hs_dev, intf);
 	/* Configure WRDMA registers */
 	configure_wrdma_int_lb(hs_dev, intf);
-	msleep(1000);
 	/* Clear the IRQs */
 	clear_irqs();
 	/* Enable mic */
@@ -1875,7 +1870,6 @@ static void configure_ext_loopback_mode(struct hsi2s_device *hs_dev, int intf)
 	configure_wrdma(hs_dev, intf);
 	/* Configure RDDMA registers */
 	configure_rddma(hs_dev, intf);
-	msleep(1000);
 	/* Clear the IRQs */
 	clear_irqs();
 	/* Enable mic */
@@ -1947,7 +1941,6 @@ static int configure_dab_mrc(void)
 
 		/* Configure WRDMA registers */
 		configure_wrdma(hs_dev, i);
-		msleep(1000);
 
 		/* Clear the IRQs */
 		clear_irqs();
