@@ -4630,12 +4630,13 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 		else if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195) {
 			if (enable_qmi) {
 #ifndef CONFIG_QTI_GVM
-				if (hsi2s_core->qmi_dev)
+				if (hsi2s_core->qmi_dev) {
 					ret = hsi2s_adsp_disable_clks();
 					if (ret) {
 						dev_err(&pdev->dev, "Failed to suspend core clocks");
 						goto err_suspend;
 					}
+				}
 #else
 				hsi2s_core->hab_req->clk_en = 0;
 
