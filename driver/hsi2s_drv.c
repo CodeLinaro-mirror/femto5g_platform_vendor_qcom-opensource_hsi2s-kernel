@@ -123,6 +123,8 @@ static int hsi2s_clk_ctrl_send_sync_msg(struct qmi_handle *dev, int en)
 		goto out;
 	}
 
+	ret = resp->resp.result;
+
 	if (!en)
 		dev_info(hsi2s_core->dev, "ADSP clock disabling is successful\n");
 	else
@@ -2232,10 +2234,10 @@ err_smmu_probe:
 /* GPIO management functions */
 
 /* Function to configure gpio pins */
-static int hsi2s_configure_gpio_pins(struct platform_device *pdev)
+static int hsi2s_configure_gpio_pins(struct platform_device *pdev, int active)
 {
 	struct pinctrl *pinctrl;
-	struct pinctrl_state *hsi2s_active_state;
+	struct pinctrl_state *hsi2s_state;
 	int ret = 0;
 
 	pinctrl = devm_pinctrl_get(&pdev->dev);
@@ -2246,18 +2248,29 @@ static int hsi2s_configure_gpio_pins(struct platform_device *pdev)
 	}
 	dev_info(&pdev->dev, "get pinctrl succeed\n");
 
-	hsi2s_active_state = pinctrl_lookup_state(pinctrl, "default");
-	if (IS_ERR_OR_NULL(hsi2s_active_state)) {
-		ret = PTR_ERR(hsi2s_active_state);
-		dev_err(&pdev->dev, "Failed to get default state, err = %d\n", ret);
-		return ret;
+	if (active) {
+		hsi2s_state = pinctrl_lookup_state(pinctrl, "default");
+		if (IS_ERR_OR_NULL(hsi2s_state)) {
+			ret = PTR_ERR(hsi2s_state);
+			dev_err(&pdev->dev, "Failed to get default state, err = %d\n", ret);
+			return ret;
+		}
+		dev_info(&pdev->dev, "Get default state succeed\n");
+	} else {
+		hsi2s_state = pinctrl_lookup_state(pinctrl, "sleep");
+		if (IS_ERR_OR_NULL(hsi2s_state)) {
+			ret = PTR_ERR(hsi2s_state);
+			dev_err(&pdev->dev, "Failed to get sleep state, err = %d\n", ret);
+			return ret;
+		}
+		dev_info(&pdev->dev, "Get sleep state succeed\n");
 	}
-	dev_info(&pdev->dev, "Get default state succeed\n");
-	ret = pinctrl_select_state(pinctrl, hsi2s_active_state);
+
+	ret = pinctrl_select_state(pinctrl, hsi2s_state);
 	if (ret)
-		dev_err(&pdev->dev, "Unable to set default state, err = %d", ret);
+		dev_err(&pdev->dev, "Unable to set pinctrl state, err = %d", ret);
 	else
-		dev_info(&pdev->dev, "Set default pinctrl state succeeded");
+		dev_info(&pdev->dev, "Set pinctrl state succeeded");
 
 	return ret;
 }
@@ -3975,7 +3988,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	/* Configure the gpios */
 	if (of_property_read_bool(pdev->dev.of_node, "pinctrl-names")) {
 		hs_dev->is_pinctrl_names = true;
-		ret = hsi2s_configure_gpio_pins(pdev);
+		ret = hsi2s_configure_gpio_pins(pdev, 1);
 		if (ret < 0) {
 			dev_err(hs_dev->dev, "Failed to configure gpios");
 			goto err_deinit_default;
@@ -4620,6 +4633,12 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 
 	if (of_device_is_compatible(pdev->dev.of_node,
 				    "qcom,hsi2s-interface")) {
+		/* Set the GPIOs in sleep state */
+		ret = hsi2s_configure_gpio_pins(pdev, 0);
+		if (ret < 0) {
+			dev_err(&pdev->dev, "Failed to set gpios in sleep state");
+			goto err_suspend;
+		}
 		/* Suspend the interface clocks */
 		if (hsi2s_core->target == 6155)
 			hsi2s_suspend_intf_clks(pdev);
@@ -4632,7 +4651,7 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 #ifndef CONFIG_QTI_GVM
 				if (hsi2s_core->qmi_dev) {
 					ret = hsi2s_adsp_disable_clks();
-					if (ret) {
+					if (ret < 0) {
 						dev_err(&pdev->dev, "Failed to suspend core clocks");
 						goto err_suspend;
 					}
@@ -4691,6 +4710,12 @@ static int hsi2s_resume(struct platform_device *pdev)
 				return ret;
 			}
 		}
+		/* Set the GPIOs in sleep state */
+		ret = hsi2s_configure_gpio_pins(pdev, 1);
+		if (ret < 0) {
+			dev_err(&pdev->dev, "Failed to set gpios in active state");
+			goto err_resume;
+		}
 	} else {
 		/* Resume the core clocks */
 		if (hsi2s_core->target == 6155) {
@@ -4704,9 +4729,9 @@ static int hsi2s_resume(struct platform_device *pdev)
 #ifndef CONFIG_QTI_GVM
 				if (hsi2s_core->qmi_dev) {
 					ret = hsi2s_adsp_enable_clks();
-					if (ret) {
+					if (ret < 0) {
 						dev_err(&pdev->dev, "Failed to resume core clocks");
-						goto err_suspend;
+						goto err_resume;
 					}
 				}
 #else
@@ -4715,20 +4740,20 @@ static int hsi2s_resume(struct platform_device *pdev)
 				ret = habmm_socket_send(hsi2s_core->hab_handle, hsi2s_core->hab_req, resp_size, 0);
 				if (ret) {
 					dev_err(hsi2s_core->dev, "habmm socket send failed (%d)", ret);
-					goto err_suspend;
+					goto err_resume;
 				}
 
 				ret = habmm_socket_recv(hsi2s_core->hab_handle, hsi2s_core->hab_resp, &resp_size,
 										UINT_MAX, HABMM_SOCKET_RECV_FLAGS_UNINTERRUPTIBLE);
 				if (ret) {
 					dev_err(hsi2s_core->dev, "habmm socket receive failed (%d)", ret);
-					goto err_suspend;
+					goto err_resume;
 				}
 
 				if (hsi2s_core->hab_resp->rsp) {
 					dev_err(hsi2s_core->dev, "error response (%d)", hsi2s_core->hab_resp->rsp);
 					ret = -EIO;
-					goto err_suspend;
+					goto err_resume;
 				}
 #endif
 			} else {
@@ -4741,7 +4766,7 @@ static int hsi2s_resume(struct platform_device *pdev)
 	dev_info(&pdev->dev, "Device resuming from suspend state");
 	return ret;
 
-err_suspend:
+err_resume:
 	dev_err(hsi2s_core->dev, "Failed to resume HS-I2S device");
 	return ret;
 }
