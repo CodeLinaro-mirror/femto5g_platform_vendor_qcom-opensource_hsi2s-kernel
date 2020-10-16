@@ -611,8 +611,12 @@ static void clear_irqs(void)
 /* Reset the registers */
 static void reset_registers(struct hsi2s_device *hs_dev)
 {
-	reg_clear(hs_dev->i2s_ctl);
-
+	if (hs_dev->lpaif_mode == HS_I2S) {
+		reg_clear(hs_dev->i2s_ctl);
+	} else {
+		reg_clear(hs_dev->pcm_ctl);
+		reg_clear(hs_dev->tdm_ctl);
+	}
 	clear_irqs();
 	reg_clear(hs_dev->rddma_ctl);
 	reg_clear(hs_dev->rddma_base);
@@ -621,8 +625,6 @@ static void reset_registers(struct hsi2s_device *hs_dev)
 	reg_clear(hs_dev->rddma_per_len);
 	setbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_reset);
 	clearbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_reset);
-
-	msleep(1000);
 
 	reg_clear(hs_dev->wrdma_ctl);
 	reg_clear(hs_dev->wrdma_base);
@@ -634,10 +636,13 @@ static void reset_registers(struct hsi2s_device *hs_dev)
 	setbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_reset);
 	clearbits(hs_dev->wrdma_ctl, hsi2s_core->macro->bit_wrdma_reset);
 
-	msleep(1000);
-
-	setbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_i2s_reset);
-	clearbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_i2s_reset);
+	if (hs_dev->lpaif_mode == HS_I2S) {
+		setbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_i2s_reset);
+		clearbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_i2s_reset);
+	} else {
+		setbits(hs_dev->pcm_ctl, hsi2s_core->macro->bit_pcm_reset);
+		clearbits(hs_dev->pcm_ctl, hsi2s_core->macro->bit_pcm_reset);
+	}
 }
 
 /* Reset the read DMA registers */
@@ -1496,8 +1501,15 @@ static void configure_tdm_ctl(struct hsi2s_device *hs_dev)
 /* Configure the read DMA registers */
 static void configure_rddma(struct hsi2s_device *hs_dev, int intf)
 {
-	writel_relaxed(virt_to_phys(hs_dev->read_buffer->ping_start),
-		       hs_dev->rddma_base);
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
+	if (hsi2s_core->hsi2s_smmu_ctx->bypass)
+		writel_relaxed(virt_to_phys(hs_dev->read_buffer->ping_start),
+			       hs_dev->rddma_base);
+	else
+		writel_relaxed(hs_dev->read_buffer->handle, hs_dev->rddma_base);
+#else
+		writel_relaxed(hs_dev->read_buffer->handle, hs_dev->rddma_base);
+#endif
 	writel_relaxed(dma_buffer_length_words, hs_dev->rddma_buff_len);
 	/* Use ping/pong size as periodic length */
 	writel_relaxed(((dma_buffer_length_words + 1) / 2) - 1, hs_dev->rddma_per_len);
@@ -1538,8 +1550,15 @@ static void configure_rddma(struct hsi2s_device *hs_dev, int intf)
 /* Configure the write DMA registers */
 static void configure_wrdma(struct hsi2s_device *hs_dev, int intf)
 {
-	writel_relaxed(virt_to_phys(hs_dev->lpass_wrdma_start),
-		       hs_dev->wrdma_base);
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
+	if (hsi2s_core->hsi2s_smmu_ctx->bypass)
+		writel_relaxed(virt_to_phys(hs_dev->lpass_wrdma_start),
+			       hs_dev->wrdma_base);
+	else
+		writel_relaxed(hs_dev->write_buffer->handle, hs_dev->wrdma_base);
+#else
+	writel_relaxed(hs_dev->write_buffer->handle, hs_dev->wrdma_base);
+#endif
 	writel_relaxed(dma_buffer_length_words, hs_dev->wrdma_buff_len);
 	/* Increase the FIFO watermark */
 	writel_relaxed((WRDMA_RAM_LENGTH * intf), hs_dev->wrdma_ram_addr);
@@ -1624,8 +1643,15 @@ static void configure_pcm_int_lb(struct hsi2s_device *hs_dev)
 /* Configure the read DMA registers */
 static void configure_rddma_int_lb(struct hsi2s_device *hs_dev, int intf)
 {
-	writel_relaxed(virt_to_phys(hs_dev->read_buffer->ping_start),
-		       hs_dev->rddma_base);
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
+	if (hsi2s_core->hsi2s_smmu_ctx->bypass)
+		writel_relaxed(virt_to_phys(hs_dev->read_buffer->ping_start),
+			       hs_dev->rddma_base);
+	else
+		writel_relaxed(hs_dev->read_buffer->handle, hs_dev->rddma_base);
+#else
+		writel_relaxed(hs_dev->read_buffer->handle, hs_dev->rddma_base);
+#endif
 	writel_relaxed(dma_buffer_length_words, hs_dev->rddma_buff_len);
 	/* Use ping/pong size as periodic length */
 	writel_relaxed(((dma_buffer_length_words + 1) / 2) - 1, hs_dev->rddma_per_len);
@@ -1666,8 +1692,15 @@ static void configure_rddma_int_lb(struct hsi2s_device *hs_dev, int intf)
 /* Configure the write DMA registers for internal loopback */
 static void configure_wrdma_int_lb(struct hsi2s_device *hs_dev, int intf)
 {
-	writel_relaxed(virt_to_phys(hs_dev->lpass_wrdma_start),
-		       hs_dev->wrdma_base);
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
+	if (hsi2s_core->hsi2s_smmu_ctx->bypass)
+		writel_relaxed(virt_to_phys(hs_dev->lpass_wrdma_start),
+			       hs_dev->wrdma_base);
+	else
+		writel_relaxed(hs_dev->write_buffer->handle, hs_dev->wrdma_base);
+#else
+	writel_relaxed(hs_dev->write_buffer->handle, hs_dev->wrdma_base);
+#endif
 	writel_relaxed(dma_buffer_length_words, hs_dev->wrdma_buff_len);
 	/* Use ping/pong size as periodic length */
 	writel_relaxed(((dma_buffer_length_words + 1) / 2) - 1, hs_dev->wrdma_per_len);
@@ -1761,7 +1794,6 @@ static void configure_normal_mode(struct hsi2s_device *hs_dev, int intf)
 	configure_rddma(hs_dev, intf);
 	/* Configure WRDMA registers */
 	configure_wrdma(hs_dev, intf);
-	msleep(1000);
 	/* Clear the IRQs */
 	clear_irqs();
 	/* Enable mic */
@@ -1800,7 +1832,6 @@ static void configure_int_loopback_mode(struct hsi2s_device *hs_dev, int intf)
 	configure_rddma_int_lb(hs_dev, intf);
 	/* Configure WRDMA registers */
 	configure_wrdma_int_lb(hs_dev, intf);
-	msleep(1000);
 	/* Clear the IRQs */
 	clear_irqs();
 	/* Enable mic */
@@ -1839,7 +1870,6 @@ static void configure_ext_loopback_mode(struct hsi2s_device *hs_dev, int intf)
 	configure_wrdma(hs_dev, intf);
 	/* Configure RDDMA registers */
 	configure_rddma(hs_dev, intf);
-	msleep(1000);
 	/* Clear the IRQs */
 	clear_irqs();
 	/* Enable mic */
@@ -1852,6 +1882,97 @@ static void configure_ext_loopback_mode(struct hsi2s_device *hs_dev, int intf)
 	hs_dev->read_buffer->last_xfer = 1;
 	hs_dev->write_buffer->head = hs_dev->lpass_wrdma_start;
 	hs_dev->write_buffer->tail = hs_dev->lpass_wrdma_start;
+}
+
+/* Mic enabler thread for DAB mode */
+static int dab_enabler(void *data)
+{
+	struct hsi2s_device *hs_dev;
+	struct sched_param param = {.sched_priority = MAX_RT_PRIO-1};
+
+	hs_dev = (struct hsi2s_device *)data;
+
+	/* Set maximum priority */
+	sched_setscheduler(current, SCHED_FIFO, &param);
+
+	while (1) {
+		if (kthread_should_stop()) {
+			dev_info(hs_dev->dev, "DAB enabler asked to exit...");
+			break;
+		}
+		if (hsi2s_core->en_mic) {
+			if (hs_dev->lpaif_mode == HS_I2S)
+				setbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_mic_en);
+			else
+				setbits(hs_dev->pcm_ctl, hsi2s_core->macro->bit_pcm_en_rx);
+		}
+	}
+	dev_info(hs_dev->dev, "Enabled mic for DAB mode");
+
+	return 0;
+}
+
+/* Configure DAB MRC */
+static int configure_dab_mrc(void)
+{
+	struct hsi2s_device *hs_dev;
+	int i;
+	int ret = 0;
+
+	for (i = 0; i < hsi2s_core->i_count; i++) {
+		if (!hsi2s_core->hsi2s_arr[i]) {
+			dev_err(hsi2s_core->dev, "hs%d interface is not up", i);
+			return -EINVAL;
+		}
+		hs_dev = hsi2s_core->hsi2s_arr[i];
+		dev_info(hs_dev->dev, "Configuring normal mode operation on hs%d_i2s interface", i);
+		/* Set operational mode */
+		hs_dev->mode = NORMAL;
+		if (hs_dev->lpaif_mode == HS_I2S) {
+			/* Configure I2S control register */
+			configure_i2s_mic(hs_dev);
+		} else {
+			/* Configure PCM control register */
+			configure_pcm_ctl(hs_dev);
+			if(hs_dev->tdm_en)
+				configure_tdm_ctl(hs_dev);
+			configure_pcm_rx(hs_dev);
+		}
+
+		/* Configure WRDMA registers */
+		configure_wrdma(hs_dev, i);
+
+		/* Clear the IRQs */
+		clear_irqs();
+	}
+
+	/* Enable mic on different interfaces */
+	for (i = 0; i < hsi2s_core->i_count; i++) {
+		hsi2s_core->hsi2s_arr[i]->dab_thread = kthread_create(dab_enabler, hsi2s_core->hsi2s_arr[i],
+								      "Mic enabler thread for DAB");
+		if (hsi2s_core->hsi2s_arr[i]->dab_thread) {
+			wake_up_process(hsi2s_core->hsi2s_arr[i]->dab_thread);
+		} else {
+			dev_err(hsi2s_core->hsi2s_arr[i]->dev, "Cannot create DAB enabler thread");
+			return -EINVAL;
+		}
+	}
+
+	msleep(1);
+
+	/* Set the flag to enable mics on the interfaces */
+	hsi2s_core->en_mic = 1;
+
+	msleep(1);
+
+	/* Stop the threads */
+	for (i = 0; i < hsi2s_core->i_count; i++)
+		kthread_stop(hsi2s_core->hsi2s_arr[i]->dab_thread);
+
+	/* Reset the mic enabler flag */
+	hsi2s_core->en_mic = 0;
+
+	return ret;
 }
 
 /* Configure interface as master/slave */
@@ -1894,12 +2015,12 @@ static int hsi2s_buffer_init(struct hsi2s_device *hs_dev)
 		goto err_read_dma_buffer;
 	}
 
-	hs_dev->read_buffer->handle = dma_map_single(hs_dev->dev, hs_dev->read_buffer->buffer, dma_buffer_length, DMA_TO_DEVICE);
-        if (dma_mapping_error(hs_dev->dev, hs_dev->read_buffer->handle)) {
-                dev_err(hs_dev->dev, "Failed to perform dma_map_single");
-                ret = -EINVAL;
-                goto err_read_dma_map;
-        }
+	hs_dev->read_buffer->handle = dma_map_single(hsi2s_core->dev, hs_dev->read_buffer->buffer, dma_buffer_length, DMA_TO_DEVICE);
+	if (dma_mapping_error(hsi2s_core->dev, hs_dev->read_buffer->handle)) {
+		dev_err(hs_dev->dev, "Failed to perform dma_map_single");
+		ret = -EINVAL;
+		goto err_read_dma_map;
+	}
 
 	hs_dev->read_buffer->ping_start = hs_dev->read_buffer->buffer;
 	hs_dev->read_buffer->pong_start = hs_dev->read_buffer->buffer + (dma_buffer_length / 2);
@@ -1923,12 +2044,12 @@ static int hsi2s_buffer_init(struct hsi2s_device *hs_dev)
 		goto err_write_dma_buffer;
 	}
 
-	hs_dev->write_buffer->handle = dma_map_single(hs_dev->dev, hs_dev->write_buffer->buffer, dma_buffer_length, DMA_FROM_DEVICE);
-        if (dma_mapping_error(hs_dev->dev, hs_dev->write_buffer->handle)) {
-                dev_err(hs_dev->dev, "Failed to perform dma_map_single");
-                ret = -EINVAL;
-                goto err_write_dma_map;
-        }
+	hs_dev->write_buffer->handle = dma_map_single(hsi2s_core->dev, hs_dev->write_buffer->buffer, dma_buffer_length, DMA_FROM_DEVICE);
+	if (dma_mapping_error(hsi2s_core->dev, hs_dev->write_buffer->handle)) {
+		dev_err(hs_dev->dev, "Failed to perform dma_map_single");
+		ret = -EINVAL;
+		goto err_write_dma_map;
+	}
 
 	hs_dev->lpass_wrdma_start = hs_dev->write_buffer->buffer;
 	hs_dev->lpass_wrdma_end = hs_dev->lpass_wrdma_start +
@@ -1953,7 +2074,7 @@ err_write_dma_buffer:
 	}
 err_write_buffer:
 	if (hs_dev->read_buffer) {
-		dma_unmap_single(hs_dev->dev, hs_dev->read_buffer->handle,
+		dma_unmap_single(hsi2s_core->dev, hs_dev->read_buffer->handle,
 				 dma_buffer_length, DMA_TO_DEVICE);
 	}
 err_read_dma_map:
@@ -1976,7 +2097,7 @@ static void hsi2s_buffer_free(struct hsi2s_device *hs_dev)
 	/* Freeing write DMA buffer */
 	if (hs_dev->write_buffer) {
 		if (hs_dev->write_buffer->buffer) {
-			dma_unmap_single(hs_dev->dev, hs_dev->write_buffer->handle,
+			dma_unmap_single(hsi2s_core->dev, hs_dev->write_buffer->handle,
 					 dma_buffer_length, DMA_FROM_DEVICE);
 			kfree(hs_dev->write_buffer->buffer);
 			hs_dev->write_buffer->buffer = NULL;
@@ -1988,7 +2109,7 @@ static void hsi2s_buffer_free(struct hsi2s_device *hs_dev)
 	/* Freeing read DMA buffer */
 	if (hs_dev->read_buffer) {
 		if (hs_dev->read_buffer->buffer) {
-			dma_unmap_single(hs_dev->dev, hs_dev->read_buffer->handle,
+			dma_unmap_single(hsi2s_core->dev, hs_dev->read_buffer->handle,
 					 dma_buffer_length, DMA_FROM_DEVICE);
 			kfree(hs_dev->read_buffer->buffer);
 			hs_dev->read_buffer->buffer = NULL;
@@ -2026,80 +2147,83 @@ static int init_default(struct hsi2s_device *hs_dev, int intf)
 	return ret;
 }
 
-#ifndef CONFIG_QTI_GVM
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
 /* SMMU functions */
 
 /* Function to init smmu */
-static int hsi2s_smmu_init(struct platform_device *pdev, int minor)
+static int hsi2s_smmu_init(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-	struct hsi2s_device *hs_dev;
 	struct dma_iommu_mapping *mapping;
 	u32 iova_ap_mapping[2];
 	int bypass = 1;
 	int ret = 0;
 
-	hs_dev = (struct hsi2s_device *)platform_get_drvdata(pdev);
-	hs_dev->hsi2s_smmu_ctx = kzalloc(sizeof(*hs_dev->hsi2s_smmu_ctx),
+	hsi2s_core->hsi2s_smmu_ctx = kzalloc(sizeof(*hsi2s_core->hsi2s_smmu_ctx),
 					 GFP_KERNEL);
-	if (!hs_dev->hsi2s_smmu_ctx)
+	if (!hsi2s_core->hsi2s_smmu_ctx)
 		return -ENOMEM;
 
 	ret = of_property_read_u32_array(dev->of_node, "qcom,iova-mapping",
 					 iova_ap_mapping, 2);
 	if (ret) {
-		dev_err(hs_dev->dev, "Failed to read smmu start/size iova addresses");
+		dev_err(hsi2s_core->dev, "Failed to read smmu start/size iova addresses");
 		goto err_smmu_probe;
 	}
 
-	hs_dev->hsi2s_smmu_ctx->va_start = iova_ap_mapping[0];
-	hs_dev->hsi2s_smmu_ctx->va_size = iova_ap_mapping[1];
-	hs_dev->hsi2s_smmu_ctx->smmu_pdev = pdev;
+	hsi2s_core->hsi2s_smmu_ctx->va_start = iova_ap_mapping[0];
+	hsi2s_core->hsi2s_smmu_ctx->va_size = iova_ap_mapping[1];
+	hsi2s_core->hsi2s_smmu_ctx->smmu_pdev = pdev;
 
-	hs_dev->hsi2s_smmu_ctx->mapping =
+	hsi2s_core->hsi2s_smmu_ctx->mapping =
 		arm_iommu_create_mapping(dev->bus,
-					 hs_dev->hsi2s_smmu_ctx->va_start,
-					 hs_dev->hsi2s_smmu_ctx->va_size);
-	if (IS_ERR_OR_NULL(hs_dev->hsi2s_smmu_ctx->mapping)) {
-		dev_err(hs_dev->dev, "Fail to create mapping");
+					 hsi2s_core->hsi2s_smmu_ctx->va_start,
+					 hsi2s_core->hsi2s_smmu_ctx->va_size);
+	if (IS_ERR_OR_NULL(hsi2s_core->hsi2s_smmu_ctx->mapping)) {
+		dev_err(hsi2s_core->dev, "Fail to create mapping");
 		/* assume this failure is because iommu driver is not ready */
 		ret = -EPROBE_DEFER;
 		goto err_smmu_probe;
 	}
-	dev_info(hs_dev->dev, "Successfully Created SMMU mapping");
-	hs_dev->hsi2s_smmu_ctx->valid = true;
-	mapping = hs_dev->hsi2s_smmu_ctx->mapping;
+	dev_info(hsi2s_core->dev, "Successfully Created SMMU mapping");
+	hsi2s_core->hsi2s_smmu_ctx->valid = true;
+	mapping = hsi2s_core->hsi2s_smmu_ctx->mapping;
 
 	if (of_property_read_bool(dev->of_node, "qcom,smmu-s1-bypass")) {
 		if (iommu_domain_set_attr(mapping->domain,
 					  DOMAIN_ATTR_S1_BYPASS,
 					  &bypass)) {
-			dev_err(hs_dev->dev, "Couldn't set SMMU S1 bypass\n");
+			dev_err(hsi2s_core->dev, "Couldn't set SMMU S1 bypass\n");
 			ret = -EIO;
 			goto err_smmu_probe;
 		}
+		dev_info(hsi2s_core->dev, "Configuring SMMU S1 bypass");
+		hsi2s_core->hsi2s_smmu_ctx->bypass = 1;
+	} else {
+		dev_info(hsi2s_core->dev, "Configuring SMMU S1");
+		hsi2s_core->hsi2s_smmu_ctx->bypass = 0;
 	}
 
-	ret = arm_iommu_attach_device(&hs_dev->hsi2s_smmu_ctx->smmu_pdev->dev,
+	ret = arm_iommu_attach_device(&hsi2s_core->hsi2s_smmu_ctx->smmu_pdev->dev,
 				      mapping);
 	if (ret) {
-		dev_err(hs_dev->dev, "couldn't attach to IOMMU ret=%d", ret);
+		dev_err(hsi2s_core->dev, "couldn't attach to IOMMU ret=%d", ret);
 		goto err_smmu_probe;
 	}
 
-	hs_dev->hsi2s_smmu_ctx->iommu_domain =
-	iommu_get_domain_for_dev(&hs_dev->hsi2s_smmu_ctx->smmu_pdev->dev);
+	hsi2s_core->hsi2s_smmu_ctx->iommu_domain =
+	iommu_get_domain_for_dev(&hsi2s_core->hsi2s_smmu_ctx->smmu_pdev->dev);
 
-	dev_info(hs_dev->dev, "Successfully attached to IOMMU");
+	dev_info(hsi2s_core->dev, "Successfully attached to IOMMU");
 	return ret;
 
 err_smmu_probe:
-	if (hs_dev->hsi2s_smmu_ctx->mapping)
-		arm_iommu_release_mapping(hs_dev->hsi2s_smmu_ctx->mapping);
-	hs_dev->hsi2s_smmu_ctx->valid = false;
+	if (hsi2s_core->hsi2s_smmu_ctx->mapping)
+		arm_iommu_release_mapping(hsi2s_core->hsi2s_smmu_ctx->mapping);
+	hsi2s_core->hsi2s_smmu_ctx->valid = false;
 
-	kfree(hs_dev->hsi2s_smmu_ctx);
-	hs_dev->hsi2s_smmu_ctx = NULL;
+	kfree(hsi2s_core->hsi2s_smmu_ctx);
+	hsi2s_core->hsi2s_smmu_ctx = NULL;
 
 	return ret;
 }
@@ -2904,7 +3028,7 @@ static ssize_t device_read(struct file *file, char *buffer,
 
 		if (head + temp_length >= hs_dev->lpass_wrdma_end) {
 			usleep_range(10000,10000);
-			dma_sync_single_for_cpu(hs_dev->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
+			dma_sync_single_for_cpu(hsi2s_core->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
 			copy_len = hs_dev->lpass_wrdma_end - head;
 			ret = copy_to_user(buffer + bytes_read,
 					   head,
@@ -2914,7 +3038,7 @@ static ssize_t device_read(struct file *file, char *buffer,
 				return -ret;
 			}
 			bytes_read += copy_len;
-			dma_sync_single_for_cpu(hs_dev->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
+			dma_sync_single_for_cpu(hsi2s_core->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
 			ret = copy_to_user(buffer + bytes_read,
 				   hs_dev->lpass_wrdma_start,
 				   temp_length - copy_len);
@@ -2926,7 +3050,7 @@ static ssize_t device_read(struct file *file, char *buffer,
 			bytes_read += (temp_length - copy_len);
 		} else  {
 			usleep_range(10000,10000);
-			dma_sync_single_for_cpu(hs_dev->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
+			dma_sync_single_for_cpu(hsi2s_core->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
 			ret = copy_to_user(buffer + bytes_read,
 					   head,
 					   temp_length);
@@ -2950,7 +3074,7 @@ static ssize_t device_read(struct file *file, char *buffer,
 
 	if (head + length >= hs_dev->lpass_wrdma_end) {
 		usleep_range(10000,10000);
-		dma_sync_single_for_cpu(hs_dev->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
+		dma_sync_single_for_cpu(hsi2s_core->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
 		copy_len = hs_dev->lpass_wrdma_end - head;
 		ret = copy_to_user(buffer + bytes_read,
 				   head,
@@ -2960,7 +3084,7 @@ static ssize_t device_read(struct file *file, char *buffer,
 			return -ret;
 		}
 		bytes_read += copy_len;
-		dma_sync_single_for_cpu(hs_dev->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
+		dma_sync_single_for_cpu(hsi2s_core->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
 		ret = copy_to_user(buffer + bytes_read,
 			   hs_dev->lpass_wrdma_start,
 			   length - copy_len);
@@ -2973,7 +3097,7 @@ static ssize_t device_read(struct file *file, char *buffer,
 	} else  {
 		usleep_range(10000,10000);
 		if (!hs_dev->minor_num)
-			dma_sync_single_for_cpu(hs_dev->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
+			dma_sync_single_for_cpu(hsi2s_core->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
 		ret = copy_to_user(buffer + bytes_read,
 				   head,
 				   length);
@@ -3021,7 +3145,7 @@ static ssize_t device_write(struct file *file, const char *buffer,
 				       temp_length);
 		}
 
-		dma_sync_single_for_device(hs_dev->dev, hs_dev->read_buffer->handle, dma_buffer_length, DMA_TO_DEVICE);
+		dma_sync_single_for_device(hsi2s_core->dev, hs_dev->read_buffer->handle, dma_buffer_length, DMA_TO_DEVICE);
 		hs_dev->read_buffer->last_copy = !hs_dev->read_buffer->last_copy;
 		bytes_written += temp_length;
 		length -= temp_length;
@@ -3049,7 +3173,7 @@ static ssize_t device_write(struct file *file, const char *buffer,
 			       buffer + bytes_written,
 			       length);
 	}
-	dma_sync_single_for_device(hs_dev->dev, hs_dev->read_buffer->handle, dma_buffer_length, DMA_TO_DEVICE);
+	dma_sync_single_for_device(hsi2s_core->dev, hs_dev->read_buffer->handle, dma_buffer_length, DMA_TO_DEVICE);
 	hs_dev->read_buffer->last_copy = !hs_dev->read_buffer->last_copy;
 	bytes_written += length;
 
@@ -3350,10 +3474,8 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 					/* Clear IRQs */
 					clear_irqs();
 					/* Reset buffer pointers */
-					memset(hs_dev->read_buffer->buffer, 0, dma_buffer_length);
 					hs_dev->read_buffer->last_copy = 1;
 					hs_dev->read_buffer->last_xfer = 1;
-					memset(hs_dev->write_buffer->buffer, 0, dma_buffer_length);
 					hs_dev->write_buffer->head = hs_dev->lpass_wrdma_start;
 					hs_dev->write_buffer->tail = hs_dev->lpass_wrdma_start;
 					hs_dev->write_buffer->data_ready = 0;
@@ -3372,10 +3494,8 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 					/* Clear IRQs */
 					clear_irqs();
 					/* Reset buffer pointers */
-					memset(hs_dev->read_buffer->buffer, 0, dma_buffer_length);
 					hs_dev->read_buffer->last_copy = 1;
 					hs_dev->read_buffer->last_xfer = 1;
-					memset(hs_dev->write_buffer->buffer, 0, dma_buffer_length);
 					hs_dev->write_buffer->head = hs_dev->lpass_wrdma_start;
 					hs_dev->write_buffer->tail = hs_dev->lpass_wrdma_start;
 					hs_dev->write_buffer->data_ready = 0;
@@ -3516,6 +3636,22 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				dev_warn(hs_dev->dev, "Clock already set by previous client");
 			break;
 
+		case CONFIGURE_DAB_MRC:
+			if (hsi2s_core->target != 6155) {
+				dev_err(hs_dev->dev, "DAB MRC configuration is not supported by target");
+				return -EINVAL;
+			}
+			if (hs_dev->client_count == 1) {
+				dev_info(hs_dev->dev, "Setting DAB MRC configuration");
+				ret = configure_dab_mrc();
+				if (ret < 0) {
+					dev_err(hs_dev->dev, "Failed to configure DAB MRC mode");
+				}
+			}
+			else
+				dev_warn(hs_dev->dev, "Mode already set by previous client");
+			break;
+
 		default:
 			return -EINVAL;
 	}
@@ -3536,7 +3672,7 @@ static unsigned int device_poll(struct file *file, poll_table *wait)
 	if (hs_dev->write_buffer->pollin) {
 		hs_dev->write_buffer->pollin = 0;
 		mask |= POLLIN | POLLRDNORM;
-		dma_sync_single_for_cpu(hs_dev->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
+		dma_sync_single_for_cpu(hsi2s_core->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
 	}
 
 	return mask;
@@ -3836,22 +3972,13 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 		goto err_deinit_default;
 	}
 
-	#ifndef CONFIG_QTI_GVM
-	/* Configure SMMU */
-	ret = hsi2s_smmu_init(pdev, minor);
-	if (ret) {
-		dev_err(hs_dev->dev, "Failed to init smmu");
-		goto err_free_smmu;
-	}
-	#endif
-
 	/* Configure the gpios */
 	if (of_property_read_bool(pdev->dev.of_node, "pinctrl-names")) {
 		hs_dev->is_pinctrl_names = true;
 		ret = hsi2s_configure_gpio_pins(pdev);
 		if (ret < 0) {
 			dev_err(hs_dev->dev, "Failed to configure gpios");
-			goto err_free_smmu;
+			goto err_deinit_default;
 		}
 	}
 
@@ -3878,17 +4005,21 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	hs_dev->rddma_in_progress = 0;
 
 	/* Configure the operational mode */
-	if (operation_mode)
+	if (operation_mode) {
+		/* Setting slave mode for SA8155/SA8195 targets */
+		if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195)
+			configure_muxmode(hs_dev, 1);
 		configure_normal_mode(hs_dev, minor);
-	else
+	} else {
 		configure_int_loopback_mode(hs_dev, minor);
+	}
 
 	/* Create device file for the interface */
 	hs_dev->cdev_sdr = kzalloc(sizeof(*hs_dev->cdev_sdr),
 				   GFP_KERNEL);
 	if (!hs_dev->cdev_sdr) {
 		ret = -ENOMEM;
-		goto err_free_smmu;
+		goto err_deinit_default;
 	}
 
 	hs_dev->curr_devid = MKDEV(MAJOR(devid), MINOR(devid) + minor);
@@ -3935,23 +4066,6 @@ err_delete_cdev:
 err_free_cdev:
 	kfree(hs_dev->cdev_sdr);
 	hs_dev->cdev_sdr = NULL;
-err_free_smmu:
-	#ifndef CONFIG_QTI_GVM
-	/* Detach and release iommu mapping */
-	if (hs_dev->hsi2s_smmu_ctx->valid) {
-		if (hs_dev->hsi2s_smmu_ctx->smmu_pdev)
-			arm_iommu_detach_device(&hs_dev->hsi2s_smmu_ctx->smmu_pdev->dev);
-		if (hs_dev->hsi2s_smmu_ctx->mapping)
-			arm_iommu_release_mapping(hs_dev->hsi2s_smmu_ctx->mapping);
-		hs_dev->hsi2s_smmu_ctx->valid = false;
-		hs_dev->hsi2s_smmu_ctx->mapping = NULL;
-		hs_dev->hsi2s_smmu_ctx->pdev_master = NULL;
-		hs_dev->hsi2s_smmu_ctx->smmu_pdev = NULL;
-		dev_info(hs_dev->dev, "Detached and released iommu mapping");
-	}
-	kfree(hs_dev->hsi2s_smmu_ctx);
-	hs_dev->hsi2s_smmu_ctx = NULL;
-	#endif
 err_deinit_default:
 	hsi2s_buffer_free(hs_dev);
 err_disable_intf_clock:
@@ -4294,6 +4408,18 @@ static int hsi2s_probe(struct platform_device *pdev)
 	disable_irq_nosync(hsi2s_core->irq0);
 	hsi2s_core->is_irq_enabled = false;
 
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
+	/* Configure SMMU */
+	ret = hsi2s_smmu_init(pdev);
+	if (ret) {
+		dev_err(hsi2s_core->dev, "Failed to init smmu");
+		goto err_free_irq;
+	}
+#endif
+
+	/* Reset the mic enabler flag */
+	hsi2s_core->en_mic = 0;
+
 	/* Probe child devices */
 	ret = of_platform_populate(dev->of_node, NULL, NULL, dev);
 	if (ret)
@@ -4303,6 +4429,10 @@ static int hsi2s_probe(struct platform_device *pdev)
 
 	return ret;
 
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
+err_free_irq:
+	devm_free_irq(hsi2s_core->dev, hsi2s_core->irq0, hsi2s_core);
+#endif
 err_iounmap_lpass_tcsr:
 	iounmap(hsi2s_core->lpass_tcsr_base_va);
 err_iounmap_lpaif:
@@ -4364,23 +4494,6 @@ static int hsi2s_interface_remove(struct platform_device *pdev)
 		/* Disable the interface clocks */
 		if (hsi2s_core->target == 6155)
 			hsi2s_disable_intf_clks(pdev);
-		/* Detach and release iommu mapping */
-		#ifndef CONFIG_QTI_GVM
-		if (hs_dev->hsi2s_smmu_ctx->valid) {
-			if (hs_dev->hsi2s_smmu_ctx->smmu_pdev)
-				arm_iommu_detach_device(&hs_dev->hsi2s_smmu_ctx->smmu_pdev->dev);
-			if (hs_dev->hsi2s_smmu_ctx->mapping)
-				arm_iommu_release_mapping(hs_dev->hsi2s_smmu_ctx->mapping);
-			hs_dev->hsi2s_smmu_ctx->valid = false;
-			hs_dev->hsi2s_smmu_ctx->mapping = NULL;
-			hs_dev->hsi2s_smmu_ctx->pdev_master = NULL;
-			hs_dev->hsi2s_smmu_ctx->smmu_pdev = NULL;
-			dev_info(hs_dev->dev, "Detached and released iommu mapping");
-		}
-		kfree(hs_dev->hsi2s_smmu_ctx);
-		hs_dev->hsi2s_smmu_ctx = NULL;
-		#endif
-
 		/* Free the allocated buffers and device data structures */
 		hsi2s_buffer_free(hs_dev);
 		kfree(hs_dev);
@@ -4413,10 +4526,28 @@ static int hsi2s_remove(struct platform_device *pdev)
 	of_platform_depopulate(&pdev->dev);
 	/* Remove the core device */
 	hs_core = (struct hsi2s_core *)platform_get_drvdata(pdev);
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
+	/* Detach and release iommu mapping */
+	if (hs_core->hsi2s_smmu_ctx) {
+		if (hs_core->hsi2s_smmu_ctx->valid) {
+			if (hs_core->hsi2s_smmu_ctx->smmu_pdev)
+				arm_iommu_detach_device(&hs_core->hsi2s_smmu_ctx->smmu_pdev->dev);
+			if (hs_core->hsi2s_smmu_ctx->mapping)
+				arm_iommu_release_mapping(hs_core->hsi2s_smmu_ctx->mapping);
+			hs_core->hsi2s_smmu_ctx->valid = false;
+			hs_core->hsi2s_smmu_ctx->mapping = NULL;
+			hs_core->hsi2s_smmu_ctx->pdev_master = NULL;
+			hs_core->hsi2s_smmu_ctx->smmu_pdev = NULL;
+			dev_info(hs_core->dev, "Detached and released iommu mapping");
+		}
+		kfree(hs_core->hsi2s_smmu_ctx);
+		hs_core->hsi2s_smmu_ctx = NULL;
+	}
+#endif
 	/* Free IRQ */
 	devm_free_irq(&pdev->dev, hs_core->irq0, hs_core);
 	/* Reset rate detection block */
-	if (hsi2s_core->is_rate_enabled) {
+	if (hs_core->is_rate_enabled) {
 		reset_rate_detection(PRI_RATE_DET);
 		reset_rate_detection(SEC_RATE_DET);
 	}
@@ -4432,31 +4563,31 @@ static int hsi2s_remove(struct platform_device *pdev)
 				kfree(hs_core->qmi_dev);
 			}
 #else
-			hsi2s_core->hab_req->clk_en = 0;
+			hs_core->hab_req->clk_en = 0;
 
-			ret = habmm_socket_send(hsi2s_core->hab_handle, hsi2s_core->hab_req, resp_size, 0);
+			ret = habmm_socket_send(hs_core->hab_handle, hs_core->hab_req, resp_size, 0);
 			if (ret) {
-				dev_err(hsi2s_core->dev, "habmm socket send failed (%d)\n", ret);
+				dev_err(hs_core->dev, "habmm socket send failed (%d)\n", ret);
 				goto err_close_hab;
 			}
 
-			ret = habmm_socket_recv(hsi2s_core->hab_handle, hsi2s_core->hab_resp, &resp_size, UINT_MAX, HABMM_SOCKET_RECV_FLAGS_UNINTERRUPTIBLE);
+			ret = habmm_socket_recv(hs_core->hab_handle, hs_core->hab_resp, &resp_size, UINT_MAX, HABMM_SOCKET_RECV_FLAGS_UNINTERRUPTIBLE);
 			if (ret) {
-				dev_err(hsi2s_core->dev, "habmm socket receive failed (%d)\n", ret);
+				dev_err(hs_core->dev, "habmm socket receive failed (%d)\n", ret);
 				goto err_close_hab;
 			}
 
-			if (hsi2s_core->hab_resp->rsp) {
-				dev_err(hsi2s_core->dev, "error response (%d)\n", hsi2s_core->hab_resp->rsp);
+			if (hs_core->hab_resp->rsp) {
+				dev_err(hs_core->dev, "error response (%d)\n", hs_core->hab_resp->rsp);
 				ret = -EIO;
 				goto err_close_hab;
 			}
 
 err_close_hab:
-			habmm_socket_close(hsi2s_core->hab_handle);
-			hsi2s_core->hab_handle = 0;
-			kfree(hsi2s_core->hab_req);
-			kfree(hsi2s_core->hab_resp);
+			habmm_socket_close(hs_core->hab_handle);
+			hs_core->hab_handle = 0;
+			kfree(hs_core->hab_req);
+			kfree(hs_core->hab_resp);
 #endif
 		} else {
 			h_modify_interface_clks(0);
@@ -4499,12 +4630,13 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 		else if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195) {
 			if (enable_qmi) {
 #ifndef CONFIG_QTI_GVM
-				if (hsi2s_core->qmi_dev)
+				if (hsi2s_core->qmi_dev) {
 					ret = hsi2s_adsp_disable_clks();
 					if (ret) {
 						dev_err(&pdev->dev, "Failed to suspend core clocks");
 						goto err_suspend;
 					}
+				}
 #else
 				hsi2s_core->hab_req->clk_en = 0;
 

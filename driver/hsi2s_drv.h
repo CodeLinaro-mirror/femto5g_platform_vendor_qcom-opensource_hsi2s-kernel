@@ -43,7 +43,11 @@
 #include <linux/poll.h>
 #include <linux/soc/qcom/qmi.h>
 #include <linux/habmm.h>
+#include <linux/version.h>
+#include <uapi/linux/sched/types.h>
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
 #include <asm/dma-iommu.h>
+#endif
 
 /* Register offsets */
 #define T_LPAIF_I2S_CTL				0x1000
@@ -539,6 +543,14 @@ struct hsi2s_core {
 
 	/* Interface count */
 	int i_count;
+
+	/* Mic enable flag */
+	u8 en_mic;
+
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
+	/* SMMU context */
+	struct hsi2s_smmu_cb_ctx *hsi2s_smmu_ctx;
+#endif
 };
 
 /* LPAIF HS-I2S device structure */
@@ -586,6 +598,7 @@ struct hsi2s_device {
 
 	/* DMA thread */
 	struct task_struct *rddma_thread;
+	struct task_struct *dab_thread;
 
 	/* DMA addresses */
 	void *lpass_rddma_start;
@@ -597,9 +610,6 @@ struct hsi2s_device {
 	int rddma_xfer_busy;
 	int rddma_copy_busy;
 	int rddma_in_progress;
-
-	/* SMMU context */
-	struct hsi2s_smmu_cb_ctx *hsi2s_smmu_ctx;
 
 	/* Wait queues */
 	wait_queue_head_t wq_rddma;
@@ -712,6 +722,7 @@ struct ping_pong {
 	dma_addr_t handle;
 };
 
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
 /* SMMU related */
 struct hsi2s_smmu_cb_ctx {
 	bool valid;
@@ -721,8 +732,9 @@ struct hsi2s_smmu_cb_ctx {
 	struct iommu_domain *iommu_domain;
 	u32 va_start;
 	u32 va_size;
-	int ret;
+	int bypass;
 };
+#endif
 
 /* Target specific macros */
 struct hsi2s_macros {
