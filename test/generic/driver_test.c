@@ -42,6 +42,11 @@
 #define SRC_DIGITAL_PLL 0x500
 #define BILLION 1000000000L
 #define DAB_TUNER_COUNT 3
+#define PG_SIZE 4096
+#define SHM_SIZE (PG_SIZE * 3)
+#define SHM_WRDMA_BASE 0
+#define SHM_WRDMA_CURRENT 1
+#define NORMAL_READ
 
 /* Operation mode of the test utility */
 enum operation_mode {
@@ -100,12 +105,14 @@ struct thread_params {
 	void *mmap_ptr;
 	void *mmap_read;
 	void *mmap_end;
+	void *sh_mem;
 	FILE *fd_write_op;
 };
 
 /* Global variables */
 long long read_limit;
 long mmap_len;
+uint8_t minor_num;
 
 /* Prints the usage information */
 void help()
@@ -217,6 +224,110 @@ uint32_t get_periodic_length(uint32_t bit_clk, uint32_t interval)
 }
 
 /* Read thread */
+#ifndef NORMAL_READ
+void *poll_read(void *arg)
+{
+	long long r_limit = 0;
+	long temp;
+	int ret;
+	double thread_start;
+	double thread_stop;
+	double delta;
+	struct timespec pread_start;
+	struct timespec pread_stop;
+	struct pollfd pfd;
+	void *mmap_ptr;
+	void *mmap_read;
+	void *mmap_end;
+	void *sh_mem;
+	FILE *fd_write_op;
+	struct thread_params *params;
+	uint32_t *shm;
+
+	uint32_t base_addr_phy;
+	uint32_t curr_addr_phy;
+	void *prev_addr;
+	void *curr_addr;
+	long read_len;
+
+	params = (struct thread_params *)arg;
+	if (params) {
+		pfd = params->pfd;
+		mmap_ptr = params->mmap_ptr;
+		mmap_read = params->mmap_read;
+		mmap_end = params->mmap_end;
+		sh_mem = params->sh_mem;
+		shm = (uint32_t *)sh_mem;
+		fd_write_op = params->fd_write_op;
+	} else {
+		printf("Thread parameters are null\n");
+		return NULL;
+	}
+
+	printf("Performing poll wait for fast read...\n");
+
+	clock_gettime(CLOCK_REALTIME, &pread_start);
+	thread_start = (pread_start.tv_sec * BILLION) + pread_start.tv_nsec;
+	printf("[POLL] Starttime %lf\n", thread_start);
+
+	base_addr_phy = *((uint32_t *)(shm) + ((minor_num * PG_SIZE) / BYTES_PER_WORD) + SHM_WRDMA_BASE);
+	prev_addr = mmap_ptr;
+
+	while (r_limit < read_limit) {
+		clock_gettime(CLOCK_REALTIME, &pread_start);
+		ret = poll(&pfd, 1, -1);
+		clock_gettime(CLOCK_REALTIME, &pread_stop);
+		delta = ((pread_stop.tv_sec - pread_start.tv_sec) * BILLION) +
+				(pread_stop.tv_nsec - pread_start.tv_nsec);
+		printf("[POLL] Data ready in %lf nsec\n", delta);
+		if (ret < 0) {
+			printf("Poll failed\n");
+		} else if (pfd.revents & POLLIN) {
+			curr_addr_phy = *((uint32_t *)(shm) + ((minor_num * PG_SIZE) / BYTES_PER_WORD) + SHM_WRDMA_CURRENT);
+			curr_addr = mmap_ptr + (curr_addr_phy - base_addr_phy);
+
+			if(prev_addr < curr_addr) {
+				read_len = curr_addr - prev_addr;
+				if (r_limit + read_len > read_limit) {
+					fwrite(prev_addr,read_limit - r_limit,1,fd_write_op);
+					r_limit += (read_limit - r_limit);
+				} else {
+					fwrite(prev_addr,read_len,1,fd_write_op);
+					r_limit += read_len;
+				}
+			} else {
+				read_len = (mmap_end - prev_addr) + (curr_addr - mmap_ptr);
+				if (r_limit + read_len > read_limit) {
+					if (prev_addr + (read_limit - r_limit) > mmap_end) {
+						temp = mmap_end - prev_addr;
+						fwrite(prev_addr,temp,1,fd_write_op);
+						temp = (read_limit - r_limit) - temp;
+						fwrite(mmap_ptr,temp,1,fd_write_op);
+					} else {
+						fwrite(prev_addr,read_limit - r_limit,1,fd_write_op);
+					}
+					r_limit += (read_limit - r_limit);
+				} else {
+					fwrite(prev_addr,mmap_end - prev_addr,1,fd_write_op);
+					fwrite(mmap_ptr,curr_addr - mmap_ptr,1,fd_write_op);
+					r_limit += read_len;
+				}
+			}
+			prev_addr = curr_addr;
+			if (prev_addr >= mmap_end)
+				prev_addr = mmap_ptr;
+		}
+	}
+
+	clock_gettime(CLOCK_REALTIME, &pread_stop);
+	thread_stop = (pread_stop.tv_sec * BILLION) + pread_stop.tv_nsec;
+	delta = (thread_stop - thread_start) / BILLION;
+	printf("[POLL] Endtime %lf\n", thread_stop);
+	printf("[POLL] Total thread execution time %lfs\n", delta);
+
+	return NULL;
+}
+#else
 void *poll_read(void *arg)
 {
 	long long r_limit = 0;
@@ -233,6 +344,7 @@ void *poll_read(void *arg)
 	void *mmap_end;
 	FILE *fd_write_op;
 	struct thread_params *params;
+	int i;
 
 	params = (struct thread_params *)arg;
 	if (params) {
@@ -246,7 +358,7 @@ void *poll_read(void *arg)
 		return NULL;
 	}
 
-	printf("Performing poll wait...\n");
+	printf("Performing poll wait for normal read...\n");
 
 	clock_gettime(CLOCK_REALTIME, &pread_start);
 	thread_start = (pread_start.tv_sec * BILLION) + pread_start.tv_nsec;
@@ -301,11 +413,13 @@ void *poll_read(void *arg)
 
 	return NULL;
 }
+#endif
 
 int main(int argc, char **argv)
 {
 	int fd_master = 0;
 	int fd_slave = 0;
+	int fd_core = 0;
 	FILE *fd_read_ip = NULL;
 	long read_length_bytes = 0;
 	long read_length_words = 0;
@@ -434,6 +548,7 @@ int main(int argc, char **argv)
 					ret = -1;
 					goto exit_app;
 				}
+				minor_num = optarg[7] - '0';
 				break;
 			case 'c':
 				/* Slave device file */
@@ -680,9 +795,14 @@ int main(int argc, char **argv)
 					break;
 				}
 			}
-
+			/* Device file */
+			fd_core = open("/dev/hsi2s_reginfo", O_RDWR);
+			if(fd_core < 0) {
+				printf("Cannot open core device file\n");
+				ret = -1;
+				break;
+			}
 			printf("Setting normal mode \n");
-
 			ret = ioctl(fd_master, LPAIF_RESET);
 			if (ret < 0) {
 				printf("Failed to reset the hsi2s device\n");
@@ -701,15 +821,23 @@ int main(int argc, char **argv)
 			/* Map the device write DMA buffer */
 			params->pfd.fd = fd_master;
 			params->pfd.events = POLLIN | POLLRDNORM;
-			printf("Mapping userspace memory with kernel memory\n");
+			printf("Mapping userspace memory with kernel memory for device\n");
 			params->mmap_ptr = mmap(NULL, read_length_bytes * 2, PROT_READ | PROT_WRITE, MAP_SHARED, fd_master, 0);
 			if (params->mmap_ptr == MAP_FAILED) {
-				printf("mmap failed\n");
+				printf("mmap failed for device\n");
 				ret = -1;
 				break;
 			} else {
 				params->mmap_read = params->mmap_ptr;
 				params->mmap_end = params->mmap_ptr + (read_length_bytes * 2);
+			}
+			/* Map the register info memory */
+			printf("Mapping userspace memory with kernel memory for core\n");
+			params->sh_mem = mmap(NULL, SHM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd_core, 0);
+			if (params->sh_mem == MAP_FAILED) {
+				printf("mmap failed for core\n");
+				ret = -1;
+				break;
 			}
 
 			printf("Using mmap mode...\n");
@@ -815,6 +943,13 @@ int main(int argc, char **argv)
 				ret = -1;
 				break;
 			}
+			/* Device file */
+			fd_core = open("/dev/hsi2s_reginfo", O_RDWR);
+			if(fd_core < 0) {
+				printf("Cannot open core device file\n");
+				ret = -1;
+				break;
+			}
 			printf("Setting internal loopback operation \n");
 			ret = ioctl(fd_master, LPAIF_RESET);
 			if (ret < 0) {
@@ -829,15 +964,23 @@ int main(int argc, char **argv)
 			/* Map the device write DMA buffer */
 			params->pfd.fd = fd_master;
 			params->pfd.events = POLLIN | POLLRDNORM;
-			printf("Mapping userspace memory with kernel memory\n");
+			printf("Mapping userspace memory with kernel memory for device\n");
 			params->mmap_ptr = mmap(NULL, read_length_bytes * 2, PROT_READ | PROT_WRITE, MAP_SHARED, fd_master, 0);
 			if (params->mmap_ptr == MAP_FAILED) {
-				printf("mmap failed\n");
+				printf("mmap failed for device\n");
 				ret = -1;
 				break;
 			} else {
 				params->mmap_read = params->mmap_ptr;
 				params->mmap_end = params->mmap_ptr + (read_length_bytes * 2);
+			}
+			/* Map the register info memory */
+			printf("Mapping userspace memory with kernel memory for core\n");
+			params->sh_mem = mmap(NULL, SHM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd_core, 0);
+			if (params->sh_mem == MAP_FAILED) {
+				printf("mmap failed for core\n");
+				ret = -1;
+				break;
 			}
 
 			printf("Using mmap mode...\n");
@@ -909,6 +1052,13 @@ int main(int argc, char **argv)
 				ret = -1;
 				break;
 			}
+			/* Device file */
+			fd_core = open("/dev/hsi2s_reginfo", O_RDWR);
+			if(fd_core < 0) {
+				printf("Cannot open core device file\n");
+				ret = -1;
+				break;
+			}
 			printf("Setting external loopback on master \n");
 			ret = ioctl(fd_master, LPAIF_RESET);
 			if (ret < 0) {
@@ -924,15 +1074,23 @@ int main(int argc, char **argv)
 			/* Map the device write DMA buffer */
 			params->pfd.fd = fd_master;
 			params->pfd.events = POLLIN | POLLRDNORM;
-			printf("Mapping userspace memory with kernel memory\n");
+			printf("Mapping userspace memory with kernel memory for device\n");
 			params->mmap_ptr = mmap(NULL, read_length_bytes * 2, PROT_READ | PROT_WRITE, MAP_SHARED, fd_master, 0);
 			if (params->mmap_ptr == MAP_FAILED) {
-				printf("mmap failed\n");
+				printf("mmap failed for device\n");
 				ret = -1;
 				break;
 			} else {
 				params->mmap_read = params->mmap_ptr;
 				params->mmap_end = params->mmap_ptr + (read_length_bytes * 2);
+			}
+			/* Map the register info memory */
+			printf("Mapping userspace memory with kernel memory for core\n");
+			params->sh_mem = mmap(NULL, SHM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd_core, 0);
+			if (params->sh_mem == MAP_FAILED) {
+				printf("mmap failed for core\n");
+				ret = -1;
+				break;
 			}
 
 			printf("Using mmap mode...\n");
@@ -1005,7 +1163,13 @@ int main(int argc, char **argv)
 				break;
 			}
 			printf("Slave node is hs%d_i2s\n",slave);
-
+			/* Device file */
+			fd_core = open("/dev/hsi2s_reginfo", O_RDWR);
+			if(fd_core < 0) {
+				printf("Cannot open core device file\n");
+				ret = -1;
+				break;
+			}
 			printf("Setting external loopback on master/slave \n");
 			ret = ioctl(fd_master, LPAIF_RESET);
 			if (ret < 0) {
@@ -1043,18 +1207,29 @@ int main(int argc, char **argv)
 				break;
 			}
 
+			/* Set the minor number */
+			minor_num = slave;
+
 			/* Map the slave device write DMA buffer */
 			params->pfd.fd = fd_slave;
 			params->pfd.events = POLLIN | POLLRDNORM;
-			printf("Mapping userspace memory with kernel memory\n");
+			printf("Mapping userspace memory with kernel memory for device\n");
 			params->mmap_ptr = mmap(NULL, read_length_bytes * 2, PROT_READ | PROT_WRITE, MAP_SHARED, fd_slave, 0);
 			if (params->mmap_ptr == MAP_FAILED) {
-				printf("mmap failed\n");
+				printf("mmap failed for device\n");
 				ret = -1;
 				break;
 			} else {
 				params->mmap_read = params->mmap_ptr;
 				params->mmap_end = params->mmap_ptr + (read_length_bytes * 2);
+			}
+			/* Map the register info memory */
+			printf("Mapping userspace memory with kernel memory for core\n");
+			params->sh_mem = mmap(NULL, SHM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd_core, 0);
+			if (params->sh_mem == MAP_FAILED) {
+				printf("mmap failed for core\n");
+				ret = -1;
+				break;
 			}
 
 			printf("Using mmap mode...\n");
