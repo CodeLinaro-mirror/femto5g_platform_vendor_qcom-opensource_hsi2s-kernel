@@ -11,7 +11,9 @@
  */
 
 #include "hsi2s_drv.h"
+#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
 #include "hsi2s_adsp_clk_ctrl.h"
+#endif
 #include "hsi2s_common.h"
 
 /* Device number */
@@ -23,7 +25,7 @@ static u32 dma_buffer_length_words;
 /* HS-I2S core structure */
 static struct hsi2s_core *hsi2s_core;
 
-#ifndef CONFIG_QTI_GVM
+#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
 static struct sockaddr_qrtr sq;
 #endif
 
@@ -60,7 +62,7 @@ static int enable_qmi;
 module_param(enable_qmi, int, 0644);
 MODULE_PARM_DESC(enable_qmi, "Is QMI enabled: 0->Disabled 1->Enabled");
 
-#ifndef CONFIG_QTI_GVM
+#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
 /* QMI callbacks */
 static int hsi2s_clk_ctrl_send_sync_msg(struct qmi_handle *dev, int en)
 {
@@ -2277,7 +2279,7 @@ static int hsi2s_configure_gpio_pins(struct platform_device *pdev, int active)
 
 /* Clock management functions */
 
-#ifndef CONFIG_QTI_GVM
+#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
 /* Function to disable clocks for SA8155/SA8195 using QMI */
 static int hsi2s_adsp_disable_clks(void)
 {
@@ -4119,7 +4121,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 	u32 target;
 	u32 rate_array[2];
 	int ret = 0;
-#ifdef CONFIG_QTI_GVM
+#if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
 	int handle;
 	u32 resp_size = sizeof(msg_t);
 #endif
@@ -4210,7 +4212,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 	}
 	else if (target == 8155 || target == 8195) {
 		if (enable_qmi) {
-#ifndef CONFIG_QTI_GVM
+#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
 			/* Allocate QMI handle */
 			hsi2s_core->qmi_dev = kzalloc(sizeof(*hsi2s_core->qmi_dev), GFP_KERNEL);
 			if (!hsi2s_core->qmi_dev) {
@@ -4455,7 +4457,7 @@ err_disable_core_clocks:
 		hsi2s_disable_core_clks(pdev);
 	} else {
 		if (enable_qmi) {
-#ifndef CONFIG_QTI_GVM
+#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
 			if (hsi2s_core->qmi_dev)
 				kfree(hsi2s_core->qmi_dev);
 #else
@@ -4527,7 +4529,7 @@ static int hsi2s_interface_remove(struct platform_device *pdev)
 static int hsi2s_remove(struct platform_device *pdev)
 {
 	struct hsi2s_core *hs_core;
-#ifdef CONFIG_QTI_GVM
+#if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
 	int ret = 0;
 	u32 resp_size = sizeof(msg_t);
 #endif
@@ -4569,7 +4571,7 @@ static int hsi2s_remove(struct platform_device *pdev)
 		hsi2s_disable_core_clks(pdev);
 	else if (hs_core->target == 8155 || hs_core->target == 8195) {
 		if (enable_qmi) {
-#ifndef CONFIG_QTI_GVM
+#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
 			if (hs_core->qmi_dev) {
 				hsi2s_adsp_disable_clks();
 				qmi_handle_release(hs_core->qmi_dev);
@@ -4627,7 +4629,7 @@ err_close_hab:
 static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	int ret = 0;
-#ifdef CONFIG_QTI_GVM
+#if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
 	u32 resp_size = sizeof(msg_t);
 #endif
 
@@ -4648,7 +4650,7 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 			hsi2s_suspend_core_clks(pdev);
 		else if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195) {
 			if (enable_qmi) {
-#ifndef CONFIG_QTI_GVM
+#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
 				if (hsi2s_core->qmi_dev) {
 					ret = hsi2s_adsp_disable_clks();
 					if (ret < 0) {
@@ -4696,7 +4698,7 @@ err_suspend:
 static int hsi2s_resume(struct platform_device *pdev)
 {
 	int ret = 0;
-#ifdef CONFIG_QTI_GVM
+#if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
 	u32 resp_size = sizeof(msg_t);
 #endif
 
@@ -4726,7 +4728,7 @@ static int hsi2s_resume(struct platform_device *pdev)
 			}
 		} else if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195) {
 			if (enable_qmi) {
-#ifndef CONFIG_QTI_GVM
+#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
 				if (hsi2s_core->qmi_dev) {
 					ret = hsi2s_adsp_enable_clks();
 					if (ret < 0) {
