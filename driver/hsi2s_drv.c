@@ -3255,7 +3255,9 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	struct hstdm_params *tdm_params;
 	void __iomem *clk_val_reg;
 	void __iomem *clk_update_reg;
-	void __iomem *clk_inv_reg;
+#if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
+	u32 resp_size = sizeof(msg_t);
+#endif
 	int minor;
 	int ret = 0;
 
@@ -3611,41 +3613,39 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				dev_err(hs_dev->dev, "Bit clock configuration is not supported by target");
 				return -EINVAL;
 			}
-
-			dev_info(hs_dev->dev, "Re-configuring bit clock on HS%d interface", hs_dev->minor_num);
+			dev_info(hsi2s_core->dev, "Toggling bit clock directions");
 			if (hs_dev->client_count == 1) {
-				if (hs_dev->minor_num == 0)
-					clk_inv_reg = ioremap(HS0_BITCLK_INV_REG, 4);
-				else if (hs_dev->minor_num == 1)
-					clk_inv_reg = ioremap(HS1_BITCLK_INV_REG, 4);
-				else
-					clk_inv_reg = ioremap(HS2_BITCLK_INV_REG, 4);
+#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
+				if (hsi2s_core->qmi_dev) {
+					ret = hsi2s_adsp_enable_clks();
+					if (ret < 0) {
+						dev_err(hsi2s_core->dev, "Failed to toggle bit clocks");
+						break;
+					}
+				}
+				dev_info(hs_dev->dev, "Toggled bit clock direction");
+#else
+				hsi2s_core->hab_req->clk_en = 1;
 
-				switch (arg) {
-					case INVERT_INT_BIT_CLOCK:
-						dev_info(hs_dev->dev, "Inverting internal bit clock");
-						setbits(clk_inv_reg, INV_INT_CLK);
-						break;
-					case INVERT_EXT_BIT_CLOCK:
-						dev_info(hs_dev->dev, "Inverting external bit clock");
-						setbits(clk_inv_reg, INV_EXT_CLK);
-						break;
-					case DONT_INVERT_INT_BIT_CLOCK:
-						dev_info(hs_dev->dev, "Non-inverting internal bit clock");
-						clearbits(clk_inv_reg, INV_INT_CLK);
-						break;
-					case DONT_INVERT_EXT_BIT_CLOCK:
-						dev_info(hs_dev->dev, "Non-inverting external bit clock");
-						clearbits(clk_inv_reg, INV_EXT_CLK);
-						break;
-					default:
-						dev_err(hs_dev->dev, "Invalid argument provided");
-						ret = -EINVAL;
-						break;
+				ret = habmm_socket_send(hsi2s_core->hab_handle, hsi2s_core->hab_req, resp_size, 0);
+				if (ret) {
+					dev_err(hsi2s_core->dev, "habmm socket send failed (%d)", ret);
+					break;
 				}
 
-				iounmap(clk_inv_reg);
-				dev_info(hs_dev->dev, "Re-configured bit clock");
+				ret = habmm_socket_recv(hsi2s_core->hab_handle, hsi2s_core->hab_resp, &resp_size,
+										UINT_MAX, HABMM_SOCKET_RECV_FLAGS_UNINTERRUPTIBLE);
+				if (ret) {
+					dev_err(hsi2s_core->dev, "habmm socket receive failed (%d)", ret);
+					break;
+				}
+
+				if (hsi2s_core->hab_resp->rsp) {
+					dev_err(hsi2s_core->dev, "error response (%d)", hsi2s_core->hab_resp->rsp);
+					ret = -EIO;
+					break;
+				}
+#endif
 			}
 			else
 				dev_warn(hs_dev->dev, "Clock already set by previous client");
