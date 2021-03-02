@@ -619,8 +619,6 @@ static void reset_registers(struct hsi2s_device *hs_dev)
 	reg_clear(hs_dev->rddma_buff_len);
 	reg_clear(hs_dev->rddma_curr_addr);
 	reg_clear(hs_dev->rddma_per_len);
-	reg_clear(hs_dev->rddma_ram_addr);
-	reg_clear(hs_dev->rddma_ram_len);
 	setbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_reset);
 	clearbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_reset);
 
@@ -650,8 +648,6 @@ static void reset_rddma_registers(struct hsi2s_device *hs_dev)
 	reg_clear(hs_dev->rddma_buff_len);
 	reg_clear(hs_dev->rddma_curr_addr);
 	reg_clear(hs_dev->rddma_per_len);
-	reg_clear(hs_dev->rddma_ram_addr);
-	reg_clear(hs_dev->rddma_ram_len);
 	setbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_reset);
 	clearbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_reset);
 }
@@ -1505,16 +1501,13 @@ static void configure_rddma(struct hsi2s_device *hs_dev, int intf)
 	writel_relaxed(dma_buffer_length_words, hs_dev->rddma_buff_len);
 	/* Use ping/pong size as periodic length */
 	writel_relaxed((dma_buffer_length_words + 1) / 2, hs_dev->rddma_per_len);
-	/* Increase the FIFO watermark */
-	writel_relaxed((RDDMA_RAM_LENGTH * intf), hs_dev->rddma_ram_addr);
-	writel_relaxed(RDDMA_RAM_LENGTH, hs_dev->rddma_ram_len);
 
 	if (intf == HS0_I2S) {
 		setbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_burst_en |
 					   hsi2s_core->macro->bit_rddma_dyn_clk |
 					   hsi2s_core->macro->regfield_rddma_pri_audio_intf |
 					   hs_dev->wpscnt_rddma |
-					   (RDDMA_RAM_LENGTH - 1) << 1);
+					   hsi2s_core->macro->regfield_rddma_fifo_wm8);
 		setbits(hsi2s_core->irq_en, IRQ_PER_RDDMA_CH0 |
 					IRQ_UNDR_RDDMA_CH0 |
 					IRQ_ERR_RDDMA_CH0);
@@ -1524,7 +1517,7 @@ static void configure_rddma(struct hsi2s_device *hs_dev, int intf)
 					   hsi2s_core->macro->bit_rddma_dyn_clk |
 					   hsi2s_core->macro->regfield_rddma_sec_audio_intf |
 					   hs_dev->wpscnt_rddma |
-					   (RDDMA_RAM_LENGTH - 1) << 1);
+					   hsi2s_core->macro->regfield_rddma_fifo_wm8);
 		setbits(hsi2s_core->irq_en, IRQ_PER_RDDMA_CH1 |
 					IRQ_UNDR_RDDMA_CH1 |
 					IRQ_ERR_RDDMA_CH1);
@@ -1534,7 +1527,7 @@ static void configure_rddma(struct hsi2s_device *hs_dev, int intf)
 					   hsi2s_core->macro->bit_rddma_dyn_clk |
 					   hsi2s_core->macro->regfield_rddma_ter_audio_intf |
 					   hs_dev->wpscnt_rddma |
-					   (RDDMA_RAM_LENGTH - 1) << 1);
+					   hsi2s_core->macro->regfield_rddma_fifo_wm8);
 		setbits(hsi2s_core->irq_en, IRQ_PER_RDDMA_CH2 |
 					IRQ_UNDR_RDDMA_CH2 |
 					IRQ_ERR_RDDMA_CH2);
@@ -1636,16 +1629,13 @@ static void configure_rddma_int_lb(struct hsi2s_device *hs_dev, int intf)
 	writel_relaxed(dma_buffer_length_words, hs_dev->rddma_buff_len);
 	/* Use ping/pong size as periodic length */
 	writel_relaxed((dma_buffer_length_words + 1) / 2, hs_dev->rddma_per_len);
-	/* Increase the FIFO watermark */
-	writel_relaxed((RDDMA_RAM_LENGTH * intf), hs_dev->rddma_ram_addr);
-	writel_relaxed(RDDMA_RAM_LENGTH, hs_dev->rddma_ram_len);
 
 	if (intf == HS0_I2S) {
 		setbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_burst_en |
 					   hsi2s_core->macro->bit_rddma_dyn_clk |
 					   hs_dev->wpscnt_rddma |
 					   hsi2s_core->macro->regfield_rddma_pri_audio_intf |
-					   (RDDMA_RAM_LENGTH - 1) << 1);
+					   hsi2s_core->macro->regfield_rddma_fifo_wm8);
 		setbits(hsi2s_core->irq_en, IRQ_PER_RDDMA_CH0 |
 					IRQ_UNDR_RDDMA_CH0 |
 					IRQ_ERR_RDDMA_CH0);
@@ -1655,7 +1645,7 @@ static void configure_rddma_int_lb(struct hsi2s_device *hs_dev, int intf)
 					   hsi2s_core->macro->bit_rddma_dyn_clk |
 					   hs_dev->wpscnt_rddma |
 					   hsi2s_core->macro->regfield_rddma_sec_audio_intf |
-					   (RDDMA_RAM_LENGTH - 1) << 1);
+					   hsi2s_core->macro->regfield_rddma_fifo_wm8);
 		setbits(hsi2s_core->irq_en, IRQ_PER_RDDMA_CH1 |
 					IRQ_UNDR_RDDMA_CH1 |
 					IRQ_ERR_RDDMA_CH1);
@@ -1665,7 +1655,7 @@ static void configure_rddma_int_lb(struct hsi2s_device *hs_dev, int intf)
 					   hsi2s_core->macro->bit_rddma_dyn_clk |
 					   hs_dev->wpscnt_rddma |
 					   hsi2s_core->macro->regfield_rddma_ter_audio_intf |
-					   (RDDMA_RAM_LENGTH - 1) << 1);
+					   hsi2s_core->macro->regfield_rddma_fifo_wm8);
 		setbits(hsi2s_core->irq_en, IRQ_PER_RDDMA_CH2 |
 					IRQ_UNDR_RDDMA_CH2 |
 					IRQ_ERR_RDDMA_CH2);
