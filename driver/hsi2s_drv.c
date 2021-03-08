@@ -11,7 +11,7 @@
  */
 
 #include "hsi2s_drv.h"
-#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
+#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM) && defined(CONFIG_QCOM_QMI_HELPERS)
 #include "hsi2s_adsp_clk_ctrl.h"
 #endif
 #include "hsi2s_common.h"
@@ -25,7 +25,7 @@ static u32 dma_buffer_length_words;
 /* HS-I2S core structure */
 static struct hsi2s_core *hsi2s_core;
 
-#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
+#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM) && defined(CONFIG_QCOM_QMI_HELPERS)
 static struct sockaddr_qrtr sq;
 #endif
 
@@ -62,7 +62,7 @@ static int enable_qmi;
 module_param(enable_qmi, int, 0644);
 MODULE_PARM_DESC(enable_qmi, "Is QMI enabled: 0->Disabled 1->Enabled");
 
-#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
+#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM) && defined(CONFIG_QCOM_QMI_HELPERS)
 /* QMI callbacks */
 static int hsi2s_clk_ctrl_send_sync_msg(struct qmi_handle *dev, int en)
 {
@@ -2279,7 +2279,7 @@ static int hsi2s_configure_gpio_pins(struct platform_device *pdev, int active)
 
 /* Clock management functions */
 
-#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
+#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM) && defined(CONFIG_QCOM_QMI_HELPERS)
 /* Function to disable clocks for SA8155/SA8195 using QMI */
 static int hsi2s_adsp_disable_clks(void)
 {
@@ -4213,6 +4213,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 	else if (target == 8155 || target == 8195) {
 		if (enable_qmi) {
 #if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
+#if defined(CONFIG_QCOM_QMI_HELPERS)
 			/* Allocate QMI handle */
 			hsi2s_core->qmi_dev = kzalloc(sizeof(*hsi2s_core->qmi_dev), GFP_KERNEL);
 			if (!hsi2s_core->qmi_dev) {
@@ -4250,6 +4251,11 @@ static int hsi2s_probe(struct platform_device *pdev)
 			if (ret < 0) {
 				goto err_disable_core_clocks;
 			}
+#else
+			dev_err(hsi2s_core->dev, "QMI kernel configuration is not enabled");
+			h_modify_core_clks(1);
+			h_modify_interface_clks(1);
+#endif
 #else
 			hsi2s_core->hab_req = kzalloc(sizeof(msg_t), GFP_KERNEL);
 			if (!hsi2s_core->hab_req) {
@@ -4458,8 +4464,13 @@ err_disable_core_clocks:
 	} else {
 		if (enable_qmi) {
 #if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
+#if defined(CONFIG_QCOM_QMI_HELPERS)
 			if (hsi2s_core->qmi_dev)
 				kfree(hsi2s_core->qmi_dev);
+#else
+			h_modify_interface_clks(0);
+			h_modify_core_clks(0);
+#endif
 #else
 err_close_hab:
 			habmm_socket_close(handle);
@@ -4572,11 +4583,16 @@ static int hsi2s_remove(struct platform_device *pdev)
 	else if (hs_core->target == 8155 || hs_core->target == 8195) {
 		if (enable_qmi) {
 #if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
+#if defined(CONFIG_QCOM_QMI_HELPERS)
 			if (hs_core->qmi_dev) {
 				hsi2s_adsp_disable_clks();
 				qmi_handle_release(hs_core->qmi_dev);
 				kfree(hs_core->qmi_dev);
 			}
+#else
+			h_modify_interface_clks(0);
+			h_modify_core_clks(0);
+#endif
 #else
 			hs_core->hab_req->clk_en = 0;
 
@@ -4651,6 +4667,7 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 		else if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195) {
 			if (enable_qmi) {
 #if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
+#if defined(CONFIG_QCOM_QMI_HELPERS)
 				if (hsi2s_core->qmi_dev) {
 					ret = hsi2s_adsp_disable_clks();
 					if (ret < 0) {
@@ -4658,6 +4675,10 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 						goto err_suspend;
 					}
 				}
+#else
+			h_modify_interface_clks(0);
+			h_modify_core_clks(0);
+#endif
 #else
 				hsi2s_core->hab_req->clk_en = 0;
 
@@ -4729,6 +4750,7 @@ static int hsi2s_resume(struct platform_device *pdev)
 		} else if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195) {
 			if (enable_qmi) {
 #if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
+#if defined(CONFIG_QCOM_QMI_HELPERS)
 				if (hsi2s_core->qmi_dev) {
 					ret = hsi2s_adsp_enable_clks();
 					if (ret < 0) {
@@ -4736,6 +4758,10 @@ static int hsi2s_resume(struct platform_device *pdev)
 						goto err_resume;
 					}
 				}
+#else
+				h_modify_interface_clks(1);
+				h_modify_core_clks(1);
+#endif
 #else
 				hsi2s_core->hab_req->clk_en = 1;
 
