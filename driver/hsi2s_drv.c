@@ -1301,6 +1301,16 @@ static void configure_rpcm_slot(struct hsi2s_device *hs_dev, u32 slot, int enabl
 	}
 }
 
+/* Enable RPCM slots */
+static void enable_rpcm_slot(struct hsi2s_device *hs_dev)
+{
+	int slot;
+
+	for (slot = 0; slot < MAX_SLOTS; slot++) {
+		configure_rpcm_slot(hs_dev, slot, 1);
+	}
+}
+
 /* Configure PCM tx slot */
 static void configure_tpcm_slot(struct hsi2s_device *hs_dev, u32 slot, int enable)
 {
@@ -1308,6 +1318,16 @@ static void configure_tpcm_slot(struct hsi2s_device *hs_dev, u32 slot, int enabl
 		setbits(hs_dev->tpcm_slot_num, 1 << slot);
 	} else {
 		clearbits(hs_dev->tpcm_slot_num, 1 << slot);
+	}
+}
+
+/* Enable TPCM slots */
+static void enable_tpcm_slot(struct hsi2s_device *hs_dev)
+{
+	int slot;
+
+	for (slot = 0; slot < MAX_SLOTS; slot++) {
+		configure_tpcm_slot(hs_dev, slot, 1);
 	}
 }
 
@@ -1642,6 +1662,8 @@ static void configure_pcm_int_lb(struct hsi2s_device *hs_dev)
 		configure_tdm_ctl(hs_dev);
 	configure_pcm_tx(hs_dev);
 	configure_pcm_rx(hs_dev);
+	setbits(hs_dev->pcm_ctl, hsi2s_core->macro->bit_pcm_reset);
+	clearbits(hs_dev->pcm_ctl, hsi2s_core->macro->bit_pcm_reset);
 }
 
 /* Configure the read DMA registers */
@@ -1768,6 +1790,8 @@ static void configure_pcm_ext_lb(struct hsi2s_device *hs_dev)
 		configure_tdm_ctl(hs_dev);
 	configure_pcm_tx(hs_dev);
 	configure_pcm_rx(hs_dev);
+	setbits(hs_dev->pcm_ctl, hsi2s_core->macro->bit_pcm_reset);
+	clearbits(hs_dev->pcm_ctl, hsi2s_core->macro->bit_pcm_reset);
 }
 
 /* Function to configure HS-I2S registers in normal mode */
@@ -1782,17 +1806,28 @@ static void configure_normal_mode(struct hsi2s_device *hs_dev, int intf)
 	if (hs_dev->lpaif_mode == HS_I2S) {
 		/* Reset I2S control register */
 		reg_clear(hs_dev->i2s_ctl);
+		/* Reset I2S select register */
+		clearbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
 		/* Configure I2S control register */
 		configure_i2s_spkr(hs_dev);
 		configure_i2s_mic(hs_dev);
 	} else {
 		/* Reset PCM control register */
 		reg_clear(hs_dev->pcm_ctl);
+		/* Reset TDM control register */
+		reg_clear(hs_dev->tdm_ctl);
+		/* Set I2S select register */
+		setbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
 		configure_pcm_ctl(hs_dev);
 		if(hs_dev->tdm_en)
 			configure_tdm_ctl(hs_dev);
 		configure_pcm_tx(hs_dev);
 		configure_pcm_rx(hs_dev);
+		/* Enable PCM slots for Rx and Tx */
+		enable_rpcm_slot(hs_dev);
+		enable_tpcm_slot(hs_dev);
+		/* Set PCM lane configuration */
+		set_pcm_lane_config(hs_dev, hs_dev->lane_config);
 	}
 	/* Configure RDDMA registers */
 	configure_rddma(hs_dev, intf);
@@ -1824,13 +1859,24 @@ static void configure_int_loopback_mode(struct hsi2s_device *hs_dev, int intf)
 	if (hs_dev->lpaif_mode == HS_I2S) {
 		/* Reset I2S control register */
 		reg_clear(hs_dev->i2s_ctl);
+		/* Reset I2S select register */
+		clearbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
 		/* Configure I2S control register */
 		configure_i2s_int_lb(hs_dev);
 	} else {
 		/* Reset PCM control register */
 		reg_clear(hs_dev->pcm_ctl);
+		/* Reset TDM control register */
+		reg_clear(hs_dev->tdm_ctl);
+		/* Set I2S select register */
+		setbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
 		/* Configure PCM control register */
 		configure_pcm_int_lb(hs_dev);
+		/* Enable PCM slots for Rx and Tx */
+		enable_rpcm_slot(hs_dev);
+		enable_tpcm_slot(hs_dev);
+		/* Set PCM lane configuration */
+		set_pcm_lane_config(hs_dev, hs_dev->lane_config);
 	}
 	/* Configure RDDMA registers */
 	configure_rddma_int_lb(hs_dev, intf);
@@ -1862,13 +1908,24 @@ static void configure_ext_loopback_mode(struct hsi2s_device *hs_dev, int intf)
 	if (hs_dev->lpaif_mode == HS_I2S) {
 		/* Reset I2S control register */
 		reg_clear(hs_dev->i2s_ctl);
+		/* Reset I2S select register */
+		clearbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
 		/* Configure I2S control register */
 		configure_i2s_ext_lb(hs_dev);
 	} else {
 		/* Reset PCM control register */
 		reg_clear(hs_dev->pcm_ctl);
+		/* Reset TDM control register */
+		reg_clear(hs_dev->tdm_ctl);
+		/* Set I2S select register */
+		setbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
 		/* Configure PCM control register */
 		configure_pcm_ext_lb(hs_dev);
+		/* Enable PCM slots for Rx and Tx */
+		enable_rpcm_slot(hs_dev);
+		enable_tpcm_slot(hs_dev);
+		/* Set PCM lane configuration */
+		set_pcm_lane_config(hs_dev, hs_dev->lane_config);
 	}
 	/* Configure WRDMA registers */
 	configure_wrdma(hs_dev, intf);
@@ -3352,12 +3409,20 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				}
 				/* Configure the interface registers */
 				if (hs_dev->lpaif_mode == HS_I2S) {
+					/* Reset I2S select register */
+					clearbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
 					configure_i2s_spkr(hs_dev);
 				} else {
+					/* Set I2S select register */
+					setbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
 					configure_pcm_ctl(hs_dev);
 					if(hs_dev->tdm_en)
 						configure_tdm_ctl(hs_dev);
 					configure_pcm_tx(hs_dev);
+					/* Enable PCM slots for Tx */
+					enable_tpcm_slot(hs_dev);
+					/* Set PCM lane configuration */
+					set_pcm_lane_config(hs_dev, hs_dev->lane_config);
 				}
 				configure_rddma(hs_dev, minor);
 			}
@@ -3369,12 +3434,20 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			dev_info(hs_dev->dev, "Configuring hs%d as mic",hs_dev->minor_num);
 			if (hs_dev->client_count == 1) {
 				if (hs_dev->lpaif_mode == HS_I2S) {
+					/* Reset I2S select register */
+					clearbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
 					configure_i2s_mic(hs_dev);
 				} else {
+					/* Set I2S select register */
+					setbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
 					configure_pcm_ctl(hs_dev);
 					if(hs_dev->tdm_en)
 						configure_tdm_ctl(hs_dev);
 					configure_pcm_rx(hs_dev);
+					/* Enable PCM slots for Rx */
+					enable_rpcm_slot(hs_dev);
+					/* Set PCM lane configuration */
+					set_pcm_lane_config(hs_dev, hs_dev->lane_config);
 				}
 				configure_wrdma(hs_dev, minor);
 
@@ -3602,10 +3675,12 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 		case PCM_CONFIG_LANE:
 			dev_info(hs_dev->dev, "Setting PCM lane configuration");
-			if (hs_dev->client_count == 1)
+			if (hs_dev->client_count == 1) {
+				hs_dev->lane_config = arg;
 				set_pcm_lane_config(hs_dev, arg);
-			else
+			} else {
 				dev_warn(hs_dev->dev, "Mode already set by previous client");
+			}
 			break;
 
 		case LPAIF_INVERT_BIT_CLOCK:
@@ -4012,6 +4087,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	if (ret)
 		dev_warn(hs_dev->dev, "Resource 'pcm-lane-config' unavailable in dtsi");
 
+	hs_dev->lane_config = lane_config;
 	set_pcm_lane_config(hs_dev, lane_config);
 
 	/* Set read DMA flags */
