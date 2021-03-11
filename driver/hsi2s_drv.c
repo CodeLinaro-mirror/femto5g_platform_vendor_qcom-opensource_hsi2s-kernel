@@ -3691,6 +3691,7 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			dev_info(hsi2s_core->dev, "Toggling bit clock directions");
 			if (hs_dev->client_count == 1) {
 #if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
+#if defined(CONFIG_QCOM_QMI_HELPERS)
 				if (hsi2s_core->qmi_dev) {
 					ret = hsi2s_adsp_enable_clks();
 					if (ret < 0) {
@@ -3699,6 +3700,9 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 					}
 				}
 				dev_info(hs_dev->dev, "Toggled bit clock direction");
+#else
+				dev_info(hs_dev->dev, "QMI kernel configuration is not enabled");
+#endif
 #else
 				hsi2s_core->hab_req->clk_en = 1;
 
