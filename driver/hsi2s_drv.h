@@ -637,6 +637,7 @@ struct hsi2s_device {
 	u32 tdm_tpcm_sample_width;
 	u32 tdm_rpcm_sample_width;
 	u8 tdm_inv_sync;
+	u32 lane_config;
 
 	/* Device file attributes */
 	dev_t curr_devid;
