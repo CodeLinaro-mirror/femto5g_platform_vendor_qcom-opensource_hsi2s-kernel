@@ -41,12 +41,6 @@
 #define READ_LIMIT 4294967926 /* 4GB */
 #define SRC_DIGITAL_PLL 0x500
 #define BILLION 1000000000L
-#define INVERT 1
-#define EXTERNAL 1
-#define INVERT_INT_BIT_CLOCK 0x0
-#define INVERT_EXT_BIT_CLOCK 0x1
-#define DONT_INVERT_INT_BIT_CLOCK 0x2
-#define DONT_INVERT_EXT_BIT_CLOCK 0x3
 #define DAB_TUNER_COUNT 3
 
 /* Operation mode of the test utility */
@@ -63,7 +57,7 @@ enum operation_mode {
 	CONFIG_TDM_PARAMS,
 	CONFIG_LPAIF_MODE,
 	CONFIG_PCM_LANE,
-	CONFIG_BIT_CLK,
+	TOGGLE_BIT_CLK,
 	CONFIG_DAB_MRC
 };
 
@@ -148,8 +142,8 @@ void help()
 	printf("hsi2s_test --op_mode=10 --dev=<> --i2s/pcm\n\n");
 	printf("SET PCM LANE CONFIGURATION:\n");
 	printf("hsi2s_test --op_mode=11 --dev=<> --lane_config=<>\n\n");
-	printf("CONFIGURE BIT CLOCK:\n");
-	printf("hsi2s_test --op_mode=12 --dev=<> --invert/dont_invert --bit_clk_int/bit_clk_ext\n\n");
+	printf("TOGGLE BIT CLOCK:\n");
+	printf("hsi2s_test --op_mode=12 --dev=<>\n\n");
 	printf("CONFIGURE DAB MRC MODE:\n");
 	printf("hsi2s_test --op_mode=13 --output_a=<> --output_b=<> --bit_clock_hz=<> --data_buffer_ms=<> --target_type=<> [--dma_buffer_length=<>] [--set_cpu_affinity]\n\n");
 	printf("OPTIONS:\n\n");
@@ -186,10 +180,6 @@ void help()
 	printf("--i2s \n\t LPAIF in HS-I2S mode\n");
 	printf("--pcm \n\t LPAIF in HS-PCM mode\n");
 	printf("--lane_config \n\t Data lane direction in PCM mode : 0 -> SINGLE LANE, 1 -> MULTI LANE RX, 2 -> MULTI LANE TX\n");
-	printf("--invert \n\t Invert bit clock\n");
-	printf("--dont_invert \n\t Don't invert bit clock\n");
-	printf("--bit_clk_int \n\t Internal bit clock (Slave mode)\n");
-	printf("--bit_clk_ext \n\t External bit clock (Master mode)\n");
 	printf("--set_cpu_affinity \n\t Set CPU affinity to one of the available high cores\n");
 	printf("--target_type \n\t 0 -> 6155 1-> 8155/8195\n\n");
 }
@@ -354,11 +344,10 @@ int main(int argc, char **argv)
 	uint32_t tdm_rpcm_sample_width = 0;
 	uint8_t lpaif_mode = 0;
 	uint8_t lane_config = 0;
-	uint8_t invert = 0;
 	uint8_t set_affinity = 0;
 	int ret = 0;
 	int opt;
-	const char *short_opt = ":a:b:c:d:e:f:g:h:ijk:l:m:n:o:p:qrstu:v:w:x:y:z:A:B:CDE:FGHIJKL:M:N:O";
+	const char *short_opt = ":a:b:c:d:e:f:g:h:ijk:l:m:n:o:p:qrstu:v:w:x:y:z:A:B:CDE:FGH:I:J:K";
 	cpu_set_t cpuset;
 	uint8_t target_type = 0;
 	char *hs_dev[DAB_TUNER_COUNT] = {"/dev/hs0_i2s","/dev/hs1_i2s"};
@@ -403,15 +392,11 @@ int main(int argc, char **argv)
 		{"i2s", no_argument, NULL, 'D'},
 		{"pcm", no_argument, NULL, 'E'},
 		{"lane_config", required_argument, NULL, 'F'},
-		{"invert", no_argument, NULL, 'G'},
-		{"dont_invert", no_argument, NULL, 'H'},
-		{"bit_clk_int", no_argument, NULL, 'I'},
-		{"bit_clk_ext", no_argument, NULL, 'J'},
-		{"help", no_argument, NULL, 'K'},
-		{"set_cpu_affinity", no_argument, NULL, 'L'},
-		{"target_type", required_argument, NULL, 'M'},
-		{"output_a", required_argument, NULL, 'N'},
-		{"output_b", required_argument, NULL, 'O'},
+		{"help", no_argument, NULL, 'G'},
+		{"set_cpu_affinity", no_argument, NULL, 'H'},
+		{"target_type", required_argument, NULL, 'I'},
+		{"output_a", required_argument, NULL, 'J'},
+		{"output_b", required_argument, NULL, 'K'},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -615,34 +600,18 @@ int main(int argc, char **argv)
 				lane_config = atoi(optarg);
 				break;
 			case 'G':
-				/* Invert bit clock */
-				invert = 1;
-				break;
-			case 'H':
-				/* Don't invert bit clock */
-				invert = 0;
-				break;
-			case 'I':
-				/* Internal bit clock (HS-I2S slave)*/
-				clk_source = 0;
-				break;
-			case 'J':
-				/* External bit clock (HS-I2S master)*/
-				clk_source = 1;
-				break;
-			case 'K':
 				/* Print usage */
 				help();
 				goto exit_app;
-			case 'L':
+			case 'H':
 				/* Set CPU affinity */
 				set_affinity = 1;
 				break;
-			case 'M':
+			case 'I':
 				/* Check target type */
 				target_type = atoi(optarg);
 				break;
-			case 'N':
+			case 'J':
 				/* Output file a */
 				fd_out_a = fopen(optarg, "w");
 				if (fd_out_a == NULL) {
@@ -652,7 +621,7 @@ int main(int argc, char **argv)
 					goto exit_app;
 				}
 				break;
-			case 'O':
+			case 'K':
 				/* Output file b */
 				fd_out_b = fopen(optarg, "w");
 				if (fd_out_b == NULL) {
@@ -1291,28 +1260,17 @@ int main(int argc, char **argv)
 				printf("Failed to set PCM lane configuration on target\n");
 			}
 			break;
-		case CONFIG_BIT_CLK:
-			/* Operation mode : Configure bit clock */
-			if (argc < 5) {
+		case TOGGLE_BIT_CLK:
+			/* Operation mode : Toggle bit clock */
+			if (argc < 3) {
 				help();
 				ret = -1;
 				break;
 			}
-			if (invert == INVERT) {
-				if (clk_source == EXTERNAL)
-					reg_val = INVERT_EXT_BIT_CLOCK;
-				else
-					reg_val = INVERT_INT_BIT_CLOCK;
-			} else {
-				if (clk_source == EXTERNAL)
-					reg_val = DONT_INVERT_EXT_BIT_CLOCK;
-				else
-					reg_val = DONT_INVERT_INT_BIT_CLOCK;
-			}
-			printf("Configuring bit clock...\n");
-			ret = ioctl(fd_master, LPAIF_INVERT_BIT_CLOCK, reg_val);
+			printf("Toggling bit clock direction...\n");
+			ret = ioctl(fd_master, LPAIF_INVERT_BIT_CLOCK);
 			if (ret < 0) {
-				printf("Failed to configure bit clock on target\n");
+				printf("Failed to toggle bit clock on target\n");
 			}
 			break;
 		case CONFIG_DAB_MRC:
@@ -1330,7 +1288,6 @@ int main(int argc, char **argv)
 			if (target_type) {
 				printf("DAB MRC support is not available on SA8155/SA8195 targets\n");
 				ret = -1;
-				break;
 			} else {
 				/* Set CPU affinity to one of the available high cores */
 				if (set_affinity) {
