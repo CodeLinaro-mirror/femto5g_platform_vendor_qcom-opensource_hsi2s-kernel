@@ -2777,7 +2777,7 @@ static int rddma_schedule(void *data)
 }
 
 /* Interrupt thread function */
-static irq_handler_t irq_thread_fn(int irq, void *devid)
+static irqreturn_t irq_thread_fn(int irq, void *devid)
 {
 #ifndef DISABLE_DEVICE_READ
 	u32 temp_len;
@@ -3061,14 +3061,13 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 
 	mutex_unlock(&hsi2s_core->irqlock);
 
-	return (irq_handler_t)IRQ_HANDLED;
+	return IRQ_HANDLED;
 }
 
 /* Interrupt handler function */
-static irq_handler_t i2s_interrupt_handler(int irq, void *dev_id,
-					   struct pt_regs *regs)
+static irqreturn_t i2s_interrupt_handler(int irq, void *dev_id)
 {
-	return (irq_handler_t)IRQ_WAKE_THREAD;
+	return IRQ_WAKE_THREAD;
 }
 
 /* File operation functions for character drivers */
@@ -4495,8 +4494,8 @@ static int hsi2s_probe(struct platform_device *pdev)
 	ret =
 	devm_request_threaded_irq(&pdev->dev,
 				  hsi2s_core->irq0,
-				  (irq_handler_t)i2s_interrupt_handler,
-				  (irq_handler_t)irq_thread_fn,
+				  i2s_interrupt_handler,
+				  irq_thread_fn,
 				  IRQF_TRIGGER_HIGH | IRQF_ONESHOT,
 				  "lpaif_hs_out0_irq", hsi2s_core);
 	if (ret) {
