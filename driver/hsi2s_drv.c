@@ -11,7 +11,7 @@
  */
 
 #include "hsi2s_drv.h"
-#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
+#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM) && defined(CONFIG_QCOM_QMI_HELPERS)
 #include "hsi2s_adsp_clk_ctrl.h"
 #endif
 #include "hsi2s_common.h"
@@ -25,7 +25,7 @@ static u32 dma_buffer_length_words;
 /* HS-I2S core structure */
 static struct hsi2s_core *hsi2s_core;
 
-#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
+#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM) && defined(CONFIG_QCOM_QMI_HELPERS)
 static struct sockaddr_qrtr sq;
 #endif
 
@@ -62,7 +62,7 @@ static int enable_qmi;
 module_param(enable_qmi, int, 0644);
 MODULE_PARM_DESC(enable_qmi, "Is QMI enabled: 0->Disabled 1->Enabled");
 
-#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
+#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM) && defined(CONFIG_QCOM_QMI_HELPERS)
 /* QMI callbacks */
 static int hsi2s_clk_ctrl_send_sync_msg(struct qmi_handle *dev, int en)
 {
@@ -1301,6 +1301,16 @@ static void configure_rpcm_slot(struct hsi2s_device *hs_dev, u32 slot, int enabl
 	}
 }
 
+/* Enable RPCM slots */
+static void enable_rpcm_slot(struct hsi2s_device *hs_dev)
+{
+	int slot;
+
+	for (slot = 0; slot < MAX_SLOTS; slot++) {
+		configure_rpcm_slot(hs_dev, slot, 1);
+	}
+}
+
 /* Configure PCM tx slot */
 static void configure_tpcm_slot(struct hsi2s_device *hs_dev, u32 slot, int enable)
 {
@@ -1308,6 +1318,16 @@ static void configure_tpcm_slot(struct hsi2s_device *hs_dev, u32 slot, int enabl
 		setbits(hs_dev->tpcm_slot_num, 1 << slot);
 	} else {
 		clearbits(hs_dev->tpcm_slot_num, 1 << slot);
+	}
+}
+
+/* Enable TPCM slots */
+static void enable_tpcm_slot(struct hsi2s_device *hs_dev)
+{
+	int slot;
+
+	for (slot = 0; slot < MAX_SLOTS; slot++) {
+		configure_tpcm_slot(hs_dev, slot, 1);
 	}
 }
 
@@ -1642,6 +1662,8 @@ static void configure_pcm_int_lb(struct hsi2s_device *hs_dev)
 		configure_tdm_ctl(hs_dev);
 	configure_pcm_tx(hs_dev);
 	configure_pcm_rx(hs_dev);
+	setbits(hs_dev->pcm_ctl, hsi2s_core->macro->bit_pcm_reset);
+	clearbits(hs_dev->pcm_ctl, hsi2s_core->macro->bit_pcm_reset);
 }
 
 /* Configure the read DMA registers */
@@ -1768,6 +1790,8 @@ static void configure_pcm_ext_lb(struct hsi2s_device *hs_dev)
 		configure_tdm_ctl(hs_dev);
 	configure_pcm_tx(hs_dev);
 	configure_pcm_rx(hs_dev);
+	setbits(hs_dev->pcm_ctl, hsi2s_core->macro->bit_pcm_reset);
+	clearbits(hs_dev->pcm_ctl, hsi2s_core->macro->bit_pcm_reset);
 }
 
 /* Function to configure HS-I2S registers in normal mode */
@@ -1782,17 +1806,28 @@ static void configure_normal_mode(struct hsi2s_device *hs_dev, int intf)
 	if (hs_dev->lpaif_mode == HS_I2S) {
 		/* Reset I2S control register */
 		reg_clear(hs_dev->i2s_ctl);
+		/* Reset I2S select register */
+		clearbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
 		/* Configure I2S control register */
 		configure_i2s_spkr(hs_dev);
 		configure_i2s_mic(hs_dev);
 	} else {
 		/* Reset PCM control register */
 		reg_clear(hs_dev->pcm_ctl);
+		/* Reset TDM control register */
+		reg_clear(hs_dev->tdm_ctl);
+		/* Set I2S select register */
+		setbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
 		configure_pcm_ctl(hs_dev);
 		if(hs_dev->tdm_en)
 			configure_tdm_ctl(hs_dev);
 		configure_pcm_tx(hs_dev);
 		configure_pcm_rx(hs_dev);
+		/* Enable PCM slots for Rx and Tx */
+		enable_rpcm_slot(hs_dev);
+		enable_tpcm_slot(hs_dev);
+		/* Set PCM lane configuration */
+		set_pcm_lane_config(hs_dev, hs_dev->lane_config);
 	}
 	/* Configure RDDMA registers */
 	configure_rddma(hs_dev, intf);
@@ -1824,13 +1859,24 @@ static void configure_int_loopback_mode(struct hsi2s_device *hs_dev, int intf)
 	if (hs_dev->lpaif_mode == HS_I2S) {
 		/* Reset I2S control register */
 		reg_clear(hs_dev->i2s_ctl);
+		/* Reset I2S select register */
+		clearbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
 		/* Configure I2S control register */
 		configure_i2s_int_lb(hs_dev);
 	} else {
 		/* Reset PCM control register */
 		reg_clear(hs_dev->pcm_ctl);
+		/* Reset TDM control register */
+		reg_clear(hs_dev->tdm_ctl);
+		/* Set I2S select register */
+		setbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
 		/* Configure PCM control register */
 		configure_pcm_int_lb(hs_dev);
+		/* Enable PCM slots for Rx and Tx */
+		enable_rpcm_slot(hs_dev);
+		enable_tpcm_slot(hs_dev);
+		/* Set PCM lane configuration */
+		set_pcm_lane_config(hs_dev, hs_dev->lane_config);
 	}
 	/* Configure RDDMA registers */
 	configure_rddma_int_lb(hs_dev, intf);
@@ -1862,13 +1908,24 @@ static void configure_ext_loopback_mode(struct hsi2s_device *hs_dev, int intf)
 	if (hs_dev->lpaif_mode == HS_I2S) {
 		/* Reset I2S control register */
 		reg_clear(hs_dev->i2s_ctl);
+		/* Reset I2S select register */
+		clearbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
 		/* Configure I2S control register */
 		configure_i2s_ext_lb(hs_dev);
 	} else {
 		/* Reset PCM control register */
 		reg_clear(hs_dev->pcm_ctl);
+		/* Reset TDM control register */
+		reg_clear(hs_dev->tdm_ctl);
+		/* Set I2S select register */
+		setbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
 		/* Configure PCM control register */
 		configure_pcm_ext_lb(hs_dev);
+		/* Enable PCM slots for Rx and Tx */
+		enable_rpcm_slot(hs_dev);
+		enable_tpcm_slot(hs_dev);
+		/* Set PCM lane configuration */
+		set_pcm_lane_config(hs_dev, hs_dev->lane_config);
 	}
 	/* Configure WRDMA registers */
 	configure_wrdma(hs_dev, intf);
@@ -2279,7 +2336,7 @@ static int hsi2s_configure_gpio_pins(struct platform_device *pdev, int active)
 
 /* Clock management functions */
 
-#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
+#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM) && defined(CONFIG_QCOM_QMI_HELPERS)
 /* Function to disable clocks for SA8155/SA8195 using QMI */
 static int hsi2s_adsp_disable_clks(void)
 {
@@ -2720,7 +2777,7 @@ static int rddma_schedule(void *data)
 }
 
 /* Interrupt thread function */
-static irq_handler_t irq_thread_fn(int irq, void *devid)
+static irqreturn_t irq_thread_fn(int irq, void *devid)
 {
 #ifndef DISABLE_DEVICE_READ
 	u32 temp_len;
@@ -3004,14 +3061,13 @@ static irq_handler_t irq_thread_fn(int irq, void *devid)
 
 	mutex_unlock(&hsi2s_core->irqlock);
 
-	return (irq_handler_t)IRQ_HANDLED;
+	return IRQ_HANDLED;
 }
 
 /* Interrupt handler function */
-static irq_handler_t i2s_interrupt_handler(int irq, void *dev_id,
-					   struct pt_regs *regs)
+static irqreturn_t i2s_interrupt_handler(int irq, void *dev_id)
 {
-	return (irq_handler_t)IRQ_WAKE_THREAD;
+	return IRQ_WAKE_THREAD;
 }
 
 /* File operation functions for character drivers */
@@ -3255,7 +3311,9 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	struct hstdm_params *tdm_params;
 	void __iomem *clk_val_reg;
 	void __iomem *clk_update_reg;
-	void __iomem *clk_inv_reg;
+#if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
+	u32 resp_size = sizeof(msg_t);
+#endif
 	int minor;
 	int ret = 0;
 
@@ -3350,12 +3408,20 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				}
 				/* Configure the interface registers */
 				if (hs_dev->lpaif_mode == HS_I2S) {
+					/* Reset I2S select register */
+					clearbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
 					configure_i2s_spkr(hs_dev);
 				} else {
+					/* Set I2S select register */
+					setbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
 					configure_pcm_ctl(hs_dev);
 					if(hs_dev->tdm_en)
 						configure_tdm_ctl(hs_dev);
 					configure_pcm_tx(hs_dev);
+					/* Enable PCM slots for Tx */
+					enable_tpcm_slot(hs_dev);
+					/* Set PCM lane configuration */
+					set_pcm_lane_config(hs_dev, hs_dev->lane_config);
 				}
 				configure_rddma(hs_dev, minor);
 			}
@@ -3367,12 +3433,20 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			dev_info(hs_dev->dev, "Configuring hs%d as mic",hs_dev->minor_num);
 			if (hs_dev->client_count == 1) {
 				if (hs_dev->lpaif_mode == HS_I2S) {
+					/* Reset I2S select register */
+					clearbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
 					configure_i2s_mic(hs_dev);
 				} else {
+					/* Set I2S select register */
+					setbits(hs_dev->i2s_sel, hsi2s_core->macro->bit_i2s_sel);
 					configure_pcm_ctl(hs_dev);
 					if(hs_dev->tdm_en)
 						configure_tdm_ctl(hs_dev);
 					configure_pcm_rx(hs_dev);
+					/* Enable PCM slots for Rx */
+					enable_rpcm_slot(hs_dev);
+					/* Set PCM lane configuration */
+					set_pcm_lane_config(hs_dev, hs_dev->lane_config);
 				}
 				configure_wrdma(hs_dev, minor);
 
@@ -3600,10 +3674,12 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 		case PCM_CONFIG_LANE:
 			dev_info(hs_dev->dev, "Setting PCM lane configuration");
-			if (hs_dev->client_count == 1)
+			if (hs_dev->client_count == 1) {
+				hs_dev->lane_config = arg;
 				set_pcm_lane_config(hs_dev, arg);
-			else
+			} else {
 				dev_warn(hs_dev->dev, "Mode already set by previous client");
+			}
 			break;
 
 		case LPAIF_INVERT_BIT_CLOCK:
@@ -3611,41 +3687,43 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				dev_err(hs_dev->dev, "Bit clock configuration is not supported by target");
 				return -EINVAL;
 			}
-
-			dev_info(hs_dev->dev, "Re-configuring bit clock on HS%d interface", hs_dev->minor_num);
+			dev_info(hsi2s_core->dev, "Toggling bit clock directions");
 			if (hs_dev->client_count == 1) {
-				if (hs_dev->minor_num == 0)
-					clk_inv_reg = ioremap(HS0_BITCLK_INV_REG, 4);
-				else if (hs_dev->minor_num == 1)
-					clk_inv_reg = ioremap(HS1_BITCLK_INV_REG, 4);
-				else
-					clk_inv_reg = ioremap(HS2_BITCLK_INV_REG, 4);
+#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
+#if defined(CONFIG_QCOM_QMI_HELPERS)
+				if (hsi2s_core->qmi_dev) {
+					ret = hsi2s_adsp_enable_clks();
+					if (ret < 0) {
+						dev_err(hsi2s_core->dev, "Failed to toggle bit clocks");
+						break;
+					}
+				}
+				dev_info(hs_dev->dev, "Toggled bit clock direction");
+#else
+				dev_info(hs_dev->dev, "QMI kernel configuration is not enabled");
+#endif
+#else
+				hsi2s_core->hab_req->clk_en = 1;
 
-				switch (arg) {
-					case INVERT_INT_BIT_CLOCK:
-						dev_info(hs_dev->dev, "Inverting internal bit clock");
-						setbits(clk_inv_reg, INV_INT_CLK);
-						break;
-					case INVERT_EXT_BIT_CLOCK:
-						dev_info(hs_dev->dev, "Inverting external bit clock");
-						setbits(clk_inv_reg, INV_EXT_CLK);
-						break;
-					case DONT_INVERT_INT_BIT_CLOCK:
-						dev_info(hs_dev->dev, "Non-inverting internal bit clock");
-						clearbits(clk_inv_reg, INV_INT_CLK);
-						break;
-					case DONT_INVERT_EXT_BIT_CLOCK:
-						dev_info(hs_dev->dev, "Non-inverting external bit clock");
-						clearbits(clk_inv_reg, INV_EXT_CLK);
-						break;
-					default:
-						dev_err(hs_dev->dev, "Invalid argument provided");
-						ret = -EINVAL;
-						break;
+				ret = habmm_socket_send(hsi2s_core->hab_handle, hsi2s_core->hab_req, resp_size, 0);
+				if (ret) {
+					dev_err(hsi2s_core->dev, "habmm socket send failed (%d)", ret);
+					break;
 				}
 
-				iounmap(clk_inv_reg);
-				dev_info(hs_dev->dev, "Re-configured bit clock");
+				ret = habmm_socket_recv(hsi2s_core->hab_handle, hsi2s_core->hab_resp, &resp_size,
+										UINT_MAX, HABMM_SOCKET_RECV_FLAGS_UNINTERRUPTIBLE);
+				if (ret) {
+					dev_err(hsi2s_core->dev, "habmm socket receive failed (%d)", ret);
+					break;
+				}
+
+				if (hsi2s_core->hab_resp->rsp) {
+					dev_err(hsi2s_core->dev, "error response (%d)", hsi2s_core->hab_resp->rsp);
+					ret = -EIO;
+					break;
+				}
+#endif
 			}
 			else
 				dev_warn(hs_dev->dev, "Clock already set by previous client");
@@ -4012,6 +4090,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	if (ret)
 		dev_warn(hs_dev->dev, "Resource 'pcm-lane-config' unavailable in dtsi");
 
+	hs_dev->lane_config = lane_config;
 	set_pcm_lane_config(hs_dev, lane_config);
 
 	/* Set read DMA flags */
@@ -4213,6 +4292,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 	else if (target == 8155 || target == 8195) {
 		if (enable_qmi) {
 #if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
+#if defined(CONFIG_QCOM_QMI_HELPERS)
 			/* Allocate QMI handle */
 			hsi2s_core->qmi_dev = kzalloc(sizeof(*hsi2s_core->qmi_dev), GFP_KERNEL);
 			if (!hsi2s_core->qmi_dev) {
@@ -4250,6 +4330,11 @@ static int hsi2s_probe(struct platform_device *pdev)
 			if (ret < 0) {
 				goto err_disable_core_clocks;
 			}
+#else
+			dev_err(hsi2s_core->dev, "QMI kernel configuration is not enabled");
+			h_modify_core_clks(1);
+			h_modify_interface_clks(1);
+#endif
 #else
 			hsi2s_core->hab_req = kzalloc(sizeof(msg_t), GFP_KERNEL);
 			if (!hsi2s_core->hab_req) {
@@ -4409,8 +4494,8 @@ static int hsi2s_probe(struct platform_device *pdev)
 	ret =
 	devm_request_threaded_irq(&pdev->dev,
 				  hsi2s_core->irq0,
-				  (irq_handler_t)i2s_interrupt_handler,
-				  (irq_handler_t)irq_thread_fn,
+				  i2s_interrupt_handler,
+				  irq_thread_fn,
 				  IRQF_TRIGGER_HIGH | IRQF_ONESHOT,
 				  "lpaif_hs_out0_irq", hsi2s_core);
 	if (ret) {
@@ -4458,8 +4543,13 @@ err_disable_core_clocks:
 	} else {
 		if (enable_qmi) {
 #if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
+#if defined(CONFIG_QCOM_QMI_HELPERS)
 			if (hsi2s_core->qmi_dev)
 				kfree(hsi2s_core->qmi_dev);
+#else
+			h_modify_interface_clks(0);
+			h_modify_core_clks(0);
+#endif
 #else
 err_close_hab:
 			habmm_socket_close(handle);
@@ -4572,11 +4662,16 @@ static int hsi2s_remove(struct platform_device *pdev)
 	else if (hs_core->target == 8155 || hs_core->target == 8195) {
 		if (enable_qmi) {
 #if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
+#if defined(CONFIG_QCOM_QMI_HELPERS)
 			if (hs_core->qmi_dev) {
 				hsi2s_adsp_disable_clks();
 				qmi_handle_release(hs_core->qmi_dev);
 				kfree(hs_core->qmi_dev);
 			}
+#else
+			h_modify_interface_clks(0);
+			h_modify_core_clks(0);
+#endif
 #else
 			hs_core->hab_req->clk_en = 0;
 
@@ -4651,6 +4746,7 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 		else if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195) {
 			if (enable_qmi) {
 #if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
+#if defined(CONFIG_QCOM_QMI_HELPERS)
 				if (hsi2s_core->qmi_dev) {
 					ret = hsi2s_adsp_disable_clks();
 					if (ret < 0) {
@@ -4658,6 +4754,10 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 						goto err_suspend;
 					}
 				}
+#else
+			h_modify_interface_clks(0);
+			h_modify_core_clks(0);
+#endif
 #else
 				hsi2s_core->hab_req->clk_en = 0;
 
@@ -4729,6 +4829,7 @@ static int hsi2s_resume(struct platform_device *pdev)
 		} else if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195) {
 			if (enable_qmi) {
 #if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
+#if defined(CONFIG_QCOM_QMI_HELPERS)
 				if (hsi2s_core->qmi_dev) {
 					ret = hsi2s_adsp_enable_clks();
 					if (ret < 0) {
@@ -4736,6 +4837,10 @@ static int hsi2s_resume(struct platform_device *pdev)
 						goto err_resume;
 					}
 				}
+#else
+				h_modify_interface_clks(1);
+				h_modify_core_clks(1);
+#endif
 #else
 				hsi2s_core->hab_req->clk_en = 1;
 
