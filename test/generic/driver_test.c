@@ -249,6 +249,7 @@ void *poll_read(void *arg)
 	void *prev_addr;
 	void *curr_addr;
 	long read_len;
+	long read_len_blk;
 
 	params = (struct thread_params *)arg;
 	if (params) {
@@ -288,32 +289,46 @@ void *poll_read(void *arg)
 
 			if(prev_addr < curr_addr) {
 				read_len = curr_addr - prev_addr;
-				if (r_limit + read_len > read_limit) {
+				read_len_blk = mmap_len * (read_len/mmap_len);
+				if (r_limit + read_len_blk > read_limit) {
 					fwrite(prev_addr,read_limit - r_limit,1,fd_write_op);
+					prev_addr += (read_limit - r_limit);
 					r_limit += (read_limit - r_limit);
 				} else {
-					fwrite(prev_addr,read_len,1,fd_write_op);
-					r_limit += read_len;
+					fwrite(prev_addr,read_len_blk,1,fd_write_op);
+					prev_addr += read_len_blk;
+					r_limit += read_len_blk;
 				}
 			} else {
 				read_len = (mmap_end - prev_addr) + (curr_addr - mmap_ptr);
-				if (r_limit + read_len > read_limit) {
+				read_len_blk = mmap_len * (read_len/mmap_len);
+				if (r_limit + read_len_blk > read_limit) {
 					if (prev_addr + (read_limit - r_limit) > mmap_end) {
 						temp = mmap_end - prev_addr;
 						fwrite(prev_addr,temp,1,fd_write_op);
 						temp = (read_limit - r_limit) - temp;
 						fwrite(mmap_ptr,temp,1,fd_write_op);
+						prev_addr = mmap_ptr + temp;
 					} else {
 						fwrite(prev_addr,read_limit - r_limit,1,fd_write_op);
+						prev_addr += (read_limit - r_limit);
 					}
 					r_limit += (read_limit - r_limit);
 				} else {
-					fwrite(prev_addr,mmap_end - prev_addr,1,fd_write_op);
-					fwrite(mmap_ptr,curr_addr - mmap_ptr,1,fd_write_op);
-					r_limit += read_len;
+					if (prev_addr + read_len_blk > mmap_end) {
+						temp = mmap_end - prev_addr;
+						fwrite(prev_addr,temp,1,fd_write_op);
+						temp = read_len_blk - temp;
+						fwrite(mmap_ptr,temp,1,fd_write_op);
+						prev_addr = mmap_ptr + temp;
+					} else {
+						fwrite(prev_addr,read_len_blk,1,fd_write_op);
+						prev_addr += read_len_blk;
+					}
+					r_limit += read_len_blk;
 				}
 			}
-			prev_addr = curr_addr;
+
 			if (prev_addr >= mmap_end)
 				prev_addr = mmap_ptr;
 		}
