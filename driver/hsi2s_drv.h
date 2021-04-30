@@ -266,10 +266,6 @@
 #define IRQ_SEC_RD_DIFF_RATE			BIT(30)
 #define IRQ_SEC_RD_NO_RATE			BIT(31)
 
-/* Bits for clock invert register */
-#define INV_INT_CLK				BIT(0)
-#define INV_EXT_CLK				BIT(1)
-
 /* Additional macros */
 #define DEVICE_NAME "hsi2s_driver"
 #define SDR0 "hs0_i2s"
@@ -324,10 +320,6 @@
 #define DISABLE_RATE_DETECTION
 #define SPKR 0
 #define MIC 1
-#define INVERT_INT_BIT_CLOCK 0x0
-#define INVERT_EXT_BIT_CLOCK 0x1
-#define DONT_INVERT_INT_BIT_CLOCK 0x2
-#define DONT_INVERT_EXT_BIT_CLOCK 0x3
 #define PGS_TIMEOUT msecs_to_jiffies(3000)
 #define LONG_RATE_MIN 0
 #define LONG_RATE_MAX 63
@@ -450,13 +442,10 @@
 
 #define HS0_BITCLK_CMD_REG 0x17046000
 #define HS0_BITCLK_CFG_REG 0x17046004
-#define HS0_BITCLK_INV_REG 0x17046020
 #define HS1_BITCLK_CMD_REG 0x17047000
 #define HS1_BITCLK_CFG_REG 0x17047004
-#define HS1_BITCLK_INV_REG 0x17047020
 #define HS2_BITCLK_CMD_REG 0x17048000
 #define HS2_BITCLK_CFG_REG 0x17048004
-#define HS2_BITCLK_INV_REG 0x17048020
 #define HS_BITCLK_UPDATE 0x1
 #define HS_BITCLK_RESET 0x71F
 
@@ -660,6 +649,7 @@ struct hsi2s_device {
 	u32 tdm_tpcm_sample_width;
 	u32 tdm_rpcm_sample_width;
 	u8 tdm_inv_sync;
+	u32 lane_config;
 
 	/* Device file attributes */
 	dev_t curr_devid;
