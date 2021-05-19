@@ -4379,6 +4379,8 @@ static int hsi2s_probe(struct platform_device *pdev)
 	if (of_device_is_compatible(pdev->dev.of_node, "qcom,hsi2s-interface"))
 		return hsi2s_interface_probe(pdev);
 
+	place_marker("M - DRIVER HS-I2S Init");
+
 	hsi2s_core = kzalloc(sizeof(*hsi2s_core), GFP_KERNEL);
 	if (!hsi2s_core)
 		return -ENOMEM;
@@ -4751,6 +4753,8 @@ static int hsi2s_probe(struct platform_device *pdev)
 		dev_err(hsi2s_core->dev, "Failed to add child devices");
 	else
 		dev_info(hsi2s_core->dev, "Added child devices");
+
+	place_marker("M - DRIVER HS-I2S Ready");
 
 	return ret;
 
