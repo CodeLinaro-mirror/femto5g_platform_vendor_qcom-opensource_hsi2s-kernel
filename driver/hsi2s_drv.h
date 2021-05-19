@@ -38,6 +38,7 @@
 #include <linux/habmm.h>
 #include <linux/version.h>
 #include <uapi/linux/sched/types.h>
+#include <soc/qcom/boot_stats.h>
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
 #include <asm/dma-iommu.h>
 #include <linux/eventpoll.h>
