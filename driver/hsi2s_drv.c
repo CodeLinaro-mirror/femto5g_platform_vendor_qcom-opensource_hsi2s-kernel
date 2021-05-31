@@ -4618,6 +4618,17 @@ static int hsi2s_probe(struct platform_device *pdev)
 		goto err_class_destroy;
 	}
 
+	/* Configure the output routing gpio for 8195 */
+	if (target == 8195) {
+		if (of_property_read_bool(pdev->dev.of_node, "pinctrl-names")) {
+			dev_info(hsi2s_core->dev, "Configure output routing gpio during init");
+			ret = hsi2s_configure_gpio_pins(pdev, 1);
+			if (ret < 0) {
+				dev_err(hsi2s_core->dev, "Failed to configure the output routing gpio during init");
+			}
+		}
+	}
+
 	/* Reset the mic enabler flag */
 	hsi2s_core->en_mic = 0;
 
@@ -4751,8 +4762,8 @@ static int hsi2s_interface_remove(struct platform_device *pdev)
 static int hsi2s_remove(struct platform_device *pdev)
 {
 	struct hsi2s_core *hs_core;
-#if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
 	int ret = 0;
+#if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
 	u32 resp_size = sizeof(msg_t);
 #endif
 
@@ -4763,6 +4774,16 @@ static int hsi2s_remove(struct platform_device *pdev)
 	of_platform_depopulate(&pdev->dev);
 	/* Remove the core device */
 	hs_core = (struct hsi2s_core *)platform_get_drvdata(pdev);
+	/* Reset the output routing gpio for 8195 */
+	if (hs_core->target == 8195) {
+		if (of_property_read_bool(pdev->dev.of_node, "pinctrl-names")) {
+			dev_info(hs_core->dev, "Reset output routing gpio");
+			ret = hsi2s_configure_gpio_pins(pdev, 0);
+			if (ret < 0) {
+				dev_err(hs_core->dev, "Failed to reset the output routing gpio");
+			}
+		}
+	}
 	/* Remove the device file */
 	device_destroy(hs_core->class_sdr, hs_core->curr_devid);
 	class_destroy(hs_core->class_sdr);
@@ -4884,6 +4905,16 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 		if (hsi2s_core->target == 6155)
 			hsi2s_suspend_core_clks(pdev);
 		else if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195) {
+			/* Reset the output routing gpio for 8195 */
+			if (hsi2s_core->target == 8195) {
+				if (of_property_read_bool(pdev->dev.of_node, "pinctrl-names")) {
+					dev_info(hsi2s_core->dev, "Reset output routing gpio during suspend");
+					ret = hsi2s_configure_gpio_pins(pdev, 0);
+					if (ret < 0) {
+						dev_err(hsi2s_core->dev, "Failed to reset the output routing gpio during suspend");
+					}
+				}
+			}
 			if (enable_qmi) {
 #if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
 #if defined(CONFIG_QCOM_QMI_HELPERS)
@@ -5006,6 +5037,16 @@ static int hsi2s_resume(struct platform_device *pdev)
 			} else {
 				h_modify_interface_clks(1);
 				h_modify_core_clks(1);
+			}
+			/* Configure the output routing gpio for 8195 */
+			if (hsi2s_core->target == 8195) {
+				if (of_property_read_bool(pdev->dev.of_node, "pinctrl-names")) {
+					dev_info(hsi2s_core->dev, "Configure output routing gpio during resume");
+					ret = hsi2s_configure_gpio_pins(pdev, 1);
+					if (ret < 0) {
+						dev_err(hsi2s_core->dev, "Failed to configure the output routing gpio during resume");
+					}
+				}
 			}
 		}
 	}
