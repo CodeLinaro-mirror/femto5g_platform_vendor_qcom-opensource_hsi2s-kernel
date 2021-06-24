@@ -432,10 +432,11 @@ void *poll_read(void *arg)
 
 int main(int argc, char **argv)
 {
-	int fd_master = 0;
-	int fd_slave = 0;
-	int fd_core = 0;
+	int fd_master = -1;
+	int fd_slave = -1;
+	int fd_core = -1;
 	FILE *fd_read_ip = NULL;
+	FILE *fd_write_op = NULL;
 	long read_length_bytes = 0;
 	long read_length_words = 0;
 	enum operation_mode mode = 0;
@@ -480,9 +481,9 @@ int main(int argc, char **argv)
 	cpu_set_t cpuset;
 	uint8_t target_type = 0;
 	char *hs_dev[DAB_TUNER_COUNT] = {"/dev/hs0_i2s","/dev/hs1_i2s"};
-	int fd_dab[DAB_TUNER_COUNT];
+	int fd_dab[DAB_TUNER_COUNT] = {-1, -1};
 	pthread_t tid_dab[DAB_TUNER_COUNT];
-	struct thread_params *dab_params[DAB_TUNER_COUNT];
+	struct thread_params *dab_params[DAB_TUNER_COUNT] = {NULL};
 	FILE *fd_out_a = NULL;
 	FILE *fd_out_b = NULL;
 	struct thread_params *params;
@@ -556,35 +557,43 @@ int main(int argc, char **argv)
 				break;
 			case 'b':
 				/* Device file */
-				fd_master = open(optarg, O_RDWR);
 				if(fd_master < 0) {
-					printf("Cannot open device file\n");
-					help();
-					ret = -1;
-					goto exit_app;
+					fd_master = open(optarg, O_RDWR);
+					if(fd_master < 0) {
+						printf("Cannot open device file\n");
+						help();
+						ret = -1;
+						goto exit_app;
+					}
+					minor_num = optarg[7] - '0';
 				}
-				minor_num = optarg[7] - '0';
 				break;
 			case 'c':
 				/* Slave device file */
-				fd_slave = open(optarg, O_RDWR);
 				if(fd_slave < 0) {
-					printf("Cannot open device file\n");
-					help();
-					ret = -1;
-					goto exit_app;
+					fd_slave = open(optarg, O_RDWR);
+					if(fd_slave < 0) {
+						printf("Cannot open device file\n");
+						help();
+						ret = -1;
+						goto exit_app;
+					}
+					slave = optarg[7] - '0';
 				}
-				slave = optarg[7] - '0';
 				break;
 			case 'd':
 				/* Output file */
 				if (params) {
-					params->fd_write_op = fopen(optarg, "w");
-					if (params->fd_write_op == NULL) {
-						printf("Cannot open output file\n");
-						help();
-						ret = -1;
-						goto exit_app;
+					if (fd_write_op == NULL) {
+						fd_write_op = fopen(optarg, "w");
+						if (fd_write_op == NULL) {
+							printf("Cannot open output file\n");
+							help();
+							ret = -1;
+							goto exit_app;
+						} else {
+							params->fd_write_op = fd_write_op;
+						}
 					}
 				} else {
 					printf("Thread parameter structure is null\n");
@@ -594,18 +603,20 @@ int main(int argc, char **argv)
 				break;
 			case 'e':
 				/* Input file */
-				fd_read_ip = fopen(optarg, "r");
 				if (fd_read_ip == NULL) {
-					printf("Cannot open input file\n");
-					help();
-					ret = -1;
-					goto exit_app;
+					fd_read_ip = fopen(optarg, "r");
+					if (fd_read_ip == NULL) {
+						printf("Cannot open input file\n");
+						help();
+						ret = -1;
+						goto exit_app;
+					}
+					printf("Calculating i/p file size...\n");
+					wav_samples = get_size(fd_read_ip);
+					no_words = wav_samples/BYTES_PER_WORD;
+					printf("Input file size in bytes: %ld\n", wav_samples);
+					read_limit = wav_samples;
 				}
-				printf("Calculating i/p file size...\n");
-				wav_samples = get_size(fd_read_ip);
-				no_words = wav_samples/BYTES_PER_WORD;
-				printf("Input file size in bytes: %ld\n", wav_samples);
-				read_limit = wav_samples;
 				break;
 			case 'f':
 				/* Bit clock rate */
@@ -743,22 +754,26 @@ int main(int argc, char **argv)
 				break;
 			case 'J':
 				/* Output file a */
-				fd_out_a = fopen(optarg, "w");
 				if (fd_out_a == NULL) {
-					printf("Cannot open output file a\n");
-					help();
-					ret = -1;
-					goto exit_app;
+					fd_out_a = fopen(optarg, "w");
+					if (fd_out_a == NULL) {
+						printf("Cannot open output file a\n");
+						help();
+						ret = -1;
+						goto exit_app;
+					}
 				}
 				break;
 			case 'K':
 				/* Output file b */
-				fd_out_b = fopen(optarg, "w");
 				if (fd_out_b == NULL) {
-					printf("Cannot open output file b\n");
-					help();
-					ret = -1;
-					goto exit_app;
+					fd_out_b = fopen(optarg, "w");
+					if (fd_out_b == NULL) {
+						printf("Cannot open output file b\n");
+						help();
+						ret = -1;
+						goto exit_app;
+					}
 				}
 				break;
 			case ':':
@@ -867,11 +882,6 @@ int main(int argc, char **argv)
 			printf("Joining threads\n");
 			pthread_join(tid,NULL);
 			printf("Threads joined \n");
-
-			printf("Closing Files \n");
-			fclose(params->fd_write_op);
-			free(params);
-			close(fd_master);
 			break;
 
 		case NORMAL_TX:
@@ -933,11 +943,6 @@ int main(int argc, char **argv)
 				printf("Failed to stop Tx on hsi2s device\n");
 				break;
 			}
-
-			printf("Closing Files \n");
-			free(wav_data);
-			fclose(fd_read_ip);
-			close(fd_master);
 			break;
 
 		case INTERNAL_LB:
@@ -1040,13 +1045,6 @@ int main(int argc, char **argv)
 				printf("Failed to stop Tx on hsi2s device\n");
 				break;
 			}
-
-			printf("Closing Files \n");
-			free(wav_data);
-			fclose(fd_read_ip);
-			fclose(params->fd_write_op);
-			free(params);
-			close(fd_master);
 			break;
 
 		case EXTERNAL_LB_MASTER:
@@ -1150,13 +1148,6 @@ int main(int argc, char **argv)
 				printf("Failed to stop Tx on hsi2s device\n");
 				break;
 			}
-
-			printf("Closing Files \n");
-			free(wav_data);
-			fclose(fd_read_ip);
-			fclose(params->fd_write_op);
-			free(params);
-			close(fd_master);
 			break;
 
 		case EXTERNAL_LB_MASTER_SLAVE:
@@ -1289,14 +1280,6 @@ int main(int argc, char **argv)
 				printf("Failed to stop Tx on hsi2s device\n");
 				break;
 			}
-
-			printf("Closing Files \n");
-			free(wav_data);
-			fclose(fd_read_ip);
-			fclose(params->fd_write_op);
-			free(params);
-			close(fd_slave);
-			close(fd_master);
 			break;
 
 		case SET_MUXMODE:
@@ -1574,11 +1557,6 @@ int main(int argc, char **argv)
 					pthread_join(tid_dab[i], NULL);
 				}
 				printf("Threads joined \n");
-
-				/* Free the thread parameter structures */
-				for (i = 0; i < 2; i++) {
-					free(dab_params[i]);
-				}
 			}
 			break;
 		default:
@@ -1588,5 +1566,54 @@ int main(int argc, char **argv)
 	};
 
 exit_app:
+	printf("Clean-up in progress...\n");
+	if (wav_data) {
+		free(wav_data);
+		wav_data = NULL;
+	}
+	if (fd_core >= 0) {
+		close(fd_core);
+		fd_core = -1;
+	}
+	if (fd_read_ip) {
+		fclose(fd_read_ip);
+		fd_read_ip = NULL;
+	}
+	if (fd_write_op) {
+		fclose(fd_write_op);
+		fd_write_op = NULL;
+	}
+	if (params) {
+		free(params);
+		params = NULL;
+	}
+	for (i = 0; i < 2; i++) {
+		if (fd_dab[i] >= 0) {
+			close(fd_dab[i]);
+			fd_dab[i] = -1;
+		}
+		if (dab_params[i]) {
+			free(dab_params[i]);
+			dab_params[i] = NULL;
+		}
+	}
+	if (fd_out_a) {
+		fclose(fd_out_a);
+		fd_out_a = NULL;
+	}
+	if (fd_out_b) {
+		fclose(fd_out_b);
+		fd_out_b = NULL;
+	}
+	if (fd_slave >= 0) {
+		close(fd_slave);
+		fd_slave = -1;
+	}
+	if (fd_master >= 0) {
+		close(fd_master);
+		fd_master = -1;
+	}
+	printf("Exiting...\n");
+
 	return ret;
 }
