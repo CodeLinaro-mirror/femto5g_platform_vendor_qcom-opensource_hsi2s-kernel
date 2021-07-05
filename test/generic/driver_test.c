@@ -38,7 +38,7 @@
 #define BYTES_PER_WORD 4
 #define READ_LENGTH_MB 2
 #define READ_LENGTH_WORDS (READ_LENGTH_MB * 1024 * 1024) / BYTES_PER_WORD
-#define READ_LIMIT 4294967926 /* 4GB */
+#define READ_LIMIT 2048000 * 8 * 30 /* 30s of ramp data */
 #define SRC_DIGITAL_PLL 0x500
 #define BILLION 1000000000L
 #define DAB_TUNER_COUNT 3
@@ -47,6 +47,8 @@
 #define SHM_WRDMA_BASE 0
 #define SHM_WRDMA_CURRENT 1
 #define NORMAL_READ
+#define BBIQ_ALLOWED_ERROR  2
+#define BBIQ_DEBUG_ERROR_MOD  1
 
 /* Operation mode of the test utility */
 enum operation_mode {
@@ -113,6 +115,11 @@ struct thread_params {
 long long read_limit;
 long mmap_len;
 uint8_t minor_num;
+long ch0_error_cnt;
+long ch1_error_cnt;
+long total_samples;
+int test_previous;
+int is_ramp;
 
 /* Prints the usage information */
 void help()
@@ -126,7 +133,7 @@ void help()
 	printf("** Supported only on SA6155\n\n");
 	printf("USAGE:\n\n");
 	printf("NORMAL Rx:\n");
-	printf("hsi2s_test --op_mode=0 --dev=<> --output=<> --bit_clock_hz=<> --data_buffer_ms=<> [--dma_buffer_length=<>] [--set_cpu_affinity]\n\n");
+	printf("hsi2s_test --op_mode=0 --dev=<> --output=<> --bit_clock_hz=<> --data_buffer_ms=<> [--dma_buffer_length=<>] [--set_cpu_affinity] [--ramp]\n\n");
 	printf("NORMAL Tx:\n");
 	printf("hsi2s_test --op_mode=1 --dev=<> --input=<>\n\n");
 	printf("INTERNAL LOOPBACK:\n");
@@ -188,7 +195,8 @@ void help()
 	printf("--pcm \n\t LPAIF in HS-PCM mode\n");
 	printf("--lane_config \n\t Data lane direction in PCM mode : 0 -> SINGLE LANE, 1 -> MULTI LANE RX, 2 -> MULTI LANE TX\n");
 	printf("--set_cpu_affinity \n\t Set CPU affinity to one of the available high cores\n");
-	printf("--target_type \n\t 0 -> 6155 1-> 8155/8195\n\n");
+	printf("--target_type \n\t 0 -> 6155 1-> 8155/8195\n");
+	printf("--ramp \n\t Trigger ramp analysis on output\n\n");
 }
 
 /* Returns the size of input file in bytes */
@@ -221,6 +229,67 @@ uint32_t get_periodic_length(uint32_t bit_clk, uint32_t interval)
 	 * Bytes per 'k' msec = k * (m / 8000)
 	 */
 	return (((unsigned long long)interval * bit_clk) / 8000);
+}
+
+/* Ramp analysis */
+void bbiq_analyze(void *dataStart, long numBytes)
+{
+	int16_t* dataWordStart = dataStart;
+	long numSamples = numBytes / 8;
+	int16_t Ch0_I_cur = 0;
+	int16_t Ch0_Q_cur = 0;
+	int16_t Ch1_I_cur = 0;
+	int16_t Ch1_Q_cur = 0;
+	int16_t Ch0_I_prev = 0;
+	int16_t Ch0_Q_prev = 0;
+	int16_t Ch1_I_prev = 0;
+	int16_t Ch1_Q_prev = 0;
+	int16_t* tempCH0;
+	int16_t* tempCH1;
+
+	if (numBytes % 8 != 0)
+	{
+		printf("bbiq_analyze error.  Bad chunk size of data.  numBytes=%ld\n", numBytes);
+	}
+
+	for(long i = 1; i < numSamples; i++)
+	{
+		tempCH0 = (int16_t *)(&dataWordStart[4*i + 0]);
+		tempCH1 = (int16_t *)(&dataWordStart[4*i + 2]);
+
+		Ch0_I_cur = *(tempCH0);
+		Ch0_Q_cur = *(tempCH0 + 1);
+		Ch1_I_cur = *(tempCH1);
+		Ch1_Q_cur = *(tempCH1 +1);
+
+		Ch0_I_prev = *(tempCH0 - 4);
+		Ch0_Q_prev = *(tempCH0 - 3);
+		Ch1_I_prev = *(tempCH1 - 4);
+		Ch1_Q_prev = *(tempCH1 - 3);
+
+		/* Error criteria is step size over 2 */
+		if ((BBIQ_ALLOWED_ERROR < abs(Ch0_I_prev-Ch0_I_cur)) || (BBIQ_ALLOWED_ERROR < abs(Ch0_Q_prev-Ch0_Q_cur))
+				|| (1 < abs(Ch0_I_cur != Ch0_Q_cur)) )
+		{
+			ch0_error_cnt++;
+		}
+
+		/* Check for increment and  I & Q match */
+		if ((BBIQ_ALLOWED_ERROR < abs(Ch1_I_prev-Ch1_I_cur)) || (BBIQ_ALLOWED_ERROR < abs(Ch1_Q_prev-Ch1_Q_cur))
+				|| (1 < abs(Ch1_I_cur != Ch1_Q_cur)) )
+		{
+			ch1_error_cnt++;
+		}
+	}
+
+	total_samples += numSamples;
+
+	if (total_samples % 2048000 < test_previous)
+	{
+		printf("Testing BBIQ: CH0 errors = %8ld, CH1 errors=%8ld, Total Samples=%12ld\n",
+				ch0_error_cnt , ch1_error_cnt, total_samples);
+	}
+	test_previous = total_samples % 2048000;
 }
 
 /* Read thread */
@@ -385,32 +454,49 @@ void *poll_read(void *arg)
 		clock_gettime(CLOCK_REALTIME, &pread_stop);
 		delta = ((pread_stop.tv_sec - pread_start.tv_sec) * BILLION) +
 				(pread_stop.tv_nsec - pread_start.tv_nsec);
-		printf("[POLL] Data ready in %lf nsec\n", delta);
 		if (ret < 0) {
 			printf("Poll failed\n");
 		} else if (pfd.revents & POLLIN) {
 			if (r_limit + mmap_len > read_limit) {
 				if (mmap_read + (read_limit - r_limit) > mmap_end) {
 					temp = mmap_end - mmap_read;
-					fwrite(mmap_read,temp,1,fd_write_op);
+					if (!is_ramp)
+						fwrite(mmap_read,temp,1,fd_write_op);
+					else
+						bbiq_analyze(mmap_read,temp);
 					temp = (read_limit - r_limit) - temp;
-					fwrite(mmap_ptr,temp,1,fd_write_op);
+					if (!is_ramp)
+						fwrite(mmap_ptr,temp,1,fd_write_op);
+					else
+						bbiq_analyze(mmap_ptr,temp);
 					mmap_read = mmap_ptr + temp;
 
 				} else {
-					fwrite(mmap_read,read_limit - r_limit,1,fd_write_op);
+					if (!is_ramp)
+						fwrite(mmap_read,read_limit - r_limit,1,fd_write_op);
+					else
+						bbiq_analyze(mmap_read,read_limit - r_limit);
 					mmap_read += (read_limit - r_limit);
 				}
 				r_limit += (read_limit - r_limit);
 			} else {
 				if (mmap_read + mmap_len > mmap_end) {
 					temp = mmap_end - mmap_read;
-					fwrite(mmap_read,temp,1,fd_write_op);
+					if (!is_ramp)
+						fwrite(mmap_read,temp,1,fd_write_op);
+					else
+						bbiq_analyze(mmap_read,temp);
 					temp = mmap_len - temp;
-					fwrite(mmap_ptr,temp,1,fd_write_op);
+					if (!is_ramp)
+						fwrite(mmap_ptr,temp,1,fd_write_op);
+					else
+						bbiq_analyze(mmap_ptr,temp);
 					mmap_read = mmap_ptr + temp;
 				} else {
-					fwrite(mmap_read,mmap_len,1,fd_write_op);
+					if (!is_ramp)
+						fwrite(mmap_read,mmap_len,1,fd_write_op);
+					else
+						bbiq_analyze(mmap_read,mmap_len);
 					mmap_read += mmap_len;
 				}
 				r_limit += mmap_len;
@@ -425,6 +511,12 @@ void *poll_read(void *arg)
 	delta = (thread_stop - thread_start) / BILLION;
 	printf("[POLL] Endtime %lf\n", thread_stop);
 	printf("[POLL] Total thread execution time %lfs\n", delta);
+	if (is_ramp) {
+		printf("Finished testing BBIQ \n\tCH0 has %16ld errors (%5.2f%%) \n\tCH1 has %16ld errors (%5.2f%%) \n\tTotal Samples = %16ld\n"
+			, ch0_error_cnt, 100* (float)ch0_error_cnt / ((float)total_samples)
+			, ch1_error_cnt, 100* (float)ch1_error_cnt / ((float)total_samples)
+			, total_samples);
+	}
 
 	return NULL;
 }
@@ -477,7 +569,7 @@ int main(int argc, char **argv)
 	uint8_t set_affinity = 0;
 	int ret = 0;
 	int opt;
-	const char *short_opt = ":a:b:c:d:e:f:g:h:ijk:l:m:n:o:p:qrstu:v:w:x:y:z:A:B:CDE:FGH:I:J:K";
+	const char *short_opt = ":a:b:c:d:e:f:g:h:ijk:l:m:n:o:p:qrstu:v:w:x:y:z:A:B:CDE:FGH:I:J:KL";
 	cpu_set_t cpuset;
 	uint8_t target_type = 0;
 	char *hs_dev[DAB_TUNER_COUNT] = {"/dev/hs0_i2s","/dev/hs1_i2s"};
@@ -527,6 +619,7 @@ int main(int argc, char **argv)
 		{"target_type", required_argument, NULL, 'I'},
 		{"output_a", required_argument, NULL, 'J'},
 		{"output_b", required_argument, NULL, 'K'},
+		{"ramp", no_argument, NULL, 'L'},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -775,6 +868,10 @@ int main(int argc, char **argv)
 						goto exit_app;
 					}
 				}
+				break;
+			case 'L':
+				/* Trigger ramp analysis*/
+				is_ramp = 1;
 				break;
 			case ':':
 				/* Value missing for option */
