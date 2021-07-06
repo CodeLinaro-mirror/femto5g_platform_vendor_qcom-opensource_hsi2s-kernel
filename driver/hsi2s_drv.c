@@ -3756,6 +3756,7 @@ static unsigned int device_poll(struct file *file, poll_table *wait)
 {
 	struct hsi2s_device *hs_dev;
 	unsigned int mask = 0;
+	u32 reg;
 
 	hs_dev = (struct hsi2s_device *)file->private_data;
 
@@ -3766,6 +3767,8 @@ static unsigned int device_poll(struct file *file, poll_table *wait)
 		hs_dev->write_buffer->pollin = 0;
 		mask |= POLLIN | POLLRDNORM;
 		dma_sync_single_for_cpu(hsi2s_core->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
+		reg = readl_relaxed(hs_dev->wrdma_curr_addr);
+		*((u32 *)(hsi2s_core->sh_mem) + ((hs_dev->minor_num * PAGE_SIZE) / BYTES_PER_SAMPLE) + SHM_WRDMA_CURRENT) = reg;
 	}
 
 	return mask;
@@ -3777,6 +3780,7 @@ static int device_mmap(struct file *file, struct vm_area_struct *vma)
 	unsigned long pa;
 	unsigned long pfn;
 	unsigned long len = vma->vm_end - vma->vm_start;
+	u32 reg;
 	int ret = 0;
 
 	hs_dev = (struct hsi2s_device *)file->private_data;
@@ -3790,6 +3794,53 @@ static int device_mmap(struct file *file, struct vm_area_struct *vma)
 		ret = remap_pfn_range(vma, vma->vm_start, pfn, len, vma->vm_page_prot);
 		if (ret)
 			dev_err(hs_dev->dev, "%s failed", __func__);
+		reg = readl_relaxed(hs_dev->wrdma_base);
+		*((u32 *)(hsi2s_core->sh_mem) + ((hs_dev->minor_num * PAGE_SIZE) / BYTES_PER_SAMPLE) + SHM_WRDMA_BASE) = reg;
+	}
+
+	return ret;
+}
+
+/* Called when a process attempts to open the core device file */
+static int c_device_open(struct inode *inode, struct file *file)
+{
+	dev_err(hsi2s_core->dev, "Client connected");
+
+	/* Increment usage count to be able to properly close the module. */
+	try_module_get(THIS_MODULE);
+
+	return 0;
+}
+
+/* Called when the a process closes the core device file */
+static int c_device_release(struct inode *inode, struct file *file)
+{
+	dev_err(hsi2s_core->dev, "Client disconnected");
+
+	/* Decrement usage count to be able to properly close the module. */
+	module_put(THIS_MODULE);
+
+	return 0;
+}
+
+/* Map the shared memory region for core device */
+static int c_device_mmap(struct file *file, struct vm_area_struct *vma)
+{
+	int ret = 0;
+	unsigned long pa;
+	unsigned long pfn;
+	unsigned long len = vma->vm_end - vma->vm_start;
+
+	pa = virt_to_phys(hsi2s_core->sh_mem);
+	pfn = (pa >> PAGE_SHIFT) + vma->vm_pgoff;
+
+	if (len > SHM_SIZE) {
+		dev_err(hsi2s_core->dev, "Size of map area(%d) exceeds shared memory size", len);
+		ret = -EINVAL;
+	} else {
+		ret = remap_pfn_range(vma, vma->vm_start, pfn, len, vma->vm_page_prot);
+		if (ret)
+			dev_err(hsi2s_core->dev, "%s failed", __func__);
 	}
 
 	return ret;
@@ -3803,6 +3854,13 @@ static const struct file_operations fops = {
 	.unlocked_ioctl = device_ioctl,
 	.mmap = device_mmap,
 	.poll = device_poll
+};
+
+static const struct file_operations c_fops = {
+	.open  = c_device_open,
+	.release = c_device_release,
+	.mmap = c_device_mmap,
+
 };
 
 /* Module callbacks */
@@ -4517,6 +4575,60 @@ static int hsi2s_probe(struct platform_device *pdev)
 	}
 #endif
 
+	/* Create shared memory for register info */
+	hsi2s_core->sh_mem = kzalloc(SHM_SIZE, GFP_KERNEL | GFP_DMA);
+	if (!hsi2s_core->sh_mem) {
+		dev_err(hsi2s_core->dev, "Unable to allocate shared memory");
+		ret = -ENOMEM;
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
+		goto err_free_smmu;
+#else
+		goto err_free_irq;
+#endif
+	}
+
+	/* Create device file for register mapping */
+	hsi2s_core->cdev_sdr = kzalloc(sizeof(*hsi2s_core->cdev_sdr),
+				   GFP_KERNEL);
+	if (!hsi2s_core->cdev_sdr) {
+		dev_err(hsi2s_core->dev, "Unable to allocate cdev for core interface");
+		ret = -ENOMEM;
+		goto err_free_shm;
+	}
+
+	hsi2s_core->curr_devid = MKDEV(MAJOR(devid), MINOR(devid) + hsi2s_core->i_count);
+	cdev_init(hsi2s_core->cdev_sdr, &c_fops);
+	hsi2s_core->cdev_sdr->owner = THIS_MODULE;
+	ret = cdev_add(hsi2s_core->cdev_sdr, hsi2s_core->curr_devid, 1);
+	if (ret < 0) {
+		dev_err(hsi2s_core->dev, "Unable to add cdev for core interface");
+		goto err_free_cdev;
+	}
+
+	hsi2s_core->class_sdr = class_create(THIS_MODULE, "hsi2s_reginfo");
+	if (!hsi2s_core->class_sdr) {
+		dev_err(hsi2s_core->dev, "Failed to create device class");
+		ret = -EEXIST;
+		goto err_delete_cdev;
+	}
+	if (!device_create(hsi2s_core->class_sdr, NULL, hsi2s_core->curr_devid,
+					   NULL, "hsi2s_reginfo")) {
+		dev_err(hsi2s_core->dev, "Failed to create device file for core interface");
+		ret = -EINVAL;
+		goto err_class_destroy;
+	}
+
+	/* Configure the output routing gpio for 8195 */
+	if (target == 8195) {
+		if (of_property_read_bool(pdev->dev.of_node, "pinctrl-names")) {
+			dev_info(hsi2s_core->dev, "Configure output routing gpio during init");
+			ret = hsi2s_configure_gpio_pins(pdev, 1);
+			if (ret < 0) {
+				dev_err(hsi2s_core->dev, "Failed to configure the output routing gpio during init");
+			}
+		}
+	}
+
 	/* Reset the mic enabler flag */
 	hsi2s_core->en_mic = 0;
 
@@ -4529,10 +4641,41 @@ static int hsi2s_probe(struct platform_device *pdev)
 
 	return ret;
 
+err_class_destroy:
+	class_destroy(hsi2s_core->class_sdr);
+err_delete_cdev:
+	cdev_del(hsi2s_core->cdev_sdr);
+err_free_cdev:
+	if (hsi2s_core->cdev_sdr) {
+		kfree(hsi2s_core->cdev_sdr);
+		hsi2s_core->cdev_sdr = NULL;
+	}
+err_free_shm:
+	if (hsi2s_core->sh_mem) {
+		kfree(hsi2s_core->sh_mem);
+		hsi2s_core->sh_mem = NULL;
+	}
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
+err_free_smmu:
+	/* Detach and release iommu mapping */
+	if (hsi2s_core->hsi2s_smmu_ctx) {
+		if (hsi2s_core->hsi2s_smmu_ctx->valid) {
+			if (hsi2s_core->hsi2s_smmu_ctx->smmu_pdev)
+				arm_iommu_detach_device(&hsi2s_core->hsi2s_smmu_ctx->smmu_pdev->dev);
+			if (hsi2s_core->hsi2s_smmu_ctx->mapping)
+				arm_iommu_release_mapping(hsi2s_core->hsi2s_smmu_ctx->mapping);
+			hsi2s_core->hsi2s_smmu_ctx->valid = false;
+			hsi2s_core->hsi2s_smmu_ctx->mapping = NULL;
+			hsi2s_core->hsi2s_smmu_ctx->pdev_master = NULL;
+			hsi2s_core->hsi2s_smmu_ctx->smmu_pdev = NULL;
+			dev_info(hsi2s_core->dev, "Detached and released iommu mapping");
+		}
+		kfree(hsi2s_core->hsi2s_smmu_ctx);
+		hsi2s_core->hsi2s_smmu_ctx = NULL;
+	}
+#endif
 err_free_irq:
 	devm_free_irq(hsi2s_core->dev, hsi2s_core->irq0, hsi2s_core);
-#endif
 err_iounmap_lpass_tcsr:
 	iounmap(hsi2s_core->lpass_tcsr_base_va);
 err_iounmap_lpaif:
@@ -4619,8 +4762,8 @@ static int hsi2s_interface_remove(struct platform_device *pdev)
 static int hsi2s_remove(struct platform_device *pdev)
 {
 	struct hsi2s_core *hs_core;
-#if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
 	int ret = 0;
+#if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
 	u32 resp_size = sizeof(msg_t);
 #endif
 
@@ -4631,6 +4774,24 @@ static int hsi2s_remove(struct platform_device *pdev)
 	of_platform_depopulate(&pdev->dev);
 	/* Remove the core device */
 	hs_core = (struct hsi2s_core *)platform_get_drvdata(pdev);
+	/* Reset the output routing gpio for 8195 */
+	if (hs_core->target == 8195) {
+		if (of_property_read_bool(pdev->dev.of_node, "pinctrl-names")) {
+			dev_info(hs_core->dev, "Reset output routing gpio");
+			ret = hsi2s_configure_gpio_pins(pdev, 0);
+			if (ret < 0) {
+				dev_err(hs_core->dev, "Failed to reset the output routing gpio");
+			}
+		}
+	}
+	/* Remove the device file */
+	device_destroy(hs_core->class_sdr, hs_core->curr_devid);
+	class_destroy(hs_core->class_sdr);
+	cdev_del(hs_core->cdev_sdr);
+	kfree(hs_core->cdev_sdr);
+	hs_core->cdev_sdr = NULL;
+	kfree(hs_core->sh_mem);
+	hs_core->sh_mem = NULL;
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
 	/* Detach and release iommu mapping */
 	if (hs_core->hsi2s_smmu_ctx) {
@@ -4744,6 +4905,16 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 		if (hsi2s_core->target == 6155)
 			hsi2s_suspend_core_clks(pdev);
 		else if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195) {
+			/* Reset the output routing gpio for 8195 */
+			if (hsi2s_core->target == 8195) {
+				if (of_property_read_bool(pdev->dev.of_node, "pinctrl-names")) {
+					dev_info(hsi2s_core->dev, "Reset output routing gpio during suspend");
+					ret = hsi2s_configure_gpio_pins(pdev, 0);
+					if (ret < 0) {
+						dev_err(hsi2s_core->dev, "Failed to reset the output routing gpio during suspend");
+					}
+				}
+			}
 			if (enable_qmi) {
 #if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
 #if defined(CONFIG_QCOM_QMI_HELPERS)
@@ -4866,6 +5037,16 @@ static int hsi2s_resume(struct platform_device *pdev)
 			} else {
 				h_modify_interface_clks(1);
 				h_modify_core_clks(1);
+			}
+			/* Configure the output routing gpio for 8195 */
+			if (hsi2s_core->target == 8195) {
+				if (of_property_read_bool(pdev->dev.of_node, "pinctrl-names")) {
+					dev_info(hsi2s_core->dev, "Configure output routing gpio during resume");
+					ret = hsi2s_configure_gpio_pins(pdev, 1);
+					if (ret < 0) {
+						dev_err(hsi2s_core->dev, "Failed to configure the output routing gpio during resume");
+					}
+				}
 			}
 		}
 	}
