@@ -111,26 +111,28 @@ static int hsi2s_clk_ctrl_send_sync_msg(struct qmi_handle *dev, int en)
 		goto out;
 	}
 
-	ret = qmi_txn_wait(&txn, PGS_TIMEOUT);
+	if (en) {
+		ret = qmi_txn_wait(&txn, ENABLE_TIMEOUT);
 
-	if (ret < 0) {
-		dev_err(hsi2s_core->dev, "Mode resp wait failed with ret %d\n", ret);
-		goto out;
-	}
+		if (ret < 0) {
+			dev_err(hsi2s_core->dev, "Mode resp wait failed with ret %d\n", ret);
+			goto out;
+		}
 
-	if (resp->resp.result != QMI_RESULT_SUCCESS_V01) {
-		dev_err(hsi2s_core->dev, "QMI Mode request rejected, result:%d error:%d\n",
-				resp->resp.result, resp->resp.error);
-		ret = -resp->resp.result;
-		goto out;
-	}
+		if (resp->resp.result != QMI_RESULT_SUCCESS_V01) {
+			dev_err(hsi2s_core->dev, "QMI Mode request rejected, result:%d error:%d\n",
+					resp->resp.result, resp->resp.error);
+			ret = -resp->resp.result;
+			goto out;
+		}
 
-	ret = resp->resp.result;
+		ret = resp->resp.result;
 
-	if (!en)
-		dev_info(hsi2s_core->dev, "ADSP clock disabling is successful\n");
-	else
 		dev_info(hsi2s_core->dev, "ADSP clock enabling is successful\n");
+	} else {
+		qmi_txn_wait(&txn, DISABLE_TIMEOUT);
+		dev_info(hsi2s_core->dev, "ADSP clock disabling is successful\n");
+	}
 
 out:
 	kfree(req);
