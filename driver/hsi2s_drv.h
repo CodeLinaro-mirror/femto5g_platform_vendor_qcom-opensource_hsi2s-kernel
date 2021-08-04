@@ -320,7 +320,8 @@
 #define DISABLE_RATE_DETECTION
 #define SPKR 0
 #define MIC 1
-#define PGS_TIMEOUT msecs_to_jiffies(3000)
+#define ENABLE_TIMEOUT msecs_to_jiffies(3000)
+#define DISABLE_TIMEOUT msecs_to_jiffies(1)
 #define LONG_RATE_MIN 0
 #define LONG_RATE_MAX 63
 #define BIT_CLK_MAX 73728000
