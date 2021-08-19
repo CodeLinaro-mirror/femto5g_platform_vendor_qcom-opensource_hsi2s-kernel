@@ -28,6 +28,7 @@
 #include <sys/mman.h>
 #include <string.h>
 #include <poll.h>
+#include <sys/epoll.h>
 #include <time.h>
 #include <errno.h>
 #include <getopt.h>
@@ -354,7 +355,7 @@ void *poll_read_fast(void *arg)
 			printf("[POLL] Data ready in %lf nsec\n", delta);
 		if (ret < 0) {
 			printf("Poll failed\n");
-		} else if (pfd.revents & POLLIN) {
+		} else if (pfd.revents & EPOLLIN) {
 			curr_addr_phy = *((uint32_t *)(shm) + ((minor * PG_SIZE) / BYTES_PER_WORD) + SHM_WRDMA_CURRENT);
 			curr_addr = mmap_ptr + (curr_addr_phy - base_addr_phy);
 
@@ -490,7 +491,7 @@ void *poll_read_normal(void *arg)
 			printf("[POLL] Data ready in %lf nsec\n", delta);
 		if (ret < 0) {
 			printf("Poll failed\n");
-		} else if (pfd.revents & POLLIN) {
+		} else if (pfd.revents & EPOLLIN) {
 			if (r_limit + mmap_len > read_limit) {
 				if (mmap_read + (read_limit - r_limit) > mmap_end) {
 					temp = mmap_end - mmap_read;
@@ -986,7 +987,7 @@ int main(int argc, char **argv)
 
 			/* Map the device write DMA buffer */
 			params->pfd.fd = fd_master;
-			params->pfd.events = POLLIN | POLLRDNORM;
+			params->pfd.events = EPOLLIN | EPOLLRDNORM;
 			printf("Mapping userspace memory with kernel memory for device\n");
 			params->mmap_ptr = mmap(NULL, read_length_bytes * 2, PROT_READ | PROT_WRITE, MAP_SHARED, fd_master, 0);
 			if (params->mmap_ptr == MAP_FAILED) {
@@ -1124,7 +1125,7 @@ int main(int argc, char **argv)
 			}
 			/* Map the device write DMA buffer */
 			params->pfd.fd = fd_master;
-			params->pfd.events = POLLIN | POLLRDNORM;
+			params->pfd.events = EPOLLIN | EPOLLRDNORM;
 			printf("Mapping userspace memory with kernel memory for device\n");
 			params->mmap_ptr = mmap(NULL, read_length_bytes * 2, PROT_READ | PROT_WRITE, MAP_SHARED, fd_master, 0);
 			if (params->mmap_ptr == MAP_FAILED) {
@@ -1232,7 +1233,7 @@ int main(int argc, char **argv)
 
 			/* Map the device write DMA buffer */
 			params->pfd.fd = fd_master;
-			params->pfd.events = POLLIN | POLLRDNORM;
+			params->pfd.events = EPOLLIN | EPOLLRDNORM;
 			printf("Mapping userspace memory with kernel memory for device\n");
 			params->mmap_ptr = mmap(NULL, read_length_bytes * 2, PROT_READ | PROT_WRITE, MAP_SHARED, fd_master, 0);
 			if (params->mmap_ptr == MAP_FAILED) {
@@ -1369,7 +1370,7 @@ int main(int argc, char **argv)
 
 			/* Map the slave device write DMA buffer */
 			params->pfd.fd = fd_slave;
-			params->pfd.events = POLLIN | POLLRDNORM;
+			params->pfd.events = EPOLLIN | EPOLLRDNORM;
 			printf("Mapping userspace memory with kernel memory for device\n");
 			params->mmap_ptr = mmap(NULL, read_length_bytes * 2, PROT_READ | PROT_WRITE, MAP_SHARED, fd_slave, 0);
 			if (params->mmap_ptr == MAP_FAILED) {
@@ -1694,7 +1695,7 @@ int main(int argc, char **argv)
 				/* Map the write DMA buffers */
 				for (i = 0; i < 2; i++) {
 					dab_params[i]->pfd.fd = fd_dab[i];
-					dab_params[i]->pfd.events = POLLIN | POLLRDNORM;
+					dab_params[i]->pfd.events = EPOLLIN | EPOLLRDNORM;
 					printf("Mapping userspace memory with kernel memory for device\n");
 					dab_params[i]->mmap_ptr = mmap(NULL, read_length_bytes * 2, PROT_READ | PROT_WRITE, MAP_SHARED, fd_dab[i], 0);
 					if (dab_params[i]->mmap_ptr == MAP_FAILED) {

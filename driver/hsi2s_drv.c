@@ -3075,7 +3075,7 @@ static irqreturn_t i2s_interrupt_handler(int irq, void *dev_id)
 /* File operation functions for character drivers */
 
 /* Function to read from the Rx buffer and transfer data to user space */
-static ssize_t device_read(struct file *file, char *buffer,
+static ssize_t device_read(struct file *file, char __user *buffer,
 			   size_t length, loff_t *offset)
 {
 #ifndef DISABLE_DEVICE_READ
@@ -3191,7 +3191,7 @@ static ssize_t device_read(struct file *file, char *buffer,
 }
 
 /* Function to write data from user space to the Tx buffer */
-static ssize_t device_write(struct file *file, const char *buffer,
+static ssize_t device_write(struct file *file, const char __user *buffer,
 			    size_t length, loff_t *offset)
 {
 	struct hsi2s_device *hs_dev;
@@ -3210,11 +3210,11 @@ static ssize_t device_write(struct file *file, const char *buffer,
 
 		if (hs_dev->read_buffer->last_copy) {
 			copy_from_user(hs_dev->read_buffer->ping_start,
-				       buffer + bytes_written,
+				       (const void __user *)buffer + bytes_written,
 				       temp_length);
 		} else {
 			copy_from_user(hs_dev->read_buffer->pong_start,
-				       buffer + bytes_written,
+				       (const void __user *)buffer + bytes_written,
 				       temp_length);
 		}
 
@@ -3238,12 +3238,12 @@ static ssize_t device_write(struct file *file, const char *buffer,
 	if (hs_dev->read_buffer->last_copy) {
 		memset(hs_dev->read_buffer->ping_start, 0, hs_dev->read_buffer->length);
 		copy_from_user(hs_dev->read_buffer->ping_start,
-			       buffer + bytes_written,
+			       (const void __user *)buffer + bytes_written,
 			       length);
 	} else {
 		memset(hs_dev->read_buffer->pong_start, 0, hs_dev->read_buffer->length);
 		copy_from_user(hs_dev->read_buffer->pong_start,
-			       buffer + bytes_written,
+			       (const void __user *)buffer + bytes_written,
 			       length);
 	}
 	dma_sync_single_for_device(hsi2s_core->dev, hs_dev->read_buffer->handle, dma_buffer_length, DMA_TO_DEVICE);
@@ -3617,7 +3617,7 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 					ret = -ENOMEM;
 					break;
 				}
-				copy_from_user(i2s_params, (void *)arg, sizeof(struct hsi2s_params));
+				copy_from_user(i2s_params, (const void __user *)arg, sizeof(struct hsi2s_params));
 				ret = configure_i2s_params(hs_dev, i2s_params);
 				if (ret < 0) {
 					dev_err(hs_dev->dev, "Failed to configure I2S parameters");
@@ -3639,7 +3639,7 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 					ret = -ENOMEM;
 					break;
 				}
-				copy_from_user(pcm_params, (void *)arg, sizeof(struct hspcm_params));
+				copy_from_user(pcm_params, (const void __user *)arg, sizeof(struct hspcm_params));
 				ret = configure_pcm_params(hs_dev, pcm_params);
 				if (ret < 0) {
 					dev_err(hs_dev->dev, "Failed to configure PCM parameters");
@@ -3661,7 +3661,7 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 					ret = -ENOMEM;
 					break;
 				}
-				copy_from_user(tdm_params, (void *)arg, sizeof(struct hstdm_params));
+				copy_from_user(tdm_params, (const void __user *)arg, sizeof(struct hstdm_params));
 				ret = configure_tdm_params(hs_dev, tdm_params);
 				if (ret < 0) {
 					dev_err(hs_dev->dev, "Failed to configure TDM parameters");
@@ -3754,10 +3754,10 @@ static long device_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	return ret;
 }
 
-static unsigned int device_poll(struct file *file, poll_table *wait)
+static __poll_t device_poll(struct file *file, poll_table *wait)
 {
 	struct hsi2s_device *hs_dev;
-	unsigned int mask = 0;
+	__poll_t mask = 0;
 	u32 reg;
 
 	hs_dev = (struct hsi2s_device *)file->private_data;
@@ -3767,7 +3767,7 @@ static unsigned int device_poll(struct file *file, poll_table *wait)
 	/* Check for periodic interrupt on write DMA channel */
 	if (hs_dev->write_buffer->pollin) {
 		hs_dev->write_buffer->pollin = 0;
-		mask |= POLLIN | POLLRDNORM;
+		mask |= EPOLLIN | EPOLLRDNORM;
 		dma_sync_single_for_cpu(hsi2s_core->dev, hs_dev->write_buffer->handle, dma_buffer_length, DMA_FROM_DEVICE);
 		reg = readl_relaxed(hs_dev->wrdma_curr_addr);
 		*((u32 *)(hsi2s_core->sh_mem) + ((hs_dev->minor_num * PAGE_SIZE) / BYTES_PER_SAMPLE) + SHM_WRDMA_CURRENT) = reg;
