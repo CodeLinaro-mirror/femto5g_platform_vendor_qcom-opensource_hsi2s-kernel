@@ -320,11 +320,15 @@
 #define DISABLE_RATE_DETECTION
 #define SPKR 0
 #define MIC 1
-#define PGS_TIMEOUT msecs_to_jiffies(3000)
+#define ENABLE_TIMEOUT msecs_to_jiffies(3000)
+#define DISABLE_TIMEOUT msecs_to_jiffies(1)
 #define LONG_RATE_MIN 0
 #define LONG_RATE_MAX 63
 #define BIT_CLK_MAX 73728000
 #define WRDMA_RAM_LENGTH 512
+#define SHM_SIZE PAGE_SIZE * 3
+#define SHM_WRDMA_BASE 0
+#define SHM_WRDMA_CURRENT 1
 
 #define T_I2S_LONG_RATE_OFFSET 18
 #define T_I2S_SPKR_MODE_SD0 0x800
@@ -540,6 +544,14 @@ struct hsi2s_core {
 	/* SMMU context */
 	struct hsi2s_smmu_cb_ctx *hsi2s_smmu_ctx;
 #endif
+
+	/* Device file attributes */
+	dev_t curr_devid;
+	struct cdev *cdev_sdr;
+	struct class *class_sdr;
+
+	/* Shared memory */
+	void *sh_mem;
 };
 
 /* LPAIF HS-I2S device structure */
