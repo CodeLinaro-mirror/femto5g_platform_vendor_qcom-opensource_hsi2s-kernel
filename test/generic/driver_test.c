@@ -28,6 +28,7 @@
 #include <sys/mman.h>
 #include <string.h>
 #include <poll.h>
+#include <sys/epoll.h>
 #include <time.h>
 #include <errno.h>
 #include <getopt.h>
@@ -38,7 +39,7 @@
 #define BYTES_PER_WORD 4
 #define READ_LENGTH_MB 2
 #define READ_LENGTH_WORDS (READ_LENGTH_MB * 1024 * 1024) / BYTES_PER_WORD
-#define READ_LIMIT 4294967926 /* 4GB */
+#define READ_LIMIT 2048000 * 8 * 60 /* 60s of ramp data */
 #define SRC_DIGITAL_PLL 0x500
 #define BILLION 1000000000L
 #define DAB_TUNER_COUNT 3
@@ -46,7 +47,8 @@
 #define SHM_SIZE (PG_SIZE * 3)
 #define SHM_WRDMA_BASE 0
 #define SHM_WRDMA_CURRENT 1
-#define NORMAL_READ
+#define BBIQ_ALLOWED_ERROR  2
+#define BBIQ_DEBUG_ERROR_MOD  1
 
 /* Operation mode of the test utility */
 enum operation_mode {
@@ -107,12 +109,18 @@ struct thread_params {
 	void *mmap_end;
 	void *sh_mem;
 	FILE *fd_write_op;
+	uint8_t minor;
 };
 
 /* Global variables */
-long long read_limit;
+unsigned long long read_limit;
 long mmap_len;
 uint8_t minor_num;
+long ch0_error_cnt;
+long ch1_error_cnt;
+long total_samples;
+int test_previous;
+int is_ramp;
 
 /* Prints the usage information */
 void help()
@@ -126,7 +134,7 @@ void help()
 	printf("** Supported only on SA6155\n\n");
 	printf("USAGE:\n\n");
 	printf("NORMAL Rx:\n");
-	printf("hsi2s_test --op_mode=0 --dev=<> --output=<> --bit_clock_hz=<> --data_buffer_ms=<> [--dma_buffer_length=<>] [--set_cpu_affinity]\n\n");
+	printf("hsi2s_test --op_mode=0 --dev=<> --output=<> --bit_clock_hz=<> --data_buffer_ms=<> [--dma_buffer_length=<>] [--set_cpu_affinity] [--ramp]\n\n");
 	printf("NORMAL Tx:\n");
 	printf("hsi2s_test --op_mode=1 --dev=<> --input=<>\n\n");
 	printf("INTERNAL LOOPBACK:\n");
@@ -188,7 +196,9 @@ void help()
 	printf("--pcm \n\t LPAIF in HS-PCM mode\n");
 	printf("--lane_config \n\t Data lane direction in PCM mode : 0 -> SINGLE LANE, 1 -> MULTI LANE RX, 2 -> MULTI LANE TX\n");
 	printf("--set_cpu_affinity \n\t Set CPU affinity to one of the available high cores\n");
-	printf("--target_type \n\t 0 -> 6155 1-> 8155/8195\n\n");
+	printf("--target_type \n\t 0 -> 6155 1-> 8155/8195\n");
+	printf("--ramp \n\t Trigger ramp analysis on output\n");
+	printf("--normal_read \n\t Use normal read thread. By default, fast read thread is selected\n\n");
 }
 
 /* Returns the size of input file in bytes */
@@ -223,11 +233,71 @@ uint32_t get_periodic_length(uint32_t bit_clk, uint32_t interval)
 	return (((unsigned long long)interval * bit_clk) / 8000);
 }
 
-/* Read thread */
-#ifndef NORMAL_READ
-void *poll_read(void *arg)
+/* Ramp analysis */
+void bbiq_analyze(void *dataStart, long numBytes)
 {
-	long long r_limit = 0;
+	int16_t* dataWordStart = dataStart;
+	long numSamples = numBytes / 8;
+	int16_t Ch0_I_cur = 0;
+	int16_t Ch0_Q_cur = 0;
+	int16_t Ch1_I_cur = 0;
+	int16_t Ch1_Q_cur = 0;
+	int16_t Ch0_I_prev = 0;
+	int16_t Ch0_Q_prev = 0;
+	int16_t Ch1_I_prev = 0;
+	int16_t Ch1_Q_prev = 0;
+	int16_t* tempCH0;
+	int16_t* tempCH1;
+
+	if (numBytes % 8 != 0)
+	{
+		printf("bbiq_analyze error.  Bad chunk size of data.  numBytes=%ld\n", numBytes);
+	}
+
+	for(long i = 1; i < numSamples; i++)
+	{
+		tempCH0 = (int16_t *)(&dataWordStart[4*i + 0]);
+		tempCH1 = (int16_t *)(&dataWordStart[4*i + 2]);
+
+		Ch0_I_cur = *(tempCH0);
+		Ch0_Q_cur = *(tempCH0 + 1);
+		Ch1_I_cur = *(tempCH1);
+		Ch1_Q_cur = *(tempCH1 +1);
+
+		Ch0_I_prev = *(tempCH0 - 4);
+		Ch0_Q_prev = *(tempCH0 - 3);
+		Ch1_I_prev = *(tempCH1 - 4);
+		Ch1_Q_prev = *(tempCH1 - 3);
+
+		/* Error criteria is step size over 2 */
+		if ((BBIQ_ALLOWED_ERROR < abs(Ch0_I_prev-Ch0_I_cur)) || (BBIQ_ALLOWED_ERROR < abs(Ch0_Q_prev-Ch0_Q_cur))
+				|| (1 < abs(Ch0_I_cur != Ch0_Q_cur)) )
+		{
+			ch0_error_cnt++;
+		}
+
+		/* Check for increment and  I & Q match */
+		if ((BBIQ_ALLOWED_ERROR < abs(Ch1_I_prev-Ch1_I_cur)) || (BBIQ_ALLOWED_ERROR < abs(Ch1_Q_prev-Ch1_Q_cur))
+				|| (1 < abs(Ch1_I_cur != Ch1_Q_cur)) )
+		{
+			ch1_error_cnt++;
+		}
+	}
+
+	total_samples += numSamples;
+
+	if (total_samples % 2048000 < test_previous)
+	{
+		printf("Testing BBIQ: CH0 errors = %8ld, CH1 errors=%8ld, Total Samples=%12ld\n",
+				ch0_error_cnt , ch1_error_cnt, total_samples);
+	}
+	test_previous = total_samples % 2048000;
+}
+
+/* Read thread */
+void *poll_read_fast(void *arg)
+{
+	unsigned long long r_limit = 0;
 	long temp;
 	int ret;
 	double thread_start;
@@ -243,13 +313,13 @@ void *poll_read(void *arg)
 	FILE *fd_write_op;
 	struct thread_params *params;
 	uint32_t *shm;
-
 	uint32_t base_addr_phy;
 	uint32_t curr_addr_phy;
 	void *prev_addr;
 	void *curr_addr;
 	long read_len;
 	long read_len_blk;
+	uint8_t minor;
 
 	params = (struct thread_params *)arg;
 	if (params) {
@@ -260,6 +330,7 @@ void *poll_read(void *arg)
 		sh_mem = params->sh_mem;
 		shm = (uint32_t *)sh_mem;
 		fd_write_op = params->fd_write_op;
+		minor = params->minor;
 	} else {
 		printf("Thread parameters are null\n");
 		return NULL;
@@ -271,7 +342,7 @@ void *poll_read(void *arg)
 	thread_start = (pread_start.tv_sec * BILLION) + pread_start.tv_nsec;
 	printf("[POLL] Starttime %lf\n", thread_start);
 
-	base_addr_phy = *((uint32_t *)(shm) + ((minor_num * PG_SIZE) / BYTES_PER_WORD) + SHM_WRDMA_BASE);
+	base_addr_phy = *((uint32_t *)(shm) + ((minor * PG_SIZE) / BYTES_PER_WORD) + SHM_WRDMA_BASE);
 	prev_addr = mmap_ptr;
 
 	while (r_limit < read_limit) {
@@ -280,22 +351,29 @@ void *poll_read(void *arg)
 		clock_gettime(CLOCK_REALTIME, &pread_stop);
 		delta = ((pread_stop.tv_sec - pread_start.tv_sec) * BILLION) +
 				(pread_stop.tv_nsec - pread_start.tv_nsec);
-		printf("[POLL] Data ready in %lf nsec\n", delta);
+		if (!is_ramp)
+			printf("[POLL] Data ready in %lf nsec\n", delta);
 		if (ret < 0) {
 			printf("Poll failed\n");
-		} else if (pfd.revents & POLLIN) {
-			curr_addr_phy = *((uint32_t *)(shm) + ((minor_num * PG_SIZE) / BYTES_PER_WORD) + SHM_WRDMA_CURRENT);
+		} else if (pfd.revents & EPOLLIN) {
+			curr_addr_phy = *((uint32_t *)(shm) + ((minor * PG_SIZE) / BYTES_PER_WORD) + SHM_WRDMA_CURRENT);
 			curr_addr = mmap_ptr + (curr_addr_phy - base_addr_phy);
 
 			if(prev_addr < curr_addr) {
 				read_len = curr_addr - prev_addr;
 				read_len_blk = mmap_len * (read_len/mmap_len);
 				if (r_limit + read_len_blk > read_limit) {
-					fwrite(prev_addr,read_limit - r_limit,1,fd_write_op);
+					if (!is_ramp)
+						fwrite(prev_addr,read_limit - r_limit,1,fd_write_op);
+					else
+						bbiq_analyze(prev_addr, read_limit - r_limit);
 					prev_addr += (read_limit - r_limit);
 					r_limit += (read_limit - r_limit);
 				} else {
-					fwrite(prev_addr,read_len_blk,1,fd_write_op);
+					if (!is_ramp)
+						fwrite(prev_addr,read_len_blk,1,fd_write_op);
+					else
+						bbiq_analyze(prev_addr, read_len_blk);
 					prev_addr += read_len_blk;
 					r_limit += read_len_blk;
 				}
@@ -305,24 +383,42 @@ void *poll_read(void *arg)
 				if (r_limit + read_len_blk > read_limit) {
 					if (prev_addr + (read_limit - r_limit) > mmap_end) {
 						temp = mmap_end - prev_addr;
-						fwrite(prev_addr,temp,1,fd_write_op);
+						if (!is_ramp)
+							fwrite(prev_addr,temp,1,fd_write_op);
+						else
+							bbiq_analyze(prev_addr, temp);
 						temp = (read_limit - r_limit) - temp;
-						fwrite(mmap_ptr,temp,1,fd_write_op);
+						if (!is_ramp)
+							fwrite(mmap_ptr,temp,1,fd_write_op);
+						else
+							bbiq_analyze(mmap_ptr, temp);
 						prev_addr = mmap_ptr + temp;
 					} else {
-						fwrite(prev_addr,read_limit - r_limit,1,fd_write_op);
+						if (!is_ramp)
+							fwrite(prev_addr,read_limit - r_limit,1,fd_write_op);
+						else
+							bbiq_analyze(prev_addr, read_limit - r_limit);
 						prev_addr += (read_limit - r_limit);
 					}
 					r_limit += (read_limit - r_limit);
 				} else {
 					if (prev_addr + read_len_blk > mmap_end) {
 						temp = mmap_end - prev_addr;
-						fwrite(prev_addr,temp,1,fd_write_op);
+						if (!is_ramp)
+							fwrite(prev_addr,temp,1,fd_write_op);
+						else
+							bbiq_analyze(prev_addr, temp);
 						temp = read_len_blk - temp;
-						fwrite(mmap_ptr,temp,1,fd_write_op);
+						if (!is_ramp)
+							fwrite(mmap_ptr,temp,1,fd_write_op);
+						else
+							bbiq_analyze(mmap_ptr, temp);
 						prev_addr = mmap_ptr + temp;
 					} else {
-						fwrite(prev_addr,read_len_blk,1,fd_write_op);
+						if (!is_ramp)
+							fwrite(prev_addr,read_len_blk,1,fd_write_op);
+						else
+							bbiq_analyze(prev_addr, read_len_blk);
 						prev_addr += read_len_blk;
 					}
 					r_limit += read_len_blk;
@@ -339,13 +435,19 @@ void *poll_read(void *arg)
 	delta = (thread_stop - thread_start) / BILLION;
 	printf("[POLL] Endtime %lf\n", thread_stop);
 	printf("[POLL] Total thread execution time %lfs\n", delta);
+	if (is_ramp) {
+		printf("Finished testing BBIQ \n\tCH0 has %16ld errors (%5.2f%%) \n\tCH1 has %16ld errors (%5.2f%%) \n\tTotal Samples = %16ld\n"
+			, ch0_error_cnt, 100* (float)ch0_error_cnt / ((float)total_samples)
+			, ch1_error_cnt, 100* (float)ch1_error_cnt / ((float)total_samples)
+			, total_samples);
+	}
 
 	return NULL;
 }
-#else
-void *poll_read(void *arg)
+
+void *poll_read_normal(void *arg)
 {
-	long long r_limit = 0;
+	unsigned long long r_limit = 0;
 	long temp;
 	int ret;
 	double thread_start;
@@ -385,32 +487,51 @@ void *poll_read(void *arg)
 		clock_gettime(CLOCK_REALTIME, &pread_stop);
 		delta = ((pread_stop.tv_sec - pread_start.tv_sec) * BILLION) +
 				(pread_stop.tv_nsec - pread_start.tv_nsec);
-		printf("[POLL] Data ready in %lf nsec\n", delta);
+		if (!is_ramp)
+			printf("[POLL] Data ready in %lf nsec\n", delta);
 		if (ret < 0) {
 			printf("Poll failed\n");
-		} else if (pfd.revents & POLLIN) {
+		} else if (pfd.revents & EPOLLIN) {
 			if (r_limit + mmap_len > read_limit) {
 				if (mmap_read + (read_limit - r_limit) > mmap_end) {
 					temp = mmap_end - mmap_read;
-					fwrite(mmap_read,temp,1,fd_write_op);
+					if (!is_ramp)
+						fwrite(mmap_read,temp,1,fd_write_op);
+					else
+						bbiq_analyze(mmap_read,temp);
 					temp = (read_limit - r_limit) - temp;
-					fwrite(mmap_ptr,temp,1,fd_write_op);
+					if (!is_ramp)
+						fwrite(mmap_ptr,temp,1,fd_write_op);
+					else
+						bbiq_analyze(mmap_ptr,temp);
 					mmap_read = mmap_ptr + temp;
 
 				} else {
-					fwrite(mmap_read,read_limit - r_limit,1,fd_write_op);
+					if (!is_ramp)
+						fwrite(mmap_read,read_limit - r_limit,1,fd_write_op);
+					else
+						bbiq_analyze(mmap_read,read_limit - r_limit);
 					mmap_read += (read_limit - r_limit);
 				}
 				r_limit += (read_limit - r_limit);
 			} else {
 				if (mmap_read + mmap_len > mmap_end) {
 					temp = mmap_end - mmap_read;
-					fwrite(mmap_read,temp,1,fd_write_op);
+					if (!is_ramp)
+						fwrite(mmap_read,temp,1,fd_write_op);
+					else
+						bbiq_analyze(mmap_read,temp);
 					temp = mmap_len - temp;
-					fwrite(mmap_ptr,temp,1,fd_write_op);
+					if (!is_ramp)
+						fwrite(mmap_ptr,temp,1,fd_write_op);
+					else
+						bbiq_analyze(mmap_ptr,temp);
 					mmap_read = mmap_ptr + temp;
 				} else {
-					fwrite(mmap_read,mmap_len,1,fd_write_op);
+					if (!is_ramp)
+						fwrite(mmap_read,mmap_len,1,fd_write_op);
+					else
+						bbiq_analyze(mmap_read,mmap_len);
 					mmap_read += mmap_len;
 				}
 				r_limit += mmap_len;
@@ -425,10 +546,15 @@ void *poll_read(void *arg)
 	delta = (thread_stop - thread_start) / BILLION;
 	printf("[POLL] Endtime %lf\n", thread_stop);
 	printf("[POLL] Total thread execution time %lfs\n", delta);
+	if (is_ramp) {
+		printf("Finished testing BBIQ \n\tCH0 has %16ld errors (%5.2f%%) \n\tCH1 has %16ld errors (%5.2f%%) \n\tTotal Samples = %16ld\n"
+			, ch0_error_cnt, 100* (float)ch0_error_cnt / ((float)total_samples)
+			, ch1_error_cnt, 100* (float)ch1_error_cnt / ((float)total_samples)
+			, total_samples);
+	}
 
 	return NULL;
 }
-#endif
 
 int main(int argc, char **argv)
 {
@@ -477,7 +603,7 @@ int main(int argc, char **argv)
 	uint8_t set_affinity = 0;
 	int ret = 0;
 	int opt;
-	const char *short_opt = ":a:b:c:d:e:f:g:h:ijk:l:m:n:o:p:qrstu:v:w:x:y:z:A:B:CDE:FGH:I:J:K";
+	const char *short_opt = ":a:b:c:d:e:f:g:h:ijk:l:m:n:o:p:qrstu:v:w:x:y:z:A:B:CDE:FGH:I:J:KLM";
 	cpu_set_t cpuset;
 	uint8_t target_type = 0;
 	char *hs_dev[DAB_TUNER_COUNT] = {"/dev/hs0_i2s","/dev/hs1_i2s"};
@@ -487,6 +613,7 @@ int main(int argc, char **argv)
 	FILE *fd_out_a = NULL;
 	FILE *fd_out_b = NULL;
 	struct thread_params *params;
+	int use_normal_read = 0;
 
 	struct option   long_opt[] =
 	{
@@ -527,6 +654,8 @@ int main(int argc, char **argv)
 		{"target_type", required_argument, NULL, 'I'},
 		{"output_a", required_argument, NULL, 'J'},
 		{"output_b", required_argument, NULL, 'K'},
+		{"ramp", no_argument, NULL, 'L'},
+		{"normal_read", no_argument, NULL, 'M'},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -776,6 +905,14 @@ int main(int argc, char **argv)
 					}
 				}
 				break;
+			case 'L':
+				/* Trigger ramp analysis */
+				is_ramp = 1;
+				break;
+			case 'M':
+				/* Use normal read */
+				use_normal_read = 1;
+				break;
 			case ':':
 				/* Value missing for option */
 				printf("Option needs a value. Check --help for usage.\n");
@@ -850,7 +987,7 @@ int main(int argc, char **argv)
 
 			/* Map the device write DMA buffer */
 			params->pfd.fd = fd_master;
-			params->pfd.events = POLLIN | POLLRDNORM;
+			params->pfd.events = EPOLLIN | EPOLLRDNORM;
 			printf("Mapping userspace memory with kernel memory for device\n");
 			params->mmap_ptr = mmap(NULL, read_length_bytes * 2, PROT_READ | PROT_WRITE, MAP_SHARED, fd_master, 0);
 			if (params->mmap_ptr == MAP_FAILED) {
@@ -869,11 +1006,16 @@ int main(int argc, char **argv)
 				ret = -1;
 				break;
 			}
+			params->minor = minor_num;
 
 			printf("Using mmap mode...\n");
 
 			/* Create thread to read the received data */
-			ret = pthread_create(&tid, NULL, poll_read, params);
+			if (use_normal_read) {
+				ret = pthread_create(&tid, NULL, poll_read_normal, params);
+			} else {
+				ret = pthread_create(&tid, NULL, poll_read_fast, params);
+			}
 			if (ret) {
 				printf("Error creating poll thread\n");
 				break;
@@ -983,7 +1125,7 @@ int main(int argc, char **argv)
 			}
 			/* Map the device write DMA buffer */
 			params->pfd.fd = fd_master;
-			params->pfd.events = POLLIN | POLLRDNORM;
+			params->pfd.events = EPOLLIN | EPOLLRDNORM;
 			printf("Mapping userspace memory with kernel memory for device\n");
 			params->mmap_ptr = mmap(NULL, read_length_bytes * 2, PROT_READ | PROT_WRITE, MAP_SHARED, fd_master, 0);
 			if (params->mmap_ptr == MAP_FAILED) {
@@ -1002,11 +1144,16 @@ int main(int argc, char **argv)
 				ret = -1;
 				break;
 			}
+			params->minor = minor_num;
 
 			printf("Using mmap mode...\n");
 
 			/* Create thread to read the received data */
-			ret = pthread_create(&tid, NULL, poll_read, params);
+			if (use_normal_read) {
+				ret = pthread_create(&tid, NULL, poll_read_normal, params);
+			} else {
+				ret = pthread_create(&tid, NULL, poll_read_fast, params);
+			}
 			if (ret) {
 				printf("Error creating poll thread\n");
 				break;
@@ -1086,7 +1233,7 @@ int main(int argc, char **argv)
 
 			/* Map the device write DMA buffer */
 			params->pfd.fd = fd_master;
-			params->pfd.events = POLLIN | POLLRDNORM;
+			params->pfd.events = EPOLLIN | EPOLLRDNORM;
 			printf("Mapping userspace memory with kernel memory for device\n");
 			params->mmap_ptr = mmap(NULL, read_length_bytes * 2, PROT_READ | PROT_WRITE, MAP_SHARED, fd_master, 0);
 			if (params->mmap_ptr == MAP_FAILED) {
@@ -1105,11 +1252,16 @@ int main(int argc, char **argv)
 				ret = -1;
 				break;
 			}
+			params->minor = minor_num;
 
 			printf("Using mmap mode...\n");
 
 			/* Create thread to read the received data */
-			ret = pthread_create(&tid, NULL, poll_read, params);
+			if (use_normal_read) {
+				ret = pthread_create(&tid, NULL, poll_read_normal, params);
+			} else {
+				ret = pthread_create(&tid, NULL, poll_read_fast, params);
+			}
 			if (ret) {
 				printf("Error creating poll thread\n");
 				break;
@@ -1218,7 +1370,7 @@ int main(int argc, char **argv)
 
 			/* Map the slave device write DMA buffer */
 			params->pfd.fd = fd_slave;
-			params->pfd.events = POLLIN | POLLRDNORM;
+			params->pfd.events = EPOLLIN | EPOLLRDNORM;
 			printf("Mapping userspace memory with kernel memory for device\n");
 			params->mmap_ptr = mmap(NULL, read_length_bytes * 2, PROT_READ | PROT_WRITE, MAP_SHARED, fd_slave, 0);
 			if (params->mmap_ptr == MAP_FAILED) {
@@ -1237,11 +1389,16 @@ int main(int argc, char **argv)
 				ret = -1;
 				break;
 			}
+			params->minor = minor_num;
 
 			printf("Using mmap mode...\n");
 
 			/* Create thread to read the received data */
-			ret = pthread_create(&tid, NULL, poll_read, params);
+			if (use_normal_read) {
+				ret = pthread_create(&tid, NULL, poll_read_normal, params);
+			} else {
+				ret = pthread_create(&tid, NULL, poll_read_fast, params);
+			}
 			if (ret) {
 				printf("Error creating poll thread\n");
 				break;
@@ -1491,6 +1648,14 @@ int main(int argc, char **argv)
 					}
 				}
 
+				/* Open core device file */
+				fd_core = open("/dev/hsi2s_reginfo", O_RDWR);
+				if(fd_core < 0) {
+					printf("Cannot open core device file\n");
+					ret = -1;
+					goto exit_app;
+				}
+
 				/* Allocate the thread parameters */
 				for (i = 0; i < 2; i++) {
 					dab_params[i] = (struct thread_params *) malloc(sizeof(struct thread_params));
@@ -1530,24 +1695,41 @@ int main(int argc, char **argv)
 				/* Map the write DMA buffers */
 				for (i = 0; i < 2; i++) {
 					dab_params[i]->pfd.fd = fd_dab[i];
-					dab_params[i]->pfd.events = POLLIN | POLLRDNORM;
-					printf("Mapping userspace memory with kernel memory\n");
+					dab_params[i]->pfd.events = EPOLLIN | EPOLLRDNORM;
+					printf("Mapping userspace memory with kernel memory for device\n");
 					dab_params[i]->mmap_ptr = mmap(NULL, read_length_bytes * 2, PROT_READ | PROT_WRITE, MAP_SHARED, fd_dab[i], 0);
 					if (dab_params[i]->mmap_ptr == MAP_FAILED) {
-						printf("mmap failed\n");
+						printf("mmap failed for device\n");
 						ret = -1;
 						goto exit_app;
 					} else {
 					dab_params[i]->mmap_read = dab_params[i]->mmap_ptr;
 					dab_params[i]->mmap_end = dab_params[i]->mmap_ptr + (read_length_bytes * 2);
 					}
+					dab_params[i]->minor = i;
 				}
+
+				/* Map the register info memory */
+				printf("Mapping userspace memory with kernel memory for core\n");
+				dab_params[0]->sh_mem = mmap(NULL, SHM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd_core, 0);
+				if (dab_params[0]->sh_mem == MAP_FAILED) {
+					printf("mmap failed for core\n");
+					ret = -1;
+					goto exit_app;
+				}
+				dab_params[1]->sh_mem = dab_params[0]->sh_mem;
 
 				/* Create thread to read the received data */
 				for (i = 0; i < 2; i++) {
 					printf("Creating thread to read the received data\n");
-					if (pthread_create(&tid_dab[i], NULL, poll_read, dab_params[i]) != 0) {
-						printf("Error creating poll thread\n");
+					if (use_normal_read) {
+						if (pthread_create(&tid_dab[i], NULL, poll_read_normal, dab_params[i]) != 0) {
+							printf("Error creating poll thread\n");
+						}
+					} else {
+						if (pthread_create(&tid_dab[i], NULL, poll_read_fast, dab_params[i]) != 0) {
+							printf("Error creating poll thread\n");
+						}
 					}
 				}
 
