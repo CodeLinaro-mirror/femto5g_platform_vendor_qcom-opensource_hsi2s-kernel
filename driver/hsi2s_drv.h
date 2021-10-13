@@ -324,6 +324,7 @@ typedef unsigned int __poll_t;
 #define SHM_SIZE PAGE_SIZE * 3
 #define SHM_WRDMA_BASE 0
 #define SHM_WRDMA_CURRENT 1
+#define SKIP_BIT_CLK_CHECK
 
 #define T_I2S_LONG_RATE_OFFSET 18
 #define T_I2S_SPKR_MODE_SD0 0x800
