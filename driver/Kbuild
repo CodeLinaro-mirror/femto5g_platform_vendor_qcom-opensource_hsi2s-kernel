@@ -1,4 +1,16 @@
 # Kernel module instructions go here.
-obj-m := hsi2s.o
+OLD_VERSION = 4.14
+
+ifeq ($(OLD_VERSION), $(findstring $(OLD_VERSION), $(KERNELVERSION)))
+export CONFIG_HSI2S=m
+else
+ifneq ("$(wildcard $(srctree)/techpack/hsi2s/config/hsi2s.conf)", "")
+include $(srctree)/techpack/hsi2s/config/hsi2s.conf
+else
+export CONFIG_HSI2S=m
+endif
+endif
+
+obj-$(CONFIG_HSI2S) := hsi2s.o
 
 hsi2s-y := hsi2s_drv.o
