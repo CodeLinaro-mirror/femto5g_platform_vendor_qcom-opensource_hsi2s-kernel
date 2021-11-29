@@ -47,6 +47,8 @@
 #include <uapi/linux/sched/types.h>
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
 #include <asm/dma-iommu.h>
+#include <linux/eventpoll.h>
+typedef unsigned int __poll_t;
 #endif
 
 /* Register offsets */
