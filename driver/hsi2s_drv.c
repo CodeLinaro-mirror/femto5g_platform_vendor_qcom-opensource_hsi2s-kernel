@@ -610,6 +610,10 @@ static void clear_irqs(void)
 /* Reset the registers */
 static void reset_registers(struct hsi2s_device *hs_dev)
 {
+	if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195) {
+		dev_info(hs_dev->dev, "Resetting muxmode register\n");
+		reg_clear(hs_dev->lpaif_muxmode);
+	}
 	if (hs_dev->lpaif_mode == HS_I2S) {
 		reg_clear(hs_dev->i2s_ctl);
 	} else {
@@ -3671,6 +3675,10 @@ static int ioctl_handler3(struct hsi2s_device *hs_dev, unsigned int cmd, unsigne
 		}
 		dev_info(hs_dev->dev, "Re-configured master clock\n");
 	} else if (cmd == LPAIF_RESET) {
+		if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195) {
+			dev_info(hs_dev->dev, "Resetting muxmode register\n");
+			reg_clear(hs_dev->lpaif_muxmode);
+		}
 		if (hs_dev->lpaif_mode == HS_I2S) {
 			dev_info(hs_dev->dev, "Resetting I2S control register\n");
 			reg_clear(hs_dev->i2s_ctl);
