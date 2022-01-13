@@ -44,7 +44,7 @@
 #define BILLION 1000000000L
 #define DAB_TUNER_COUNT 3
 #define PG_SIZE 4096
-#define SHM_SIZE (PG_SIZE * 3)
+#define SHM_SIZE (PG_SIZE * 5)
 #define SHM_WRDMA_BASE 0
 #define SHM_WRDMA_CURRENT 1
 #define BBIQ_ALLOWED_ERROR  2
