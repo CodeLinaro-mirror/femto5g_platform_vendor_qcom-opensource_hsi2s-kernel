@@ -1,13 +1,6 @@
-/* Copyright (c) 2019-2020, The Linux Foundation. All rights reserved.
+/* SPDX-License-Identifier: GPL-2.0-only
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
  */
 
 #ifndef _HSI2S_DRV_H_
@@ -45,8 +38,11 @@
 #include <linux/habmm.h>
 #include <linux/version.h>
 #include <uapi/linux/sched/types.h>
+#include <soc/qcom/boot_stats.h>
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
 #include <asm/dma-iommu.h>
+#include <linux/eventpoll.h>
+typedef unsigned int __poll_t;
 #endif
 
 /* Register offsets */
@@ -329,6 +325,7 @@
 #define SHM_SIZE PAGE_SIZE * 3
 #define SHM_WRDMA_BASE 0
 #define SHM_WRDMA_CURRENT 1
+#define SKIP_BIT_CLK_CHECK
 
 #define T_I2S_LONG_RATE_OFFSET 18
 #define T_I2S_SPKR_MODE_SD0 0x800
@@ -704,7 +701,7 @@ struct hstdm_params {
 
 /* FIFO for holding HSI2S data in the kernel space */
 struct hsi2s_buffer {
-	void *buffer;
+	struct sg_buffer *buffer;
 	void *head;
 	void *tail;
 	int size;
@@ -715,13 +712,27 @@ struct hsi2s_buffer {
 
 /* Ping pong buffer for Tx */
 struct ping_pong {
-	void *buffer;
+	struct sg_buffer *buffer;
 	void *ping_start;
 	void *pong_start;
 	u32 length;
 	int last_xfer;
 	int last_copy;
 	dma_addr_t handle;
+};
+
+/* SG buffer */
+struct sg_buffer {
+	struct device *dev;
+	void *vaddr;
+	struct page	**pages;
+	int offset;
+	enum dma_data_direction	dma_dir;
+	dma_addr_t dma_addr;
+	struct sg_table sg_table;
+	struct sg_table	*dma_sgt;
+	size_t size;
+	unsigned int num_pages;
 };
 
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
@@ -734,7 +745,6 @@ struct hsi2s_smmu_cb_ctx {
 	struct iommu_domain *iommu_domain;
 	u32 va_start;
 	u32 va_size;
-	int bypass;
 };
 #endif
 
