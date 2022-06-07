@@ -26,7 +26,7 @@ struct prod_hsi2s_clk_ctrl_req_msg_v01 {
 
 #define PROD_HSI2S_CLK_CTRL_REQ_MSG_V01_MAX_MSG_LEN 4
 
-static struct qmi_elem_info prod_hsi2s_clk_ctrl_req_msg_v01_ei[] = {
+struct qmi_elem_info prod_hsi2s_clk_ctrl_req_msg_v01_ei[] = {
 	{
 		.data_type      = QMI_UNSIGNED_1_BYTE,
 		.elem_len       = 1,
@@ -44,10 +44,11 @@ static struct qmi_elem_info prod_hsi2s_clk_ctrl_req_msg_v01_ei[] = {
 		.data_type      = QMI_EOTI,
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
 		.is_array       = NO_ARRAY,
+		.is_array       = QMI_COMMON_TLV_TYPE,
 #else
 		.array_type     = NO_ARRAY,
+		.array_type     = QMI_COMMON_TLV_TYPE,
 #endif
-		.tlv_type       = QMI_COMMON_TLV_TYPE,
 	},
 };
 
@@ -57,7 +58,7 @@ struct prod_hsi2s_clk_ctrl_resp_msg_v01 {
 
 #define PROD_HSI2S_CLK_CTRL_RESP_MSG_V01_MAX_MSG_LEN 7
 
-static struct qmi_elem_info prod_hsi2s_clk_ctrl_resp_msg_v01_ei[] = {
+struct qmi_elem_info prod_hsi2s_clk_ctrl_resp_msg_v01_ei[] = {
 	{
 		.data_type      = QMI_STRUCT,
 		.elem_len       = 1,
@@ -76,10 +77,11 @@ static struct qmi_elem_info prod_hsi2s_clk_ctrl_resp_msg_v01_ei[] = {
 		.data_type      = QMI_EOTI,
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
 		.is_array       = NO_ARRAY,
+		.is_array       = QMI_COMMON_TLV_TYPE,
 #else
 		.array_type     = NO_ARRAY,
+		.array_type     = QMI_COMMON_TLV_TYPE,
 #endif
-		.tlv_type       = QMI_COMMON_TLV_TYPE,
 	},
 };
 
