@@ -357,32 +357,32 @@ void *poll_read_fast(void *arg)
 			printf("Poll failed\n");
 		} else if (pfd.revents & EPOLLIN) {
 			curr_addr_phy = *((uint32_t *)(shm) + ((minor * PG_SIZE) / BYTES_PER_WORD) + SHM_WRDMA_CURRENT);
-			curr_addr = mmap_ptr + (curr_addr_phy - base_addr_phy);
+			curr_addr = (char *)mmap_ptr + (curr_addr_phy - base_addr_phy);
 
 			if(prev_addr < curr_addr) {
-				read_len = curr_addr - prev_addr;
+				read_len = (char *)curr_addr - (char *)prev_addr;
 				read_len_blk = mmap_len * (read_len/mmap_len);
 				if (r_limit + read_len_blk > read_limit) {
 					if (!is_ramp)
 						fwrite(prev_addr,read_limit - r_limit,1,fd_write_op);
 					else
 						bbiq_analyze(prev_addr, read_limit - r_limit);
-					prev_addr += (read_limit - r_limit);
+					prev_addr = (char *)prev_addr + (read_limit - r_limit);
 					r_limit += (read_limit - r_limit);
 				} else {
 					if (!is_ramp)
 						fwrite(prev_addr,read_len_blk,1,fd_write_op);
 					else
 						bbiq_analyze(prev_addr, read_len_blk);
-					prev_addr += read_len_blk;
+					prev_addr = (char *)prev_addr + read_len_blk;
 					r_limit += read_len_blk;
 				}
 			} else {
-				read_len = (mmap_end - prev_addr) + (curr_addr - mmap_ptr);
+				read_len = ((char *)mmap_end - (char *)prev_addr) + ((char *)curr_addr - (char *)mmap_ptr);
 				read_len_blk = mmap_len * (read_len/mmap_len);
 				if (r_limit + read_len_blk > read_limit) {
-					if (prev_addr + (read_limit - r_limit) > mmap_end) {
-						temp = mmap_end - prev_addr;
+					if ((char *)prev_addr + (read_limit - r_limit) > (char *)mmap_end) {
+						temp = (char *)mmap_end - (char *)prev_addr;
 						if (!is_ramp)
 							fwrite(prev_addr,temp,1,fd_write_op);
 						else
@@ -392,18 +392,18 @@ void *poll_read_fast(void *arg)
 							fwrite(mmap_ptr,temp,1,fd_write_op);
 						else
 							bbiq_analyze(mmap_ptr, temp);
-						prev_addr = mmap_ptr + temp;
+						prev_addr = (char *)mmap_ptr + temp;
 					} else {
 						if (!is_ramp)
 							fwrite(prev_addr,read_limit - r_limit,1,fd_write_op);
 						else
 							bbiq_analyze(prev_addr, read_limit - r_limit);
-						prev_addr += (read_limit - r_limit);
+						prev_addr = (char *)prev_addr + (read_limit - r_limit);
 					}
 					r_limit += (read_limit - r_limit);
 				} else {
-					if (prev_addr + read_len_blk > mmap_end) {
-						temp = mmap_end - prev_addr;
+					if ((char *)prev_addr + read_len_blk > (char *)mmap_end) {
+						temp = (char *)mmap_end - (char *)prev_addr;
 						if (!is_ramp)
 							fwrite(prev_addr,temp,1,fd_write_op);
 						else
@@ -413,13 +413,13 @@ void *poll_read_fast(void *arg)
 							fwrite(mmap_ptr,temp,1,fd_write_op);
 						else
 							bbiq_analyze(mmap_ptr, temp);
-						prev_addr = mmap_ptr + temp;
+						prev_addr = (char *)mmap_ptr + temp;
 					} else {
 						if (!is_ramp)
 							fwrite(prev_addr,read_len_blk,1,fd_write_op);
 						else
 							bbiq_analyze(prev_addr, read_len_blk);
-						prev_addr += read_len_blk;
+						prev_addr = (char *)prev_addr + read_len_blk;
 					}
 					r_limit += read_len_blk;
 				}
@@ -493,8 +493,8 @@ void *poll_read_normal(void *arg)
 			printf("Poll failed\n");
 		} else if (pfd.revents & EPOLLIN) {
 			if (r_limit + mmap_len > read_limit) {
-				if (mmap_read + (read_limit - r_limit) > mmap_end) {
-					temp = mmap_end - mmap_read;
+				if ((char *)mmap_read + (read_limit - r_limit) > (char *)mmap_end) {
+					temp = (char *)mmap_end - (char *)mmap_read;
 					if (!is_ramp)
 						fwrite(mmap_read,temp,1,fd_write_op);
 					else
@@ -504,19 +504,19 @@ void *poll_read_normal(void *arg)
 						fwrite(mmap_ptr,temp,1,fd_write_op);
 					else
 						bbiq_analyze(mmap_ptr,temp);
-					mmap_read = mmap_ptr + temp;
+					mmap_read = (char *)mmap_ptr + temp;
 
 				} else {
 					if (!is_ramp)
 						fwrite(mmap_read,read_limit - r_limit,1,fd_write_op);
 					else
 						bbiq_analyze(mmap_read,read_limit - r_limit);
-					mmap_read += (read_limit - r_limit);
+					mmap_read = (char *)mmap_read + (read_limit - r_limit);
 				}
 				r_limit += (read_limit - r_limit);
 			} else {
-				if (mmap_read + mmap_len > mmap_end) {
-					temp = mmap_end - mmap_read;
+				if ((char *)mmap_read + mmap_len > (char *)mmap_end) {
+					temp = (char *)mmap_end - (char *)mmap_read;
 					if (!is_ramp)
 						fwrite(mmap_read,temp,1,fd_write_op);
 					else
@@ -526,13 +526,13 @@ void *poll_read_normal(void *arg)
 						fwrite(mmap_ptr,temp,1,fd_write_op);
 					else
 						bbiq_analyze(mmap_ptr,temp);
-					mmap_read = mmap_ptr + temp;
+					mmap_read = (char *)mmap_ptr + temp;
 				} else {
 					if (!is_ramp)
 						fwrite(mmap_read,mmap_len,1,fd_write_op);
 					else
 						bbiq_analyze(mmap_read,mmap_len);
-					mmap_read += mmap_len;
+					mmap_read = (char *)mmap_read + mmap_len;
 				}
 				r_limit += mmap_len;
 			}
@@ -996,7 +996,7 @@ int main(int argc, char **argv)
 				break;
 			} else {
 				params->mmap_read = params->mmap_ptr;
-				params->mmap_end = params->mmap_ptr + (read_length_bytes * 2);
+				params->mmap_end = (char *)params->mmap_ptr + (read_length_bytes * 2);
 			}
 			/* Map the register info memory */
 			printf("Mapping userspace memory with kernel memory for core\n");
@@ -1134,7 +1134,7 @@ int main(int argc, char **argv)
 				break;
 			} else {
 				params->mmap_read = params->mmap_ptr;
-				params->mmap_end = params->mmap_ptr + (read_length_bytes * 2);
+				params->mmap_end = (char *)params->mmap_ptr + (read_length_bytes * 2);
 			}
 			/* Map the register info memory */
 			printf("Mapping userspace memory with kernel memory for core\n");
@@ -1242,7 +1242,7 @@ int main(int argc, char **argv)
 				break;
 			} else {
 				params->mmap_read = params->mmap_ptr;
-				params->mmap_end = params->mmap_ptr + (read_length_bytes * 2);
+				params->mmap_end = (char *)params->mmap_ptr + (read_length_bytes * 2);
 			}
 			/* Map the register info memory */
 			printf("Mapping userspace memory with kernel memory for core\n");
@@ -1379,7 +1379,7 @@ int main(int argc, char **argv)
 				break;
 			} else {
 				params->mmap_read = params->mmap_ptr;
-				params->mmap_end = params->mmap_ptr + (read_length_bytes * 2);
+				params->mmap_end = (char *)params->mmap_ptr + (read_length_bytes * 2);
 			}
 			/* Map the register info memory */
 			printf("Mapping userspace memory with kernel memory for core\n");
@@ -1704,7 +1704,7 @@ int main(int argc, char **argv)
 						goto exit_app;
 					} else {
 					dab_params[i]->mmap_read = dab_params[i]->mmap_ptr;
-					dab_params[i]->mmap_end = dab_params[i]->mmap_ptr + (read_length_bytes * 2);
+					dab_params[i]->mmap_end = (char *)dab_params[i]->mmap_ptr + (read_length_bytes * 2);
 					}
 					dab_params[i]->minor = i;
 				}
