@@ -38,6 +38,7 @@
 #include <linux/habmm.h>
 #include <linux/version.h>
 #include <uapi/linux/sched/types.h>
+#include <soc/qcom/boot_stats.h>
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
 #include <asm/dma-iommu.h>
 #include <linux/eventpoll.h>
@@ -119,6 +120,11 @@ typedef unsigned int __poll_t;
 #define H_LPAIF_SEC_STC_DIFF			0x1A010
 #define H_LPAIF_PCM_I2S_SEL			0x1B000
 #define H_LPAIF_MUXMODE				0xB000
+
+#define M_LPAIF_IRQ2_EN				0x9014
+#define M_LPAIF_IRQ2_STAT			0x9018
+#define M_LPAIF_IRQ2_CLEAR			0x9020
+#define M_LPAIF_MUXMODE				0x24
 
 /* Bits for I2S control register */
 #define T_I2S_WS_SRC				BIT(2)
@@ -220,6 +226,8 @@ typedef unsigned int __poll_t;
 #define H_WRDMA_DYN_CLK				BIT(20)
 #define H_WRDMA_RESET				BIT(31)
 
+#define M_WRDMA_WATERMRK_EXT			BIT(28)
+
 /* Bits for rate detection */
 #define T_RATE_DET_EN				BIT(0)
 #define T_RATE_DET_RESET			BIT(31)
@@ -260,17 +268,24 @@ typedef unsigned int __poll_t;
 #define IRQ_PRI_RD_NO_RATE			BIT(29)
 #define IRQ_SEC_RD_DIFF_RATE			BIT(30)
 #define IRQ_SEC_RD_NO_RATE			BIT(31)
+#define IRQ2_PER_WRDMA_CH4			BIT(4)
+#define IRQ2_OVR_WRDMA_CH4			BIT(5)
+#define IRQ2_ERR_WRDMA_CH4			BIT(6)
 
 /* Additional macros */
 #define DEVICE_NAME "hsi2s_driver"
 #define SDR0 "hs0_i2s"
 #define SDR1 "hs1_i2s"
 #define SDR2 "hs2_i2s"
+#define SDR3 "hs3_i2s"
+#define SDR4 "hs4_i2s"
 #define HS_I2S 0
 #define HS_PCM 1
 #define HS0_I2S 0
 #define HS1_I2S 1
 #define HS2_I2S 2
+#define HS3_I2S 3
+#define HS4_I2S 4
 #define PCM_RATE_8_BIT_CLKS 0
 #define PCM_RATE_16_BIT_CLKS 1
 #define PCM_RATE_32_BIT_CLKS 2
@@ -321,9 +336,10 @@ typedef unsigned int __poll_t;
 #define LONG_RATE_MAX 63
 #define BIT_CLK_MAX 73728000
 #define WRDMA_RAM_LENGTH 512
-#define SHM_SIZE PAGE_SIZE * 3
+#define SHM_SIZE PAGE_SIZE * 5
 #define SHM_WRDMA_BASE 0
 #define SHM_WRDMA_CURRENT 1
+#define SKIP_BIT_CLK_CHECK
 
 #define T_I2S_LONG_RATE_OFFSET 18
 #define T_I2S_SPKR_MODE_SD0 0x800
@@ -439,6 +455,16 @@ typedef unsigned int __poll_t;
 #define H_SYNC_SEL_SEC 0x4
 #define H_SYNC_SEL_TER 0x6
 
+#define M_RDDMA_TER_AUDIO_INTF 0x3000
+#define M_RDDMA_QUAT_AUDIO_INTF 0x4000
+#define M_RDDMA_QUIN_AUDIO_INTF 0xE000
+#define M_WRDMA_TER_AUDIO_INTF 0x3000
+#define M_WRDMA_QUAT_AUDIO_INTF 0x4000
+#define M_WRDMA_QUIN_AUDIO_INTF 0x5000
+#define M_WRDMA_LOOPBACK_CH2 0xB000
+#define M_WRDMA_LOOPBACK_CH3 0xC000
+#define M_WRDMA_LOOPBACK_CH4 0xD000
+
 #define HS0_BITCLK_CMD_REG 0x17046000
 #define HS0_BITCLK_CFG_REG 0x17046004
 #define HS1_BITCLK_CMD_REG 0x17047000
@@ -475,6 +501,7 @@ struct hsi2s_core {
 	/* Memory mapping */
 	void __iomem *lpaif_base_va;
 	void __iomem *lpass_tcsr_base_va;
+	void __iomem *lpass_core_cc_hs_if;
 
 	/* IRQ */
 	struct irq_desc *desc;
@@ -483,6 +510,9 @@ struct hsi2s_core {
 	void __iomem *irq_en;
 	void __iomem *irq_stat;
 	void __iomem *irq_clear;
+	void __iomem *irq2_en;
+	void __iomem *irq2_stat;
+	void __iomem *irq2_clear;
 
 	/* Rate detection registers */
 	bool is_rate_enabled;
@@ -760,6 +790,9 @@ struct hsi2s_macros {
 	u32 offset_irq_en;
 	u32 offset_irq_stat;
 	u32 offset_irq_clear;
+	u32 offset_irq2_en;
+	u32 offset_irq2_stat;
+	u32 offset_irq2_clear;
 	u32 offset_rddma_ctl;
 	u32 offset_rddma_base;
 	u32 offset_rddma_buff_len;
@@ -861,6 +894,8 @@ struct hsi2s_macros {
 	u32 regfield_rddma_pri_audio_intf;
 	u32 regfield_rddma_sec_audio_intf;
 	u32 regfield_rddma_ter_audio_intf;
+	u32 regfield_rddma_quat_audio_intf;
+	u32 regfield_rddma_quin_audio_intf;
 	u32 regfield_rddma_fifo_wm8;
 	u32 regfield_wrdma_wpscnt_one;
 	u32 regfield_wrdma_wpscnt_two;
@@ -869,9 +904,13 @@ struct hsi2s_macros {
 	u32 regfield_wrdma_pri_audio_intf;
 	u32 regfield_wrdma_sec_audio_intf;
 	u32 regfield_wrdma_ter_audio_intf;
+	u32 regfield_wrdma_quat_audio_intf;
+	u32 regfield_wrdma_quin_audio_intf;
 	u32 regfield_wrdma_loopback_ch0;
 	u32 regfield_wrdma_loopback_ch1;
 	u32 regfield_wrdma_loopback_ch2;
+	u32 regfield_wrdma_loopback_ch3;
+	u32 regfield_wrdma_loopback_ch4;
 	u32 regfield_wrdma_fifo_wm8;
 	u32 regfield_rate_num_fs_1;
 	u32 regfield_rate_num_fs_8;
