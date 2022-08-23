@@ -19,7 +19,9 @@
 #define PROD_HSI2S_CLK_CTRL_REQ_V01 0x0001
 #define PROD_HSI2S_CLK_CTRL_RESP_V01 0x0001
 
-
+#ifndef CONFIG_QCOM_QMI_HELPERS
+#define CONFIG_QCOM_QMI_HELPERS
+#endif
 struct prod_hsi2s_clk_ctrl_req_msg_v01 {
 	u8 enable_hsi2s_clks;
 };

@@ -1,10 +1,19 @@
-obj-y += driver/
-obj-y += test/generic
+# Makefile for use with Android's kernel/build system
+KBUILD_OPTIONS += HSI2S_KERNEL_ROOT=$(shell pwd)
+KBUILD_OPTIONS += KERNEL_ROOT=$(ROOT_DIR)/$(KERNEL_DIR)
+KBUILD_OPTIONS += MODNAME=hsi2s
+HSI2S_BLD_DIR := ../../vendor/qcom/opensource/hsi2s-kernel/
 
-all:
-	$(MAKE) -C $(KERNEL_SRC) M=$(shell pwd) modules $(KBUILD_OPTIONS)
+all: modules
+
+modules dtbs:
+	$(MAKE) -C $(KERNEL_SRC) M=$(M) modules $(KBUILD_OPTIONS)
+
 modules_install:
-	$(MAKE) INSTALL_MOD_STRIP=1 -C $(KERNEL_SRC) M=$(shell pwd) modules_install
+	$(MAKE) M=$(M) -C $(KERNEL_SRC) modules_install
+
+#install_headers:
+#	$(MAKE) --no-builtin-rules ARCH=$(ARCH) -C $(KERNEL_SRC) headers_install
+
 clean:
-	rm -f *.o *.ko *.mod.c *.mod.o *~ .*.cmd Module.symvers
-	rm -rf .tmp_versions
+	$(MAKE) -C $(KERNEL_SRC) M=$(M) clean

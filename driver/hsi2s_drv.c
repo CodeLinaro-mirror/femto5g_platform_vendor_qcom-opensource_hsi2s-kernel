@@ -4,11 +4,12 @@
  */
 
 #include "hsi2s_drv.h"
-#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM) && defined(CONFIG_QCOM_QMI_HELPERS)
+#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
 #include "hsi2s_adsp_clk_ctrl.h"
 #endif
 #include "hsi2s_common.h"
-
+/*Place marker function declaration*/
+extern void place_marker(const char *name);
 /* Device number */
 static dev_t devid;
 
@@ -2387,7 +2388,11 @@ static void *dma_sg_alloc(struct device *dev, unsigned long size,
 	/* Store the DMA handle */
 	buf->dma_addr = sg_dma_address(sgt->sgl);
 	/* Create virtual address mapping */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,15,0)
+	buf->vaddr = vm_map_ram(buf->pages, buf->num_pages, -1);
+#else
 	buf->vaddr = vm_map_ram(buf->pages, buf->num_pages, -1, PAGE_KERNEL);
+#endif
 	if (buf->vaddr == NULL) {
 		dev_err(buf->dev, "Failed to map pages to vmalloc space");
 		goto fail_map_sg;
@@ -3788,6 +3793,7 @@ static ssize_t device_write(struct file *file, const char __user *buffer,
 	struct hsi2s_device *hs_dev;
 	int bytes_written = 0;
 	int temp_length;
+	int ret=0;
 
 	hs_dev = (struct hsi2s_device *)file->private_data;
 	temp_length = hs_dev->read_buffer->length;
@@ -3798,16 +3804,19 @@ static ssize_t device_write(struct file *file, const char __user *buffer,
 				wait_event_interruptible(hs_dev->wq_rddma,
 							(hs_dev->read_buffer->last_copy ^ hs_dev->read_buffer->last_xfer) == 1);
 		}
-
 		if (hs_dev->read_buffer->last_copy) {
-			copy_from_user(hs_dev->read_buffer->ping_start,
+			ret = copy_from_user(hs_dev->read_buffer->ping_start,
 				       (const void __user *)buffer + bytes_written,
 				       temp_length);
 		} else {
-			copy_from_user(hs_dev->read_buffer->pong_start,
+			ret = copy_from_user(hs_dev->read_buffer->pong_start,
 				       (const void __user *)buffer + bytes_written,
 				       temp_length);
 		}
+		if (ret) {
+		dev_err(hs_dev->dev, "Error copying data to userspace");
+		return -ret;
+	    }
 
 		dma_sync_sg_for_device(hsi2s_core->dev,
 				       hs_dev->read_buffer->buffer->dma_sgt->sgl,
@@ -3831,14 +3840,18 @@ static ssize_t device_write(struct file *file, const char __user *buffer,
 
 	if (hs_dev->read_buffer->last_copy) {
 		memset(hs_dev->read_buffer->ping_start, 0, hs_dev->read_buffer->length);
-		copy_from_user(hs_dev->read_buffer->ping_start,
+		ret = copy_from_user(hs_dev->read_buffer->ping_start,
 			       (const void __user *)buffer + bytes_written,
 			       length);
 	} else {
 		memset(hs_dev->read_buffer->pong_start, 0, hs_dev->read_buffer->length);
-		copy_from_user(hs_dev->read_buffer->pong_start,
+		ret = copy_from_user(hs_dev->read_buffer->pong_start,
 			       (const void __user *)buffer + bytes_written,
 			       length);
+	}
+	if (ret) {
+		dev_err(hs_dev->dev, "Error copying data to userspace");
+		return -ret;
 	}
 	dma_sync_sg_for_device(hsi2s_core->dev,
 			       hs_dev->read_buffer->buffer->dma_sgt->sgl,
@@ -3904,7 +3917,7 @@ static int device_release(struct inode *inode, struct file *file)
 static int toggle_bit_clock(struct hsi2s_device *hs_dev)
 {
 	int ret = 0;
-#if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
+#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
 	u32 resp_size = sizeof(msg_t);
 #endif
 
@@ -3923,6 +3936,7 @@ static int toggle_bit_clock(struct hsi2s_device *hs_dev)
 	dev_info(hs_dev->dev, "QMI kernel configuration is not enabled\n");
 #endif
 #else
+#if defined(CONFIG_MSM_HAB)
 	hsi2s_core->hab_req->clk_en = 1;
 
 	ret = habmm_socket_send(hsi2s_core->hab_handle, hsi2s_core->hab_req, resp_size, 0);
@@ -3942,6 +3956,9 @@ static int toggle_bit_clock(struct hsi2s_device *hs_dev)
 		dev_err(hsi2s_core->dev, "error response (%d)\n", hsi2s_core->hab_resp->rsp);
 		return -EIO;
 	}
+#else
+	dev_info(hs_dev->dev, "HAB kernel configuration is not enabled\n");
+#endif
 #endif
 
 	return ret;
@@ -4234,7 +4251,7 @@ static int ioctl_handler4(struct hsi2s_device *hs_dev, unsigned int cmd, unsigne
 			dev_err(hs_dev->dev, "Failed to allocate params structure\n");
 			return -ENOMEM;
 		}
-		copy_from_user(i2s_params, (const void __user *)arg, sizeof(struct hsi2s_params));
+		ret = copy_from_user(i2s_params, (const void __user *)arg, sizeof(struct hsi2s_params));
 		ret = configure_i2s_params(hs_dev, i2s_params);
 		if (ret < 0) {
 			dev_err(hs_dev->dev, "Failed to configure I2S parameters\n");
@@ -4249,7 +4266,7 @@ static int ioctl_handler4(struct hsi2s_device *hs_dev, unsigned int cmd, unsigne
 			dev_err(hs_dev->dev, "Failed to allocate params structure\n");
 			return -ENOMEM;
 		}
-		copy_from_user(pcm_params, (const void __user *)arg, sizeof(struct hspcm_params));
+		ret = copy_from_user(pcm_params, (const void __user *)arg, sizeof(struct hspcm_params));
 		ret = configure_pcm_params(hs_dev, pcm_params);
 		if (ret < 0) {
 			dev_err(hs_dev->dev, "Failed to configure PCM parameters\n");
@@ -4264,7 +4281,7 @@ static int ioctl_handler4(struct hsi2s_device *hs_dev, unsigned int cmd, unsigne
 			dev_err(hs_dev->dev, "Failed to allocate params structure\n");
 			return -ENOMEM;
 		}
-		copy_from_user(tdm_params, (const void __user *)arg, sizeof(struct hstdm_params));
+		ret = copy_from_user(tdm_params, (const void __user *)arg, sizeof(struct hstdm_params));
 		ret = configure_tdm_params(hs_dev, tdm_params);
 		if (ret < 0) {
 			dev_err(hs_dev->dev, "Failed to configure TDM parameters\n");
@@ -5483,6 +5500,7 @@ static int hsi2s_remove(struct platform_device *pdev)
 			}
 #endif
 #else
+#if defined(CONFIG_MSM_HAB)
 			hs_core->hab_req->clk_en = 0;
 
 			ret = habmm_socket_send(hs_core->hab_handle, hs_core->hab_req, resp_size, 0);
@@ -5508,6 +5526,7 @@ err_close_hab:
 			hs_core->hab_handle = 0;
 			kfree(hs_core->hab_req);
 			kfree(hs_core->hab_resp);
+#endif
 #endif
 		} else {
 			if (hs_core->target == 8295) {
@@ -5539,7 +5558,8 @@ err_close_hab:
 static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	int ret = 0;
-#if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
+	//u32 target;
+#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
 	u32 resp_size = sizeof(msg_t);
 #endif
 
@@ -5584,7 +5604,8 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 			h_modify_core_clks(0);
 #endif
 #else
-				hsi2s_core->hab_req->clk_en = 0;
+#if defined(CONFIG_MSM_HAB)
+			hsi2s_core->hab_req->clk_en = 0;
 
 				ret = habmm_socket_send(hsi2s_core->hab_handle, hsi2s_core->hab_req, resp_size, 0);
 				if (ret) {
@@ -5604,6 +5625,7 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 					ret = -EIO;
 					goto err_suspend;
 				}
+#endif
 #endif
 			} else {
 				h_modify_interface_clks(0);
@@ -5667,6 +5689,7 @@ static int hsi2s_resume(struct platform_device *pdev)
 				h_modify_core_clks(1);
 #endif
 #else
+#if defined(CONFIG_MSM_HAB)
 				hsi2s_core->hab_req->clk_en = 1;
 
 				ret = habmm_socket_send(hsi2s_core->hab_handle, hsi2s_core->hab_req, resp_size, 0);
@@ -5687,6 +5710,7 @@ static int hsi2s_resume(struct platform_device *pdev)
 					ret = -EIO;
 					goto err_resume;
 				}
+#endif
 #endif
 			} else {
 				h_modify_interface_clks(1);

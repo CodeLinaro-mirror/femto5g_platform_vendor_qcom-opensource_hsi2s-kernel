@@ -35,7 +35,9 @@
 #include <linux/io.h>
 #include <linux/poll.h>
 #include <linux/soc/qcom/qmi.h>
+#if defined(CONFIG_MSM_HAB)
 #include <linux/habmm.h>
+#endif
 #include <linux/version.h>
 #include <uapi/linux/sched/types.h>
 #include <soc/qcom/boot_stats.h>
