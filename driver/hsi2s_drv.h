@@ -579,6 +579,9 @@ struct hsi2s_core {
 
 	/* Shared memory */
 	void *sh_mem;
+	/* Disable and enable ADSP clk flag*/
+	bool enable_adsp_clk_flg;
+	bool disable_adsp_clk_flg;
 };
 
 /* LPAIF HS-I2S device structure */
