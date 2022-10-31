@@ -35,9 +35,7 @@
 #include <linux/io.h>
 #include <linux/poll.h>
 #include <linux/soc/qcom/qmi.h>
-#if defined(CONFIG_MSM_HAB)
 #include <linux/habmm.h>
-#endif
 #include <linux/version.h>
 #include <uapi/linux/sched/types.h>
 #include <soc/qcom/boot_stats.h>
@@ -45,6 +43,16 @@
 #include <asm/dma-iommu.h>
 #include <linux/eventpoll.h>
 typedef unsigned int __poll_t;
+#endif
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,15,0)
+#if (!defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM))
+#if CONFIG_QCOM_QMI_HELPERS_MODULE
+#define CONFIG_QCOM_QMI_HELPERS 1
+#endif
+#endif
+#if CONFIG_MSM_HAB_MODULE
+#define CONFIG_MSM_HAB 1
+#endif
 #endif
 
 /* Register offsets */
