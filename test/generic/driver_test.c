@@ -33,6 +33,7 @@
 #include <errno.h>
 #include <getopt.h>
 #include <sched.h>
+#include <signal.h>
 #include "hsi2s_common.h"
 
 /* Macros */
@@ -121,6 +122,8 @@ long ch1_error_cnt;
 long total_samples;
 int test_previous;
 int is_ramp;
+int fd_master = -1;
+int is_tx_active;
 
 /* Prints the usage information */
 void help()
@@ -556,9 +559,25 @@ void *poll_read_normal(void *arg)
 	return NULL;
 }
 
+/* Signal handler */
+void signal_handler(int sig_id)
+{
+	int ret = 0;
+	if (sig_id == SIGINT) {
+		if (is_tx_active) {
+			printf("Disabling Tx on read DMA channel\n");
+			ret = ioctl(fd_master, LPAIF_DEINIT_TX);
+			if (ret < 0) {
+				printf("Failed to stop Tx on hsi2s device\n");
+			}
+			is_tx_active = 0;
+		}
+		exit(0);
+	}
+}
+
 int main(int argc, char **argv)
 {
-	int fd_master = -1;
 	int fd_slave = -1;
 	int fd_core = -1;
 	FILE *fd_read_ip = NULL;
@@ -614,6 +633,7 @@ int main(int argc, char **argv)
 	FILE *fd_out_b = NULL;
 	struct thread_params *params;
 	int use_normal_read = 0;
+	struct sigaction sa;
 
 	struct option   long_opt[] =
 	{
@@ -663,6 +683,11 @@ int main(int argc, char **argv)
 	read_length_bytes = READ_LENGTH_MB * 1024 * 1024;
 	read_length_words = READ_LENGTH_WORDS;
 	mmap_len = read_length_bytes;
+
+	/* Set the signal handler */
+	memset(&sa, 0, sizeof(sa));
+	sa.sa_handler = &signal_handler;
+	sigaction(SIGINT, &sa, NULL);
 
 	/*Allocate thread params structure */
 	params = (struct thread_params *) malloc(sizeof(struct thread_params));
@@ -1055,7 +1080,7 @@ int main(int argc, char **argv)
 				printf("Failed to configure speaker\n");
 				break;
 			}
-
+			is_tx_active = 1;
 			printf("Reading i/p file...\n");
 			wav_data = (int32_t *) malloc(no_words * sizeof(int32_t));
 			if (!wav_data) {
@@ -1085,6 +1110,7 @@ int main(int argc, char **argv)
 				printf("Failed to stop Tx on hsi2s device\n");
 				break;
 			}
+			is_tx_active = 0;
 			break;
 
 		case INTERNAL_LB:
@@ -1123,6 +1149,7 @@ int main(int argc, char **argv)
 				printf("Failed to trigger internal loopback\n");
 				break;
 			}
+			is_tx_active = 1;
 			/* Map the device write DMA buffer */
 			params->pfd.fd = fd_master;
 			params->pfd.events = EPOLLIN | EPOLLRDNORM;
@@ -1192,6 +1219,7 @@ int main(int argc, char **argv)
 				printf("Failed to stop Tx on hsi2s device\n");
 				break;
 			}
+			is_tx_active = 0;
 			break;
 
 		case EXTERNAL_LB_MASTER:
@@ -1230,7 +1258,7 @@ int main(int argc, char **argv)
 				printf("Failed to trigger external loopback\n");
 				break;
 			}
-
+			is_tx_active = 1;
 			/* Map the device write DMA buffer */
 			params->pfd.fd = fd_master;
 			params->pfd.events = EPOLLIN | EPOLLRDNORM;
@@ -1300,6 +1328,7 @@ int main(int argc, char **argv)
 				printf("Failed to stop Tx on hsi2s device\n");
 				break;
 			}
+			is_tx_active = 0;
 			break;
 
 		case EXTERNAL_LB_MASTER_SLAVE:
@@ -1364,7 +1393,7 @@ int main(int argc, char **argv)
 				printf("Failed to configure speaker\n");
 				break;
 			}
-
+			is_tx_active = 1;
 			/* Set the minor number */
 			minor_num = slave;
 
@@ -1437,6 +1466,7 @@ int main(int argc, char **argv)
 				printf("Failed to stop Tx on hsi2s device\n");
 				break;
 			}
+			is_tx_active = 0;
 			break;
 
 		case SET_MUXMODE:
@@ -1792,6 +1822,14 @@ exit_app:
 		fd_slave = -1;
 	}
 	if (fd_master >= 0) {
+		if (is_tx_active) {
+			printf("Disabling Tx on read DMA channel\n");
+			ret = ioctl(fd_master, LPAIF_DEINIT_TX);
+			if (ret < 0) {
+				printf("Failed to stop Tx on hsi2s device\n");
+			}
+			is_tx_active = 0;
+		}
 		close(fd_master);
 		fd_master = -1;
 	}
