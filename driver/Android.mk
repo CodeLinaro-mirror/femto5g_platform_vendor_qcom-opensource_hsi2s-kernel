@@ -18,11 +18,7 @@ KBUILD_OPTIONS := $(HSI2S_BLD_DIR)
 
 LOCAL_MODULE := hsi2s.ko
 
-ifeq ($(TARGET_USES_KERNEL_PLATFORM),true)
-include $(DLKM_DIR)/Build_external_kernelmodule.mk
-else
 include $(DLKM_DIR)/AndroidKernelModule.mk
-endif
 endif
 endif
 
