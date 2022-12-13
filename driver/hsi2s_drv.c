@@ -5569,7 +5569,8 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 					}
 				}
 			}
-			if (enable_qmi) {
+			if((hsi2s_core->disable_adsp_clk_flg)){
+				if (enable_qmi) {
 #if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
 #if defined(CONFIG_QCOM_QMI_HELPERS)
 				if (hsi2s_core->qmi_dev) {
@@ -5608,6 +5609,7 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 			} else {
 				h_modify_interface_clks(0);
 				h_modify_core_clks(0);
+				}
 			}
 		}
 	}
@@ -5652,6 +5654,7 @@ static int hsi2s_resume(struct platform_device *pdev)
 				return ret;
 			}
 		} else if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195) {
+			if(hsi2s_core->enable_adsp_clk_flg){
 			if (enable_qmi) {
 #if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
 #if defined(CONFIG_QCOM_QMI_HELPERS)
@@ -5692,6 +5695,7 @@ static int hsi2s_resume(struct platform_device *pdev)
 				h_modify_interface_clks(1);
 				h_modify_core_clks(1);
 			}
+			}
 			/* Configure the output routing gpio for 8195 */
 			if (hsi2s_core->target == 8195) {
 				if (of_property_read_bool(pdev->dev.of_node, "pinctrl-names")) {
@@ -5713,17 +5717,69 @@ err_resume:
 	return ret;
 }
 
+
+
+static int hsi2s_pm_suspend(struct device *dev)
+{
+	int ret =0;
+	pm_message_t message;
+	struct platform_device *pdev ;
+	pdev = to_platform_device(dev);
+	hsi2s_core->disable_adsp_clk_flg = true;
+	message.event = PM_EVENT_SUSPEND;
+	ret = hsi2s_suspend(pdev,message);
+	return ret;
+}
+static int hsi2s_pm_resume(struct device *dev)
+{
+	int ret =0;
+	struct platform_device *pdev = to_platform_device(dev);
+	hsi2s_core->enable_adsp_clk_flg = true;
+	ret = hsi2s_resume(pdev);
+	return ret;
+}
+static int hsi2s_pm_freeze(struct device *dev)
+{
+	int ret =0;
+	pm_message_t message;
+	struct platform_device *pdev ;
+	hsi2s_core->disable_adsp_clk_flg = false;
+	pdev = to_platform_device(dev);
+	message.event = PM_EVENT_FREEZE;
+	ret = hsi2s_suspend(pdev,message);
+	return ret;
+}
+static int hsi2s_pm_thaw(struct device *dev)
+{
+	int ret =0;
+	return ret;
+}
+static int hsi2s_pm_restore(struct device *dev)
+{
+	int ret =0;
+	struct platform_device *pdev = to_platform_device(dev);
+	hsi2s_core->enable_adsp_clk_flg = false;
+	ret = hsi2s_resume(pdev);
+	return ret;
+}
+static const struct dev_pm_ops hsi2s_pm_ops = {
+	.suspend = hsi2s_pm_suspend,
+	.freeze = hsi2s_pm_freeze,
+	.thaw = hsi2s_pm_thaw,
+	.restore = hsi2s_pm_restore,
+	.resume = hsi2s_pm_resume,
+};
+
 static struct platform_driver hsi2s_driver = {
 	.probe = hsi2s_probe,
 	.remove = hsi2s_remove,
-#ifdef CONFIG_PM
-	.suspend = hsi2s_suspend,
-	.resume = hsi2s_resume,
-#endif
 	.driver = {
 		.name = "hsi2s_device",
 		.of_match_table = hsi2s_idtable,
 		.owner = THIS_MODULE,
+#ifdef CONFIG_PM
+		.pm = &hsi2s_pm_ops,
+#endif
 	},
 };
 
