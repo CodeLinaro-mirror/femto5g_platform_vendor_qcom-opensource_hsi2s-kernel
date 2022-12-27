@@ -33,6 +33,7 @@
 #include <errno.h>
 #include <getopt.h>
 #include <sched.h>
+#include <signal.h>
 #include "hsi2s_common.h"
 
 /* Macros */
