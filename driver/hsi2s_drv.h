@@ -580,6 +580,7 @@ struct hsi2s_core {
 	/* Disable and enable ADSP clk flag*/
 	bool enable_adsp_clk_flg;
 	bool disable_adsp_clk_flg;
+	bool suspend_to_disk_trigger_flg;
 };
 
 /* LPAIF HS-I2S device structure */
