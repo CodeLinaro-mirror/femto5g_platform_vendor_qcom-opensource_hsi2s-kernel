@@ -5625,6 +5625,8 @@ err_suspend:
 static int hsi2s_resume(struct platform_device *pdev)
 {
 	int ret = 0;
+	struct hsi2s_device *hs_dev = hsi2s_core->hsi2s_arr[0];
+	int i;
 #if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
 	u32 resp_size = sizeof(msg_t);
 #endif
@@ -5691,10 +5693,11 @@ static int hsi2s_resume(struct platform_device *pdev)
 					goto err_resume;
 				}
 #endif
-			} else {
-				h_modify_interface_clks(1);
-				h_modify_core_clks(1);
 			}
+			}
+			if(!enable_qmi) {
+				h_modify_core_clks(1);
+				h_modify_interface_clks(1);
 			}
 			/* Configure the output routing gpio for 8195 */
 			if (hsi2s_core->target == 8195) {
@@ -5705,6 +5708,58 @@ static int hsi2s_resume(struct platform_device *pdev)
 						dev_err(hsi2s_core->dev, "Failed to configure the output routing gpio during resume");
 					}
 				}
+			}
+
+			if (hsi2s_core->suspend_to_disk_trigger_flg) {
+			for(i=0;i<3;i++){
+				hs_dev = hsi2s_core->hsi2s_arr[i];
+				/*LPAIF Reset sequence*/
+				dev_info(hs_dev->dev, "Resetting muxmode register\n");
+				reg_clear(hs_dev->lpaif_muxmode);
+				if (hs_dev->lpaif_mode == HS_I2S) {
+					dev_info(hs_dev->dev, "Resetting I2S control register\n");
+					reg_clear(hs_dev->i2s_ctl);
+					dev_info(hs_dev->dev, "Resetting DMA registers\n");
+					reset_rddma_registers(hs_dev);
+					reset_wrdma_registers(hs_dev);
+					/* Clear IRQs */
+					clear_irqs();
+					/* Reset buffer pointers */
+					hs_dev->read_buffer->last_copy = 1;
+					hs_dev->read_buffer->last_xfer = 1;
+					hs_dev->write_buffer->head = hs_dev->lpass_wrdma_start;
+					hs_dev->write_buffer->tail = hs_dev->lpass_wrdma_start;
+					hs_dev->write_buffer->data_ready = 0;
+					hs_dev->write_buffer->pollin = 0;
+					hs_dev->rddma_xfer_busy = 0;
+					hs_dev->rddma_copy_busy = 1;
+					hs_dev->rddma_in_progress = 0;
+				} else {
+					dev_info(hs_dev->dev, "Resetting PCM control registers\n");
+					reg_clear(hs_dev->pcm_ctl);
+					reg_clear(hs_dev->tdm_ctl);
+					reg_clear(hs_dev->tdm_sample_width);
+					dev_info(hs_dev->dev, "Resetting DMA registers\n");
+					reset_rddma_registers(hs_dev);
+					reset_wrdma_registers(hs_dev);
+					/* Clear IRQs */
+					clear_irqs();
+					/* Reset buffer pointers */
+					hs_dev->read_buffer->last_copy = 1;
+					hs_dev->read_buffer->last_xfer = 1;
+					hs_dev->write_buffer->head = hs_dev->lpass_wrdma_start;
+					hs_dev->write_buffer->tail = hs_dev->lpass_wrdma_start;
+					hs_dev->write_buffer->data_ready = 0;
+					hs_dev->write_buffer->pollin = 0;
+					hs_dev->rddma_xfer_busy = 0;
+					hs_dev->rddma_copy_busy = 1;
+					hs_dev->rddma_in_progress = 0;
+				}
+				/*Normal Rx sequence*/
+				configure_muxmode(hs_dev, 1);
+				configure_normal_mode(hs_dev, i);
+			}
+			hsi2s_core->suspend_to_disk_trigger_flg= false;
 			}
 		}
 	}
@@ -5744,6 +5799,7 @@ static int hsi2s_pm_freeze(struct device *dev)
 	pm_message_t message;
 	struct platform_device *pdev ;
 	hsi2s_core->disable_adsp_clk_flg = false;
+	hsi2s_core->suspend_to_disk_trigger_flg= true;
 	pdev = to_platform_device(dev);
 	message.event = PM_EVENT_FREEZE;
 	ret = hsi2s_suspend(pdev,message);
