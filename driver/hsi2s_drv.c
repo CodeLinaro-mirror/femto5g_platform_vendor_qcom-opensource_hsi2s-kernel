@@ -8,8 +8,10 @@
 #include "hsi2s_adsp_clk_ctrl.h"
 #endif
 #include "hsi2s_common.h"
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 19, 0))
 /*Place marker function declaration*/
 extern void place_marker(const char *name);
+#endif
 /* Device number */
 static dev_t devid;
 
@@ -4905,8 +4907,11 @@ static int hsi2s_probe(struct platform_device *pdev)
 
 	if (of_device_is_compatible(pdev->dev.of_node, "qcom,hsi2s-interface"))
 		return hsi2s_interface_probe(pdev);
-
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 19, 0))
 	place_marker("M - DRIVER HS-I2S Init");
+#else
+	pr_info("M - DRIVER HS-I2S Init");
+#endif
 
 	hsi2s_core = kzalloc(sizeof(*hsi2s_core), GFP_KERNEL);
 	if (!hsi2s_core)
@@ -5313,8 +5318,11 @@ static int hsi2s_probe(struct platform_device *pdev)
 		dev_err(hsi2s_core->dev, "Failed to add child devices");
 	else
 		dev_info(hsi2s_core->dev, "Added child devices");
-
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 19, 0))
 	place_marker("M - DRIVER HS-I2S Ready");
+#else
+	pr_info("M - DRIVER HS-I2S Ready");
+#endif
 
 	return ret;
 
