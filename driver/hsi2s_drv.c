@@ -2451,12 +2451,15 @@ static int dma_sg_alloc_compacted(struct sg_buffer *buf)
 	while (size > 0) {
 		struct page *pages;
 		int order;
-		int i;
+		unsigned int i;
 
 		order = get_order(size);
+
 		/* Don't over allocate*/
 		if ((PAGE_SIZE << order) > size)
 			order--;
+		if(order < 0)
+			order = 0;
 
 		pages = NULL;
 		while (!pages) {
