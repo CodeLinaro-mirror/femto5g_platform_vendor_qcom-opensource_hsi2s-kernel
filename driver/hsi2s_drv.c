@@ -970,6 +970,27 @@ static void p_audio_mux_pin(int enable)
 	iounmap(h_gpio_out97);
 }
 
+/*Audio Mux Sel Pin in Hana*/
+static void h_audio_mux_pin(int enable)
+{
+	void __iomem *h_gpio_cfg97;
+	void __iomem *h_gpio_out97;
+	h_gpio_cfg97 = ioremap(0x3961000, 4);
+        h_gpio_out97 = ioremap(0x3961004, 4);
+
+	if (enable) {
+		dev_info(hsi2s_core->dev, "Enable SDR GPIO pins in HANA");
+		setbits(h_gpio_cfg97, 0x603);
+		setbits(h_gpio_out97, 0x2);
+	} else {
+		clearbits(h_gpio_cfg97, 0x603);
+		clearbits(h_gpio_out97, 0x2);
+		dev_info(hsi2s_core->dev, "Disable SDR GPIO pins in GPIO");
+	}
+	iounmap(h_gpio_cfg97);
+	iounmap(h_gpio_out97);
+}
+
 /* Reset the registers */
 static void reset_registers(struct hsi2s_device *hs_dev)
 {
@@ -4292,6 +4313,8 @@ static int ioctl_handler1(struct hsi2s_device *hs_dev, unsigned int cmd, unsigne
 			configure_muxmode(hs_dev, 1);
 		if (hsi2s_core->target == 8195)
 			p_audio_mux_pin(1);
+		else if (hsi2s_core->target == 8155)
+			h_audio_mux_pin(1);
 		configure_normal_mode(hs_dev, minor);
 		hs_dev->slave = minor;
 
@@ -4330,6 +4353,8 @@ static int ioctl_handler1(struct hsi2s_device *hs_dev, unsigned int cmd, unsigne
 		configure_muxmode(hs_dev, 0);
 		if (hsi2s_core->target == 8195)
 			p_audio_mux_pin(1);
+		else if (hsi2s_core->target == 8155)
+			h_audio_mux_pin(1);
 		configure_ext_loopback_mode(hs_dev, minor);
 		hs_dev->slave = minor;
 	} else {
@@ -4340,6 +4365,8 @@ static int ioctl_handler1(struct hsi2s_device *hs_dev, unsigned int cmd, unsigne
 
 		if (hsi2s_core->target == 8195)
 			p_audio_mux_pin(1);
+		else if (hsi2s_core->target == 8155)
+			h_audio_mux_pin(1);
 		dev_info(hs_dev->dev, "Setting master/slave muxmode configuration\n");
 		configure_muxmode(hs_dev, arg);
 	}
@@ -5780,6 +5807,17 @@ static int hsi2s_remove(struct platform_device *pdev)
 			dev_info(hs_core->dev, "Reset output routing gpio");
 			ret = hsi2s_configure_gpio_pins(pdev, 0);
 			p_audio_mux_pin(0);
+			if (ret < 0) {
+				dev_err(hs_core->dev, "Failed to reset the output routing gpio");
+			}
+		}
+	}
+	/* Reset the output routing gpio for 8155 */
+	else if (hs_core->target == 8155) {
+		if (of_property_read_bool(pdev->dev.of_node, "pinctrl-names")) {
+			dev_info(hs_core->dev, "Reset output routing gpio");
+			ret = hsi2s_configure_gpio_pins(pdev, 0);
+			h_audio_mux_pin(0);
 			if (ret < 0) {
 				dev_err(hs_core->dev, "Failed to reset the output routing gpio");
 			}
