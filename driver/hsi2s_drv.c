@@ -54,7 +54,7 @@ static u32 bit_depth;
 module_param(bit_depth, uint, 0644);
 MODULE_PARM_DESC(bit_depth, "Bit depth of the I2S interface");
 
-static int enable_qmi;
+static int enable_qmi = 1;
 module_param(enable_qmi, int, 0644);
 MODULE_PARM_DESC(enable_qmi, "Is QMI enabled: 0->Disabled 1->Enabled");
 
