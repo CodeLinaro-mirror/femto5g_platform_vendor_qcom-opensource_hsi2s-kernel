@@ -5900,7 +5900,10 @@ static int hsi2s_resume(struct platform_device *pdev)
 					goto err_resume;
 				}
 #endif
-
+#endif
+			} else {
+				h_modify_core_clks(1);
+				h_modify_interface_clks(1);
 			}
 			}
 			/* Configure the output routing gpio for 8195 */
