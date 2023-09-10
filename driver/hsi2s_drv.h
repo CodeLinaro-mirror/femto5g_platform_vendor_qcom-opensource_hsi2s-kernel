@@ -35,7 +35,9 @@
 #include <linux/io.h>
 #include <linux/poll.h>
 #include <linux/soc/qcom/qmi.h>
+#if defined(CONFIG_MSM_HAB_MODULE)
 #include <linux/habmm.h>
+#endif
 #include <linux/version.h>
 #include <uapi/linux/sched/types.h>
 #include <soc/qcom/boot_stats.h>
@@ -135,6 +137,11 @@ typedef unsigned int __poll_t;
 #define M_LPAIF_IRQ2_STAT			0x9018
 #define M_LPAIF_IRQ2_CLEAR			0x9020
 #define M_LPAIF_MUXMODE				0x24
+
+#define L_LPAIF_IRQ3_EN				0x9028
+#define L_LPAIF_IRQ3_STAT			0x902c
+#define L_LPAIF_IRQ3_CLEAR			0x9034
+#define L_LPAIF_MUXMODE				0x5120
 
 /* Bits for I2S control register */
 #define T_I2S_WS_SRC				BIT(2)
