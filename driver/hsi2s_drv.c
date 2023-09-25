@@ -4494,7 +4494,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 		dev_err(hsi2s_core->dev, "Resource 'minor-number' unavailable in dtsi");
 		goto err_out;
 	} else {
-		dev_err(hsi2s_core->dev, "Device minor-number %d probed", minor);
+		dev_warn(hsi2s_core->dev, "Device minor-number %d probed", minor);
 	}
 
 	/* Allocate the hsi2s device structure */
