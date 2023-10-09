@@ -8,7 +8,7 @@
 #include "hsi2s_adsp_clk_ctrl.h"
 #endif
 #include "hsi2s_common.h"
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 19, 0))
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 /*Place marker function declaration*/
 extern void place_marker(const char *name);
 #endif
@@ -616,7 +616,169 @@ static void m_assign_macros(void)
 	hsi2s_core->macro->regfield_rate_sync_sel_sec = T_SYNC_SEL_SEC;
 }
 
+/* SA8255 macros */
+static void l_assign_macros(void)
+{
+	hsi2s_core->macro->offset_i2s_ctl = T_LPAIF_I2S_CTL;
+	hsi2s_core->macro->offset_pcm_ctl = T_LPAIF_PCM_CTL;
+	hsi2s_core->macro->offset_tdm_ctl = T_LPAIF_PCM_TDM_CTL;
+	hsi2s_core->macro->offset_tdm_sample_width = T_LPAIF_PCM_TDM_SAMPLE_WIDTH;
+	hsi2s_core->macro->offset_rpcm_slot_num = T_LPAIF_PCM_RPCM_SLOT_NUM;
+	hsi2s_core->macro->offset_tpcm_slot_num = T_LPAIF_PCM_TPCM_SLOT_NUM;
+	hsi2s_core->macro->offset_pcm_lane_config = T_LPAIF_PCM_LANE_CONFIG;
+	hsi2s_core->macro->offset_i2s_sel = T_LPAIF_PCM_I2S_SEL;
+	hsi2s_core->macro->offset_irq_en = T_LPAIF_IRQ_EN;
+	hsi2s_core->macro->offset_irq_stat = T_LPAIF_IRQ_STAT;
+	hsi2s_core->macro->offset_irq_clear = T_LPAIF_IRQ_CLEAR;
+	hsi2s_core->macro->offset_irq2_en = M_LPAIF_IRQ2_EN;
+	hsi2s_core->macro->offset_irq2_stat = M_LPAIF_IRQ2_STAT;
+	hsi2s_core->macro->offset_irq2_clear = M_LPAIF_IRQ2_CLEAR;
+	hsi2s_core->macro->offset_rddma_ctl = T_LPAIF_RDDMA_CTL;
+	hsi2s_core->macro->offset_rddma_base = T_LPAIF_RDDMA_BASE;
+	hsi2s_core->macro->offset_rddma_buff_len = T_LPAIF_RDDMA_BUFF_LEN;
+	hsi2s_core->macro->offset_rddma_curr_addr = T_LPAIF_RDDMA_CURR_ADDR;
+	hsi2s_core->macro->offset_rddma_per_len = T_LPAIF_RDDMA_PER_LEN;
+	hsi2s_core->macro->offset_rddma_ram_addr = T_LPAIF_RDDMA_RAM_START_ADDR;
+	hsi2s_core->macro->offset_rddma_ram_len = T_LPAIF_RDDMA_RAM_LENGTH;
+	hsi2s_core->macro->offset_wrdma_ctl = T_LPAIF_WRDMA_CTL;
+	hsi2s_core->macro->offset_wrdma_base = T_LPAIF_WRDMA_BASE;
+	hsi2s_core->macro->offset_wrdma_buff_len = T_LPAIF_WRDMA_BUFF_LEN;
+	hsi2s_core->macro->offset_wrdma_curr_addr = T_LPAIF_WRDMA_CURR_ADDR;
+	hsi2s_core->macro->offset_wrdma_per_len = T_LPAIF_WRDMA_PER_LEN;
+	hsi2s_core->macro->offset_wrdma_ram_addr = T_LPAIF_WRDMA_RAM_START_ADDR;
+	hsi2s_core->macro->offset_wrdma_ram_len = T_LPAIF_WRDMA_RAM_LENGTH;
+	hsi2s_core->macro->offset_pri_rate_det_config = T_LPAIF_PRI_RATE_DET_CONFIG;
+	hsi2s_core->macro->offset_pri_rate_det_target1_config = T_LPAIF_PRI_RATE_DET_TARGET1_CONFIG;
+	hsi2s_core->macro->offset_pri_rate_det_target2_config = T_LPAIF_PRI_RATE_DET_TARGET2_CONFIG;
+	hsi2s_core->macro->offset_pri_rate_bin = T_LPAIF_PRI_RATE_BIN;
+	hsi2s_core->macro->offset_pri_stc_diff = T_LPAIF_PRI_STC_DIFF;
+	hsi2s_core->macro->offset_pri_rate_det_sel = T_LPAIF_PRI_RATE_DET_SEL;
+	hsi2s_core->macro->offset_sec_rate_det_config = T_LPAIF_SEC_RATE_DET_CONFIG;
+	hsi2s_core->macro->offset_sec_rate_det_target1_config = T_LPAIF_SEC_RATE_DET_TARGET1_CONFIG;
+	hsi2s_core->macro->offset_sec_rate_det_target2_config = T_LPAIF_SEC_RATE_DET_TARGET2_CONFIG;
+	hsi2s_core->macro->offset_sec_rate_bin = T_LPAIF_SEC_RATE_BIN;
+	hsi2s_core->macro->offset_sec_stc_diff = T_LPAIF_SEC_STC_DIFF;
+	hsi2s_core->macro->offset_sec_rate_det_sel = T_LPAIF_SEC_RATE_DET_SEL;
+	hsi2s_core->macro->bit_ws_src = T_I2S_WS_SRC;
+	hsi2s_core->macro->bit_mic_en = T_I2S_MIC_EN;
+	hsi2s_core->macro->bit_spkr_en = T_I2S_SPKR_EN;
+	hsi2s_core->macro->bit_loopback = T_I2S_LOOPBACK;
+	hsi2s_core->macro->bit_i2s_reset = T_I2S_RESET;
+	hsi2s_core->macro->bit_en_long_rate = T_I2S_EN_LONG_RATE;
+	hsi2s_core->macro->bit_tpcm_width = T_TPCM_WIDTH;
+	hsi2s_core->macro->bit_rpcm_width = T_RPCM_WIDTH;
+	hsi2s_core->macro->bit_aux_mode = T_AUX_MODE;
+	hsi2s_core->macro->bit_sync_src = T_SYNC_SRC;
+	hsi2s_core->macro->bit_pcm_loopback = T_PCM_LOOPBACK;
+	hsi2s_core->macro->bit_ctrl_data_oe = T_CTRL_DATA_OE;
+	hsi2s_core->macro->bit_one_slot_sync_en = T_ONE_SLOT_SYNC_EN;
+	hsi2s_core->macro->bit_pcm_en = T_PCM_ENABLE;
+	hsi2s_core->macro->bit_pcm_en_tx = T_PCM_ENABLE_TX;
+	hsi2s_core->macro->bit_pcm_en_rx = T_PCM_ENABLE_RX;
+	hsi2s_core->macro->bit_pcm_reset = T_PCM_RESET;
+	hsi2s_core->macro->bit_pcm_reset_tx = T_PCM_RESET_TX;
+	hsi2s_core->macro->bit_pcm_reset_rx = T_PCM_RESET_RX;
+	hsi2s_core->macro->bit_tdm_inv_rpcm_sync = T_TDM_INV_RPCM_SYNC;
+	hsi2s_core->macro->bit_tdm_inv_tpcm_sync = T_TDM_INV_TPCM_SYNC;
+	hsi2s_core->macro->bit_tdm_en_diff_sample_width = T_EN_DIFF_SAMPLE_WIDTH;
+	hsi2s_core->macro->bit_tdm_en = T_EN_TDM;
+	hsi2s_core->macro->bit_lane0_dir = T_LANE0_DIR;
+	hsi2s_core->macro->bit_lane1_dir = T_LANE1_DIR;
+	hsi2s_core->macro->bit_lane2_dir = T_LANE2_DIR;
+	hsi2s_core->macro->bit_lane3_dir = T_LANE3_DIR;
+	hsi2s_core->macro->bit_lane0_en = T_LANE0_EN;
+	hsi2s_core->macro->bit_lane1_en = T_LANE1_EN;
+	hsi2s_core->macro->bit_lane2_en = T_LANE2_EN;
+	hsi2s_core->macro->bit_lane3_en = T_LANE3_EN;
+	hsi2s_core->macro->bit_i2s_sel = T_I2S_SEL;
+	hsi2s_core->macro->bit_rddma_en = T_RDDMA_EN;
+	hsi2s_core->macro->bit_rddma_burst_en = T_RDDMA_BURST_EN;
+	hsi2s_core->macro->bit_rddma_dyn_clk = T_RDDMA_DYN_CLK;
+	hsi2s_core->macro->bit_rddma_reset = T_RDDMA_RESET;
+	hsi2s_core->macro->bit_wrdma_en = T_WRDMA_EN;
+	hsi2s_core->macro->bit_wrdma_burst_en = T_WRDMA_BURST_EN;
+	hsi2s_core->macro->bit_wrdma_dyn_clk = T_WRDMA_DYN_CLK;
+	hsi2s_core->macro->bit_wrdma_reset = T_WRDMA_RESET;
+	hsi2s_core->macro->bit_rate_en = T_RATE_DET_EN;
+	hsi2s_core->macro->bit_rate_reset = T_RATE_DET_RESET;
+	hsi2s_core->macro->regfield_i2s_lrate_offset = T_I2S_LONG_RATE_OFFSET;
+	hsi2s_core->macro->regfield_spkr_mode_sd0 = T_I2S_SPKR_MODE_SD0;
+	hsi2s_core->macro->regfield_spkr_mode_sd1 = T_I2S_SPKR_MODE_SD1;
+	hsi2s_core->macro->regfield_spkr_mode_quad01 = T_I2S_SPKR_MODE_QUAD01;
+	hsi2s_core->macro->regfield_spkr_mono = T_I2S_SPKR_MONO;
+	hsi2s_core->macro->regfield_mic_mode_sd0 = T_I2S_MIC_MODE_SD0;
+	hsi2s_core->macro->regfield_mic_mode_sd1 = T_I2S_MIC_MODE_SD1;
+	hsi2s_core->macro->regfield_mic_mode_quad01 = T_I2S_MIC_MODE_QUAD01;
+	hsi2s_core->macro->regfield_mic_mono = T_I2S_MIC_MONO;
+	hsi2s_core->macro->regfield_bit_width16 = T_I2S_BIT_WIDTH_16;
+	hsi2s_core->macro->regfield_bit_width24 = T_I2S_BIT_WIDTH_24;
+	hsi2s_core->macro->regfield_bit_width32 = T_I2S_BIT_WIDTH_32;
+	hsi2s_core->macro->regfield_bit_width25 = T_I2S_BIT_WIDTH_25;
+	hsi2s_core->macro->regfield_pcmrate_8 = T_PCM_RATE_8_BIT_CLKS;
+	hsi2s_core->macro->regfield_pcmrate_16 = T_PCM_RATE_16_BIT_CLKS;
+	hsi2s_core->macro->regfield_pcmrate_32 = T_PCM_RATE_32_BIT_CLKS;
+	hsi2s_core->macro->regfield_pcmrate_64 = T_PCM_RATE_64_BIT_CLKS;
+	hsi2s_core->macro->regfield_pcmrate_128 = T_PCM_RATE_128_BIT_CLKS;
+	hsi2s_core->macro->regfield_pcmrate_256 = T_PCM_RATE_256_BIT_CLKS;
+	hsi2s_core->macro->regfield_sync_delay_0 = T_TDM_SYNC_DELAY_0;
+	hsi2s_core->macro->regfield_sync_delay_1 = T_TDM_SYNC_DELAY_1;
+	hsi2s_core->macro->regfield_sync_delay_2 = T_TDM_SYNC_DELAY_2;
+	hsi2s_core->macro->regfield_rddma_wpscnt_one = T_RDDMA_WPSCNT_ONE;
+	hsi2s_core->macro->regfield_rddma_wpscnt_two = T_RDDMA_WPSCNT_TWO;
+	hsi2s_core->macro->regfield_rddma_wpscnt_four = T_RDDMA_WPSCNT_FOUR;
+	hsi2s_core->macro->regfield_rddma_wpscnt_eight = T_RDDMA_WPSCNT_EIGHT;
+	hsi2s_core->macro->regfield_rddma_pri_audio_intf = T_RDDMA_PRI_AUDIO_INTF;
+	hsi2s_core->macro->regfield_rddma_sec_audio_intf = T_RDDMA_SEC_AUDIO_INTF;
+	hsi2s_core->macro->regfield_rddma_ter_audio_intf = M_RDDMA_TER_AUDIO_INTF;
+	hsi2s_core->macro->regfield_rddma_quat_audio_intf = M_RDDMA_QUAT_AUDIO_INTF;
+	hsi2s_core->macro->regfield_rddma_quin_audio_intf = M_RDDMA_QUIN_AUDIO_INTF;
+	hsi2s_core->macro->regfield_rddma_fifo_wm8 = T_RDDMA_FIFO_WM_8;
+	hsi2s_core->macro->regfield_wrdma_wpscnt_one = T_WRDMA_WPSCNT_ONE;
+	hsi2s_core->macro->regfield_wrdma_wpscnt_two = T_WRDMA_WPSCNT_TWO;
+	hsi2s_core->macro->regfield_wrdma_wpscnt_four = T_WRDMA_WPSCNT_FOUR;
+	hsi2s_core->macro->regfield_wrdma_wpscnt_eight = T_WRDMA_WPSCNT_EIGHT;
+	hsi2s_core->macro->regfield_wrdma_pri_audio_intf = T_WRDMA_PRI_AUDIO_INTF;
+	hsi2s_core->macro->regfield_wrdma_sec_audio_intf = T_WRDMA_SEC_AUDIO_INTF;
+	hsi2s_core->macro->regfield_wrdma_ter_audio_intf = M_WRDMA_TER_AUDIO_INTF;
+	hsi2s_core->macro->regfield_wrdma_quat_audio_intf = M_WRDMA_QUAT_AUDIO_INTF;
+	hsi2s_core->macro->regfield_wrdma_quin_audio_intf = M_WRDMA_QUIN_AUDIO_INTF;
+	hsi2s_core->macro->regfield_wrdma_loopback_ch0 = T_WRDMA_LOOPBACK_CH0;
+	hsi2s_core->macro->regfield_wrdma_loopback_ch1 = T_WRDMA_LOOPBACK_CH1;
+	hsi2s_core->macro->regfield_wrdma_loopback_ch2 = M_WRDMA_LOOPBACK_CH2;
+	hsi2s_core->macro->regfield_wrdma_loopback_ch3 = M_WRDMA_LOOPBACK_CH3;
+	hsi2s_core->macro->regfield_wrdma_loopback_ch4 = M_WRDMA_LOOPBACK_CH4;
+	hsi2s_core->macro->regfield_wrdma_fifo_wm8 = T_WRDMA_FIFO_WM_8;
+	hsi2s_core->macro->regfield_rate_num_fs_1 = T_RATE_NUM_FS_1;
+	hsi2s_core->macro->regfield_rate_num_fs_8 = T_RATE_NUM_FS_8;
+	hsi2s_core->macro->regfield_rate_var_192_176p4_fs1 = T_RATE_VAR_192_176P4_FS1;
+	hsi2s_core->macro->regfield_rate_var_128_44p1_fs1 = T_RATE_VAR_128_44P1_FS1;
+	hsi2s_core->macro->regfield_rate_var_32_8_fs1 = T_RATE_VAR_32_8_FS1;
+	hsi2s_core->macro->regfield_rate_target128_fs1 = T_RATE_TARGET128_FS1;
+	hsi2s_core->macro->regfield_rate_target_176p4_fs1 = T_RATE_TARGET176P4_FS1;
+	hsi2s_core->macro->regfield_rate_target_192_fs1 = T_RATE_TARGET192_FS1;
+	hsi2s_core->macro->regfield_rate_var_192_176p4_fs8 = T_RATE_VAR_192_176P4_FS8;
+	hsi2s_core->macro->regfield_rate_var_128_44p1_fs8 = T_RATE_VAR_128_44P1_FS8;
+	hsi2s_core->macro->regfield_rate_var_32_8_fs8 = T_RATE_VAR_32_8_FS8;
+	hsi2s_core->macro->regfield_rate_target128_fs8 = T_RATE_TARGET128_FS8;
+	hsi2s_core->macro->regfield_rate_target_176p4_fs8 = T_RATE_TARGET176P4_FS8;
+	hsi2s_core->macro->regfield_rate_target_192_fs8 = T_RATE_TARGET192_FS8;
+	hsi2s_core->macro->regfield_rate_sync_sel_pri = T_SYNC_SEL_PRI;
+	hsi2s_core->macro->regfield_rate_sync_sel_sec = T_SYNC_SEL_SEC;
+}
+
+
 /* Register callbacks */
+static u32 l_calculate_muxmode_offset(struct hsi2s_device *hs_dev, int intf)
+{
+	u32 offset = 0;
+
+	if(intf < 5)
+		offset = (0xc * intf);
+
+	dev_info(hs_dev->dev, "lemans intf %d ,Muxmode offset : %u\n", intf, offset);
+
+	return offset;
+}
 static u32 calculate_muxmode_offset(struct hsi2s_device *hs_dev, int intf)
 {
 	u32 offset;
@@ -700,6 +862,13 @@ static int map_registers(struct hsi2s_device *hs_dev, int intf)
 						M_LPAIF_MUXMODE +
 						calculate_muxmode_offset(hs_dev, intf);
 		}
+		if (hsi2s_core->target == 8255)
+		{
+			hs_dev->lpaif_muxmode = hsi2s_core->lpass_core_cc_hs_if +
+						L_LPAIF_MUXMODE +
+						l_calculate_muxmode_offset(hs_dev, intf);
+			dev_info(hs_dev->dev, "base muxmode address %x = %x + %x + %x\n", hs_dev->lpaif_muxmode, hsi2s_core->lpass_core_cc_hs_if, L_LPAIF_MUXMODE , l_calculate_muxmode_offset(hs_dev, intf));
+		}
 	} else {
 		dev_err(hs_dev->dev, "HS-I2S macro structure is NULL");
 		ret = -EINVAL;
@@ -718,7 +887,7 @@ static int map_core_registers(void)
 		hsi2s_core->irq_en = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_irq_en;
 		hsi2s_core->irq_stat = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_irq_stat;
 		hsi2s_core->irq_clear = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_irq_clear;
-		if (hsi2s_core->target == 8295) {
+		if ((hsi2s_core->target == 8295) || (hsi2s_core->target == 8255)) {
 			hsi2s_core->irq2_en = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_irq2_en;
 			hsi2s_core->irq2_stat = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_irq2_stat;
 			hsi2s_core->irq2_clear = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_irq2_clear;
@@ -776,7 +945,7 @@ static void reg_clear(void __iomem *addr)
 static void clear_irqs(void)
 {
 	writel_relaxed(0xFFFFFFFF, hsi2s_core->irq_clear);
-	if (hsi2s_core->target == 8295)
+	if ((hsi2s_core->target == 8295) || (hsi2s_core->target == 8255))
 		writel_relaxed(0xFFFFFFFF, hsi2s_core->irq2_clear);
 }
 
@@ -794,6 +963,27 @@ static void p_audio_mux_pin(int enable)
 		setbits(h_gpio_out97, 0x2);
 	} else {
 		clearbits(h_gpio_cfg97, 0x600);
+		clearbits(h_gpio_out97, 0x2);
+		dev_info(hsi2s_core->dev, "Disable SDR GPIO pins in GPIO");
+	}
+	iounmap(h_gpio_cfg97);
+	iounmap(h_gpio_out97);
+}
+
+/*Audio Mux Sel Pin in Hana*/
+static void h_audio_mux_pin(int enable)
+{
+	void __iomem *h_gpio_cfg97;
+	void __iomem *h_gpio_out97;
+	h_gpio_cfg97 = ioremap(0x3961000, 4);
+        h_gpio_out97 = ioremap(0x3961004, 4);
+
+	if (enable) {
+		dev_info(hsi2s_core->dev, "Enable SDR GPIO pins in HANA");
+		setbits(h_gpio_cfg97, 0x603);
+		setbits(h_gpio_out97, 0x2);
+	} else {
+		clearbits(h_gpio_cfg97, 0x603);
 		clearbits(h_gpio_out97, 0x2);
 		dev_info(hsi2s_core->dev, "Disable SDR GPIO pins in GPIO");
 	}
@@ -2846,7 +3036,57 @@ static void m_modify_core_clks(int enable)
 			setbits(hs_wrmem, 0x1);
 		if (!(readl_relaxed(lpass_mport) & 0x1))
 			setbits(lpass_mport, 0x1);
-		dev_info(hsi2s_core->dev, "Core clocks enabled for SA8295");
+		dev_info(hsi2s_core->dev, "Core clocks enabled for SA8295/SA8255");
+	} else {
+		dev_info(hsi2s_core->dev, "Disable core clocks for SA8295/SA8255");
+		clearbits(hs_wrmem, 0x1);
+		clearbits(hs_rdmem, 0x1);
+		dev_info(hsi2s_core->dev, "Core clocks disabled for SA8295/SA855");
+	}
+
+	iounmap(lpass_core_cbcr);
+	iounmap(hs_rdmem);
+	iounmap(hs_wrmem);
+	iounmap(lpass_mport);
+}
+
+/* Function to enable/disable core clocks for SA8255 */
+static void l_modify_core_clks(int enable)
+{
+	void __iomem *lpass_core_cbcr;
+	void __iomem *hs_rdmem;
+	void __iomem *hs_wrmem;
+	void __iomem *lpass_mport;
+	void __iomem *lpass_core_cc_i2s_if_ctl;
+	void __iomem *lpass_core_cc_lpm_core_cbcr;
+	void __iomem *lpass_core_cc_lpm_mem0_core_cbcr;
+
+	lpass_core_cbcr = ioremap(0x391F000, 4);
+	hs_rdmem = ioremap(0x39470E0, 4);
+	hs_wrmem = ioremap(0x39470A0, 4);
+	lpass_mport = ioremap(0x3923000, 4);
+	lpass_core_cc_i2s_if_ctl = ioremap(0x390C000,4);
+	lpass_core_cc_lpm_core_cbcr = ioremap(0x391E000,4);
+	lpass_core_cc_lpm_mem0_core_cbcr = ioremap(0x391E004,4);
+
+	if (enable) {
+		dev_info(hsi2s_core->dev, "Enable LPM core clocks for SA8255");
+		if (!(readl_relaxed(lpass_core_cc_i2s_if_ctl) & 0x11))
+			setbits(lpass_core_cc_i2s_if_ctl, 0x11);
+		if (!(readl_relaxed(lpass_core_cc_lpm_core_cbcr) & 0x1))
+			setbits(lpass_core_cc_lpm_core_cbcr, 0x1);
+		if (!(readl_relaxed(lpass_core_cc_lpm_mem0_core_cbcr) & 0x1))
+			setbits(lpass_core_cc_lpm_mem0_core_cbcr, 0x1);
+		dev_info(hsi2s_core->dev, "Enable core clocks for SA8255");
+		if (!(readl_relaxed(lpass_core_cbcr) & 0x1))
+			setbits(lpass_core_cbcr, 0x1);
+		if (!(readl_relaxed(hs_rdmem) & 0x1))
+			setbits(hs_rdmem, 0x1);
+		if (!(readl_relaxed(hs_wrmem) & 0x1))
+			setbits(hs_wrmem, 0x1);
+		if (!(readl_relaxed(lpass_mport) & 0x1))
+			setbits(lpass_mport, 0x1);
+		dev_info(hsi2s_core->dev, "Core clocks enabled for SA8255");
 	} else {
 		dev_info(hsi2s_core->dev, "Disable core clocks for SA8295");
 		clearbits(hs_wrmem, 0x1);
@@ -2858,6 +3098,9 @@ static void m_modify_core_clks(int enable)
 	iounmap(hs_rdmem);
 	iounmap(hs_wrmem);
 	iounmap(lpass_mport);
+	iounmap(lpass_core_cc_i2s_if_ctl);
+	iounmap(lpass_core_cc_lpm_core_cbcr);
+	iounmap(lpass_core_cc_lpm_mem0_core_cbcr);
 }
 
 /* Function to enable/disable interface clocks for SA8295 */
@@ -2925,6 +3168,70 @@ static void m_modify_interface_clks(int enable)
 	iounmap(hs_if4_ebit);
 }
 
+/* Function to enable/disable interface clocks for SA8255 */
+static void l_modify_interface_clks(int enable)
+{
+	void __iomem *hs_if0_ibit;
+	void __iomem *hs_if1_ibit;
+	void __iomem *hs_if2_ibit;
+	void __iomem *hs_if3_ibit;
+	void __iomem *hs_if4_ibit;
+	void __iomem *hs_if0_ebit;
+	void __iomem *hs_if1_ebit;
+	void __iomem *hs_if2_ebit;
+	void __iomem *hs_if3_ebit;
+	void __iomem *hs_if4_ebit;
+
+	hs_if0_ibit = ioremap(0x3947018, 4);
+	hs_if0_ebit = ioremap(0x394701C, 4);
+	hs_if1_ibit = ioremap(0x3947038, 4);
+	hs_if1_ebit = ioremap(0x394703C, 4);
+	hs_if2_ibit = ioremap(0x3947058, 4);
+	hs_if2_ebit = ioremap(0x394705C, 4);
+	hs_if3_ibit = ioremap(0x3947078, 4);
+	hs_if3_ebit = ioremap(0x394707C, 4);
+	hs_if4_ibit = ioremap(0x3947098, 4);
+	hs_if4_ebit = ioremap(0x394709C, 4);
+
+	if (enable) {
+		dev_info(hsi2s_core->dev, "Enable interface clocks for SA8225");
+		setbits(hs_if0_ibit, 0x1);
+		setbits(hs_if1_ibit, 0x1);
+		setbits(hs_if2_ibit, 0x1);
+		setbits(hs_if3_ibit, 0x1);
+		setbits(hs_if4_ibit, 0x1);
+		setbits(hs_if0_ebit, 0x1);
+		setbits(hs_if1_ebit, 0x1);
+		setbits(hs_if2_ebit, 0x1);
+		setbits(hs_if3_ebit, 0x1);
+		setbits(hs_if4_ebit, 0x1);
+		dev_info(hsi2s_core->dev, "Interface clocks enabled for SA8225");
+	} else {
+		dev_info(hsi2s_core->dev, "Disable interface clocks for SA8225");
+		clearbits(hs_if0_ibit, 0x1);
+		clearbits(hs_if1_ibit, 0x1);
+		clearbits(hs_if2_ibit, 0x1);
+		clearbits(hs_if3_ibit, 0x1);
+		clearbits(hs_if4_ibit, 0x1);
+		clearbits(hs_if0_ebit, 0x1);
+		clearbits(hs_if1_ebit, 0x1);
+		clearbits(hs_if2_ebit, 0x1);
+		clearbits(hs_if3_ebit, 0x1);
+		clearbits(hs_if4_ebit, 0x1);
+		dev_info(hsi2s_core->dev, "Interface clocks disabled for SA8225");
+	}
+
+	iounmap(hs_if0_ibit);
+	iounmap(hs_if0_ebit);
+	iounmap(hs_if1_ibit);
+	iounmap(hs_if1_ebit);
+	iounmap(hs_if2_ibit);
+	iounmap(hs_if2_ebit);
+	iounmap(hs_if3_ibit);
+	iounmap(hs_if3_ebit);
+	iounmap(hs_if4_ibit);
+	iounmap(hs_if4_ebit);
+}
 /* Function to disable core clocks for SA6155 */
 static void hsi2s_disable_core_clks(struct platform_device *pdev)
 {
@@ -4006,6 +4313,8 @@ static int ioctl_handler1(struct hsi2s_device *hs_dev, unsigned int cmd, unsigne
 			configure_muxmode(hs_dev, 1);
 		if (hsi2s_core->target == 8195)
 			p_audio_mux_pin(1);
+		else if (hsi2s_core->target == 8155)
+			h_audio_mux_pin(1);
 		configure_normal_mode(hs_dev, minor);
 		hs_dev->slave = minor;
 
@@ -4044,6 +4353,8 @@ static int ioctl_handler1(struct hsi2s_device *hs_dev, unsigned int cmd, unsigne
 		configure_muxmode(hs_dev, 0);
 		if (hsi2s_core->target == 8195)
 			p_audio_mux_pin(1);
+		else if (hsi2s_core->target == 8155)
+			h_audio_mux_pin(1);
 		configure_ext_loopback_mode(hs_dev, minor);
 		hs_dev->slave = minor;
 	} else {
@@ -4054,6 +4365,8 @@ static int ioctl_handler1(struct hsi2s_device *hs_dev, unsigned int cmd, unsigne
 
 		if (hsi2s_core->target == 8195)
 			p_audio_mux_pin(1);
+		else if (hsi2s_core->target == 8155)
+			h_audio_mux_pin(1);
 		dev_info(hs_dev->dev, "Setting master/slave muxmode configuration\n");
 		configure_muxmode(hs_dev, arg);
 	}
@@ -4907,10 +5220,10 @@ static int hsi2s_probe(struct platform_device *pdev)
 
 	if (of_device_is_compatible(pdev->dev.of_node, "qcom,hsi2s-interface"))
 		return hsi2s_interface_probe(pdev);
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 19, 0))
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 	place_marker("M - DRIVER HS-I2S Init");
 #else
-	pr_info("M - DRIVER HS-I2S Init");
+	pr_err("boot_kpi: M - DRIVER HS-I2S Init");
 #endif
 
 	hsi2s_core = kzalloc(sizeof(*hsi2s_core), GFP_KERNEL);
@@ -4932,6 +5245,8 @@ static int hsi2s_probe(struct platform_device *pdev)
 		target = 8195;
 	else if (of_device_is_compatible(pdev->dev.of_node, "qcom,sa8295-hsi2s"))
 		target = 8295;
+	else if (of_device_is_compatible(pdev->dev.of_node, "qcom,sa8255-hsi2s"))
+		target = 8255;
 	else {
 		dev_err(hsi2s_core->dev, "Uncompatible target");
 		goto err_free_core;
@@ -4952,6 +5267,9 @@ static int hsi2s_probe(struct platform_device *pdev)
 	} else if (target == 8295) {
 		dev_info(hsi2s_core->dev, "8295 target detected");
 		m_assign_macros();
+	}else if (target == 8255) {
+		dev_info(hsi2s_core->dev, "8255 target detected");
+		l_assign_macros();
 	}
 
 	hsi2s_core->target = target;
@@ -4998,7 +5316,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 		if (ret)
 			goto err_free_macro;
 	}
-	else if (target == 8155 || target == 8195 || target == 8295) {
+	else if (target == 8155 || target == 8195 || target == 8295 || target == 8255) {
 		if (enable_qmi) {
 #if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
 #if defined(CONFIG_QCOM_QMI_HELPERS)
@@ -5044,6 +5362,9 @@ static int hsi2s_probe(struct platform_device *pdev)
 			if (target == 8295) {
 				m_modify_core_clks(1);
 				m_modify_interface_clks(1);
+			} if (target == 8255){
+				l_modify_core_clks(1);
+				l_modify_interface_clks(1);
 			} else {
 				h_modify_core_clks(1);
 				h_modify_interface_clks(1);
@@ -5093,6 +5414,9 @@ static int hsi2s_probe(struct platform_device *pdev)
 			if (target == 8295) {
 				m_modify_core_clks(1);
 				m_modify_interface_clks(1);
+			}  if (target == 8255){
+				l_modify_core_clks(1);
+				l_modify_interface_clks(1);
 			} else {
 				h_modify_core_clks(1);
 				h_modify_interface_clks(1);
@@ -5137,7 +5461,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 
 	}
 
-	if (target == 8295) {
+	if (target == 8295 || target == 8255) {
 		resource = platform_get_resource_byname(pdev, IORESOURCE_MEM,
 						"lpass_core_cc_hs_if");
 		if (!resource) {
@@ -5318,10 +5642,10 @@ static int hsi2s_probe(struct platform_device *pdev)
 		dev_err(hsi2s_core->dev, "Failed to add child devices");
 	else
 		dev_info(hsi2s_core->dev, "Added child devices");
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 19, 0))
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 	place_marker("M - DRIVER HS-I2S Ready");
 #else
-	pr_info("M - DRIVER HS-I2S Ready");
+	pr_err("boot_kpi: M - DRIVER HS-I2S Ready");
 #endif
 
 	return ret;
@@ -5364,14 +5688,14 @@ err_free_irq:
 err_iounmap_lpass_tcsr:
 	if (target == 8155 || target == 8195)
 		iounmap(hsi2s_core->lpass_tcsr_base_va);
-	else if (target == 8295)
+	else if (target == 8295 || target == 8255)
 		iounmap(hsi2s_core->lpass_core_cc_hs_if);
 err_iounmap_lpaif:
 	iounmap(hsi2s_core->lpaif_base_va);
 err_disable_core_clocks:
 	if (target == 6155) {
 		hsi2s_disable_core_clks(pdev);
-	} else if (target == 8155 || target == 8195 || target == 8295) {
+	} else if (target == 8155 || target == 8195 || target == 8295 || target == 8255) {
 		if (enable_qmi) {
 #if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
 #if defined(CONFIG_QCOM_QMI_HELPERS)
@@ -5381,6 +5705,9 @@ err_disable_core_clocks:
 			if (target == 8295) {
 				m_modify_core_clks(0);
 				m_modify_interface_clks(0);
+			}  if (target == 8255){
+				l_modify_core_clks(0);
+				l_modify_interface_clks(0);
 			} else {
 				h_modify_interface_clks(0);
 				h_modify_core_clks(0);
@@ -5399,6 +5726,9 @@ err_free_hab_req:
 			if (target == 8295) {
 				m_modify_core_clks(0);
 				m_modify_interface_clks(0);
+			}   if (target == 8255){
+				l_modify_core_clks(0);
+				l_modify_interface_clks(0);
 			} else {
 				h_modify_interface_clks(0);
 				h_modify_core_clks(0);
@@ -5482,6 +5812,17 @@ static int hsi2s_remove(struct platform_device *pdev)
 			}
 		}
 	}
+	/* Reset the output routing gpio for 8155 */
+	else if (hs_core->target == 8155) {
+		if (of_property_read_bool(pdev->dev.of_node, "pinctrl-names")) {
+			dev_info(hs_core->dev, "Reset output routing gpio");
+			ret = hsi2s_configure_gpio_pins(pdev, 0);
+			h_audio_mux_pin(0);
+			if (ret < 0) {
+				dev_err(hs_core->dev, "Failed to reset the output routing gpio");
+			}
+		}
+	}
 	/* Remove the device file */
 	device_destroy(hs_core->class_sdr, hs_core->curr_devid);
 	class_destroy(hs_core->class_sdr);
@@ -5531,6 +5872,9 @@ static int hsi2s_remove(struct platform_device *pdev)
 			if (hs_core->target == 8295) {
 				m_modify_core_clks(0);
 				m_modify_interface_clks(0);
+			}  if (hs_core->target == 8255){
+				l_modify_core_clks(0);
+				l_modify_interface_clks(0);
 			} else {
 				h_modify_interface_clks(0);
 				h_modify_core_clks(0);
@@ -5569,6 +5913,9 @@ err_close_hab:
 			if (hs_core->target == 8295) {
 				m_modify_core_clks(0);
 				m_modify_interface_clks(0);
+			} if (hs_core->target == 8255){
+				l_modify_core_clks(0);
+				l_modify_interface_clks(0);
 			} else {
 				h_modify_interface_clks(0);
 				h_modify_core_clks(0);
