@@ -4500,27 +4500,41 @@ static int ioctl_handler3(struct hsi2s_device *hs_dev, unsigned int cmd, unsigne
 		}
 		dev_info(hs_dev->dev, "Configuring master clock on HS%d interface\n",
 				 hs_dev->minor_num);
-		if (hs_dev->minor_num == 0) {
-			clk_update_reg = ioremap(HS0_BITCLK_CMD_REG, 4);
-			clk_val_reg = ioremap(HS0_BITCLK_CFG_REG, 4);
-
-			clearbits(clk_val_reg, HS_BITCLK_RESET);
-			setbits(clk_val_reg, arg);
-			setbits(clk_update_reg, HS_BITCLK_UPDATE);
-		} else if (hs_dev->minor_num == 1) {
-			clk_update_reg = ioremap(HS1_BITCLK_CMD_REG, 4);
-			clk_val_reg = ioremap(HS1_BITCLK_CFG_REG, 4);
-
-			clearbits(clk_val_reg, HS_BITCLK_RESET);
-			setbits(clk_val_reg, arg);
-			setbits(clk_update_reg, HS_BITCLK_UPDATE);
-		} else {
-			clk_update_reg = ioremap(HS2_BITCLK_CMD_REG, 4);
-			clk_val_reg = ioremap(HS2_BITCLK_CFG_REG, 4);
-
-			clearbits(clk_val_reg, HS_BITCLK_RESET);
-			setbits(clk_val_reg, arg);
-			setbits(clk_update_reg, HS_BITCLK_UPDATE);
+		if ((hsi2s_core->target == 8155)||(hsi2s_core->target == 8195)) {
+			if (hs_dev->minor_num == 0) {
+				clk_update_reg = ioremap(HS0_BITCLK_CMD_REG, 4);
+				clk_val_reg = ioremap(HS0_BITCLK_CFG_REG, 4);
+				clearbits(clk_val_reg, HS_BITCLK_RESET);
+				setbits(clk_val_reg, arg);
+				setbits(clk_update_reg, HS_BITCLK_UPDATE);
+			} else if (hs_dev->minor_num == 1) {
+				clk_update_reg = ioremap(HS1_BITCLK_CMD_REG, 4);
+				clk_val_reg = ioremap(HS1_BITCLK_CFG_REG, 4);
+				clearbits(clk_val_reg, HS_BITCLK_RESET);
+				setbits(clk_val_reg, arg);
+				setbits(clk_update_reg, HS_BITCLK_UPDATE);
+			} else {
+				clk_update_reg = ioremap(HS2_BITCLK_CMD_REG, 4);
+				clk_val_reg = ioremap(HS2_BITCLK_CFG_REG, 4);
+				clearbits(clk_val_reg, HS_BITCLK_RESET);
+				setbits(clk_val_reg, arg);
+				setbits(clk_update_reg, HS_BITCLK_UPDATE);
+			}
+		} else if (hsi2s_core->target == 8255) {
+			/*Lemans master clock settings*/
+                        if (hs_dev->minor_num == 0) {
+                                clk_update_reg = ioremap(L_HS0_BITCLK_CMD_REG, 4);
+                                clk_val_reg = ioremap(L_HS0_BITCLK_CFG_REG, 4);
+                                clearbits(clk_val_reg,HS_BITCLK_RESET);
+                                setbits(clk_val_reg, arg);
+                                setbits(clk_update_reg, HS_BITCLK_UPDATE);
+                        } else if (hs_dev->minor_num == 1) {
+                                clk_update_reg = ioremap(L_HS1_BITCLK_CMD_REG, 4);
+                                clk_val_reg = ioremap(L_HS1_BITCLK_CFG_REG, 4);
+                                clearbits(clk_val_reg, HS_BITCLK_RESET);
+                                setbits(clk_val_reg, arg);
+                                setbits(clk_update_reg, HS_BITCLK_UPDATE);
+                        }
 		}
 		dev_info(hs_dev->dev, "Re-configured master clock\n");
 	} else if (cmd == LPAIF_RESET) {
