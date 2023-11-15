@@ -5723,7 +5723,7 @@ err_close_hab:
 		}
 	}
 	/* Unregister the device numbers */
-	unregister_chrdev_region(devid, 1);
+	unregister_chrdev_region(devid, hsi2s_core->i_count);
 	/* Free the core data structure */
 	kfree(hs_core->hsi2s_arr);
 	hs_core->hsi2s_arr = NULL;
