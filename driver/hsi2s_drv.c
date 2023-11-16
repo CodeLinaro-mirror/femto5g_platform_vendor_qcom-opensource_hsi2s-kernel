@@ -3410,8 +3410,22 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	struct hsi2s_device **hs_arr;
 	int slave;
 
+	void __iomem *lpass_core_cfg_rcgr;
+	static u32 prv_lpass_core_val;
+	u32 new_lpass_core_val;
+
 	hs_arr = hsi2s_core->hsi2s_arr;
 	mutex_lock(&hsi2s_core->irqlock);
+
+	lpass_core_cfg_rcgr = ioremap(0x1701D004, 4);
+	new_lpass_core_val = readl_relaxed(lpass_core_cfg_rcgr);
+
+	if( prv_lpass_core_val != new_lpass_core_val) {
+		dev_info(hsi2s_core->dev, "lpass_core_cfg %8x \n", new_lpass_core_val);
+		prv_lpass_core_val =  new_lpass_core_val;
+	}
+	iounmap(lpass_core_cfg_rcgr);
+
 
 	/* Checking for read DMA interrupt on HS0 interface */
 	if (hs_arr[0]) {
