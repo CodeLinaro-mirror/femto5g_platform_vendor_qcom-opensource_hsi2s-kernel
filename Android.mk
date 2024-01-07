@@ -1,3 +1,4 @@
+ifneq ($(TARGET_USES_GY), true)
 LOCAL_PATH := $(call my-dir)
 DLKM_DIR := $(TOP)/device/qcom/common/dlkm
 
@@ -27,3 +28,5 @@ LOCAL_MODULE_TAGS         := optional
 
 include $(DLKM_DIR)/Build_external_kernelmodule.mk
 include $(LOCAL_PATH)/test/generic/Android.mk
+endif
+
