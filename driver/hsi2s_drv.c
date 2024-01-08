@@ -2342,8 +2342,12 @@ static int dab_enabler(void *data)
 
 	hs_dev = (struct hsi2s_device *)data;
 
+#ifdef LRH_KERNEL
+	sched_set_fifo(current);
+#else
 	/* Set maximum priority */
 	sched_setscheduler(current, SCHED_FIFO, &param);
+#endif
 
 	while (1) {
 		if (kthread_should_stop()) {
@@ -5056,6 +5060,7 @@ err_free_hsdev:
 	hs_dev = NULL;
 	hsi2s_core->hsi2s_arr[minor] = NULL;
 err_out:
+#ifndef LRH_KERNEL
 	/* Enable the IRQ line */
 	if (minor == (hsi2s_core->i_count - 1) && !(hsi2s_core->is_irq_enabled)) {
 		if (hsi2s_core->irq0 > 0) {
@@ -5073,6 +5078,7 @@ err_out:
 			hsi2s_core->is_irq_enabled = true;
 		}
 	}
+#endif
 	return ret;
 }
 
@@ -5420,6 +5426,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 		goto err_iounmap_lpass_tcsr;
 	}
 
+#ifndef LRH_KERNEL
 	ret =
 	devm_request_threaded_irq(&pdev->dev,
 				  hsi2s_core->irq0,
@@ -5433,8 +5440,11 @@ static int hsi2s_probe(struct platform_device *pdev)
 		goto err_iounmap_lpass_tcsr;
 	}
 
+#endif
 	/* Disable the irq line until child devices are probed */
+#ifndef LRH_KERNEL
 	disable_irq_nosync(hsi2s_core->irq0);
+#endif
 	hsi2s_core->is_irq_enabled = false;
 
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
@@ -5509,6 +5519,26 @@ static int hsi2s_probe(struct platform_device *pdev)
 		dev_err(hsi2s_core->dev, "Failed to add child devices");
 	else
 		dev_info(hsi2s_core->dev, "Added child devices");
+
+#ifdef LRH_KERNEL
+	/* Enable the IRQ line */
+	ret = devm_request_threaded_irq(hsi2s_core->dev,
+			hsi2s_core->irq0,
+			i2s_interrupt_handler,
+			irq_thread_fn,
+			IRQF_TRIGGER_HIGH | IRQF_ONESHOT,
+			"lpaif_hs_out0_irq", hsi2s_core);
+	if (ret) {
+		dev_err(hsi2s_core->dev, "Request_irq failed:%d: err:%d\n",
+				hsi2s_core->irq0, ret);
+		hsi2s_core->irq0 = 0;
+	} else {
+		dev_info(hsi2s_core->dev, "Request_irq succeed : irq0 = %d \n",
+				hsi2s_core->irq0);
+		hsi2s_core->is_irq_enabled = true;
+	}
+
+#endif
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 19, 0))
 	place_marker("M - DRIVER HS-I2S Ready");
 #else
@@ -5551,7 +5581,9 @@ err_free_smmu:
 	}
 #endif
 err_free_irq:
+#ifndef LRH_KERNEL
 	devm_free_irq(hsi2s_core->dev, hsi2s_core->irq0, hsi2s_core);
+#endif
 err_iounmap_lpass_tcsr:
 	if (target == 8155 || target == 8195)
 		iounmap(hsi2s_core->lpass_tcsr_base_va);
@@ -5699,7 +5731,10 @@ static int hsi2s_remove(struct platform_device *pdev)
 	}
 #endif
 	/* Free IRQ */
-	devm_free_irq(&pdev->dev, hs_core->irq0, hs_core);
+#ifdef LRH_KERNEL
+	if (hsi2s_core->irq0 && hsi2s_core->is_irq_enabled)
+#endif
+		devm_free_irq(&pdev->dev, hs_core->irq0, hs_core);
 	/* Reset rate detection block */
 	if (hs_core->is_rate_enabled) {
 		reset_rate_detection(PRI_RATE_DET);
