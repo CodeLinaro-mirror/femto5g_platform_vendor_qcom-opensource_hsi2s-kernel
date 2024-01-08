@@ -8,9 +8,16 @@
 #include "hsi2s_adsp_clk_ctrl.h"
 #endif
 #include "hsi2s_common.h"
-#if (LINUX_VERSION_CODE == KERNEL_VERSION(5, 15, 0))
-/*Place marker function declaration*/
-extern void place_marker(const char *name);
+
+#if LINUX_VERSION_CODE == KERNEL_VERSION(5,14,0)
+#define LRH_KERNEL
+#endif
+
+#ifdef LRH_KERNEL
+#define place_marker pr_info
+#include <linux/pinctrl/consumer.h>
+#else
+#include <soc/qcom/boot_stats.h>
 #endif
 /* Device number */
 static dev_t devid;
@@ -58,6 +65,11 @@ static int enable_qmi =1;
 module_param(enable_qmi, int, 0644);
 MODULE_PARM_DESC(enable_qmi, "Is QMI enabled: 0->Disabled 1->Enabled");
 
+#ifdef LRH_KERNEL
+static char *qmi_app = "/usr/bin/hsi2s_qmi_test";
+module_param(qmi_app, charp, 0644);
+MODULE_PARM_DESC(qmi_app, "application that enable/disable hsi2s ADSP clock");
+#endif
 #if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM) && defined(CONFIG_QCOM_QMI_HELPERS)
 /* QMI callbacks */
 static int hsi2s_clk_ctrl_send_sync_msg(struct qmi_handle *dev, int en)
@@ -2566,7 +2578,7 @@ static void *dma_sg_alloc(struct device *dev, unsigned long size,
 	/* Store the DMA handle */
 	buf->dma_addr = sg_dma_address(sgt->sgl);
 	/* Create virtual address mapping */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,15,0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,15,0) || defined(LRH_KERNEL)
 	buf->vaddr = vm_map_ram(buf->pages, buf->num_pages, -1);
 #else
 	buf->vaddr = vm_map_ram(buf->pages, buf->num_pages, -1, PAGE_KERNEL);
@@ -2884,6 +2896,31 @@ static int hsi2s_adsp_enable_clks(void)
 		dev_err(hsi2s_core->dev, "Failed to enable LPASS clocks\n");
 
 	return ret;
+}
+#endif
+
+#ifdef LRH_KERNEL
+static int do_hsi2s_clk_ctrl_via_qmi_app(int en)
+{
+	int ret = 0;
+	char *envp[3];
+	char *argv[] = {qmi_app, "1", NULL};
+
+	argv[1] = en ? "1" : "0";
+	envp[0] = "HOME=/home/root";
+	envp[1] = "PATH=/sbin:/bin:/usr/sbin:/usr/bin";
+	envp[2] = NULL;
+
+	dev_info(hsi2s_core->dev, "%s() en=%d, argv[0]=%s argv[1]=%s\n", __func__, en, argv[0], argv[1]);
+	ret = call_usermodehelper(argv[0], argv, envp, UMH_WAIT_PROC);
+	dev_info(hsi2s_core->dev, "%s() ret = %d\n", __func__, ret);
+	return ret;
+}
+
+static int hsi2s_clk_ctrl_via_qmi_app(int en)
+{
+	do_hsi2s_clk_ctrl_via_qmi_app(en);
+	return 0;
 }
 #endif
 
@@ -4134,6 +4171,9 @@ static int toggle_bit_clock(struct hsi2s_device *hs_dev)
 	dev_info(hs_dev->dev, "Toggled bit clock direction\n");
 #else
 	dev_info(hs_dev->dev, "QMI kernel configuration is not enabled\n");
+#ifdef LRH_KERNEL
+       ret = hsi2s_clk_ctrl_via_qmi_app(1);
+#endif //LRH_KERNEL
 #endif
 #else
 #if defined(CONFIG_MSM_HAB)
@@ -5023,8 +5063,12 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	else
 		devname = SDR4;
 
+#ifdef LRH_KERNEL
+	hs_dev->class_sdr = class_create(devname);
+#else
 	hs_dev->class_sdr = class_create(THIS_MODULE,
 					 devname);
+#endif
 	if (!hs_dev->class_sdr) {
 		dev_err(hs_dev->dev, "Failed to create device class %d"
 		       , minor);
@@ -5245,6 +5289,9 @@ static int hsi2s_probe(struct platform_device *pdev)
 				h_modify_core_clks(1);
 				h_modify_interface_clks(1);
 			}
+#ifdef LRH_KERNEL
+			ret = hsi2s_clk_ctrl_via_qmi_app(1);
+#endif //LRH_KERNEL
 #endif
 #else
 			hsi2s_core->hab_req = kzalloc(sizeof(msg_t), GFP_KERNEL);
@@ -5486,7 +5533,11 @@ static int hsi2s_probe(struct platform_device *pdev)
 		goto err_free_cdev;
 	}
 
+#ifdef LRH_KERNEL
+	hsi2s_core->class_sdr = class_create("hsi2s_reginfo");
+#else
 	hsi2s_core->class_sdr = class_create(THIS_MODULE, "hsi2s_reginfo");
+#endif
 	if (!hsi2s_core->class_sdr) {
 		dev_err(hsi2s_core->dev, "Failed to create device class");
 		ret = -EEXIST;
@@ -5608,6 +5659,9 @@ err_disable_core_clocks:
 				h_modify_interface_clks(0);
 				h_modify_core_clks(0);
 			}
+#ifdef LRH_KERNEL
+			hsi2s_clk_ctrl_via_qmi_app(0);
+#endif //LRH_KERNEL
 #endif
 #else
 err_close_hab:
@@ -5743,7 +5797,7 @@ static int hsi2s_remove(struct platform_device *pdev)
 	/* Disable the core clocks */
 	if (hs_core->target == 6155)
 		hsi2s_disable_core_clks(pdev);
-	else if (hs_core->target == 8155 || hs_core->target == 8195 || hs_core->target == 8295) {
+	else if (hs_core->target == 8155 || hs_core->target == 8195 || hs_core->target == 8295 || hs_core->target == 8255) {
 		if (enable_qmi) {
 #if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
 #if defined(CONFIG_QCOM_QMI_HELPERS)
@@ -5756,10 +5810,13 @@ static int hsi2s_remove(struct platform_device *pdev)
 			if (hs_core->target == 8295) {
 				m_modify_core_clks(0);
 				m_modify_interface_clks(0);
-			} else if ((target == 8155) || (target == 8195)){
+			} else if ((hs_core->target == 8155) || (hs_core->target == 8195)){
 				h_modify_interface_clks(0);
 				h_modify_core_clks(0);
 			}
+#ifdef LRH_KERNEL
+			hsi2s_clk_ctrl_via_qmi_app(0);
+#endif //LRH_KERNEL
 #endif
 #else
 #if defined(CONFIG_MSM_HAB)
@@ -5865,6 +5922,9 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 #else
 			h_modify_interface_clks(0);
 			h_modify_core_clks(0);
+#ifdef LRH_KERNEL
+			hsi2s_clk_ctrl_via_qmi_app(0);
+#endif //LRH_KERNEL
 #endif
 #else
 #if defined(CONFIG_MSM_HAB)
