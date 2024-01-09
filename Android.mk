@@ -1,5 +1,8 @@
+ifneq ($(TARGET_USES_GY), true)
 LOCAL_PATH := $(call my-dir)
 DLKM_DIR := $(TOP)/device/qcom/common/dlkm
+
+BOARD_VENDOR_KERNEL_MODULES += $(KERNEL_MODULES_OUT)/hsi2s.ko
 
 #KBUILD_OPTIONS
 KBUILD_OPTIONS += KERNEL_ROOT=$(shell pwd)/kernel/msm-$(TARGET_KERNEL_VERSION)/
@@ -25,3 +28,5 @@ LOCAL_MODULE_TAGS         := optional
 
 include $(DLKM_DIR)/Build_external_kernelmodule.mk
 include $(LOCAL_PATH)/test/generic/Android.mk
+endif
+

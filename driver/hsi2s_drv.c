@@ -8,7 +8,7 @@
 #include "hsi2s_adsp_clk_ctrl.h"
 #endif
 #include "hsi2s_common.h"
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 19, 0))
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 /*Place marker function declaration*/
 extern void place_marker(const char *name);
 #endif
@@ -963,6 +963,27 @@ static void p_audio_mux_pin(int enable)
 		setbits(h_gpio_out97, 0x2);
 	} else {
 		clearbits(h_gpio_cfg97, 0x600);
+		clearbits(h_gpio_out97, 0x2);
+		dev_info(hsi2s_core->dev, "Disable SDR GPIO pins in GPIO");
+	}
+	iounmap(h_gpio_cfg97);
+	iounmap(h_gpio_out97);
+}
+
+/*Audio Mux Sel Pin in Hana*/
+static void h_audio_mux_pin(int enable)
+{
+	void __iomem *h_gpio_cfg97;
+	void __iomem *h_gpio_out97;
+	h_gpio_cfg97 = ioremap(0x3961000, 4);
+        h_gpio_out97 = ioremap(0x3961004, 4);
+
+	if (enable) {
+		dev_info(hsi2s_core->dev, "Enable SDR GPIO pins in HANA");
+		setbits(h_gpio_cfg97, 0x603);
+		setbits(h_gpio_out97, 0x2);
+	} else {
+		clearbits(h_gpio_cfg97, 0x603);
 		clearbits(h_gpio_out97, 0x2);
 		dev_info(hsi2s_core->dev, "Disable SDR GPIO pins in GPIO");
 	}
@@ -4292,6 +4313,8 @@ static int ioctl_handler1(struct hsi2s_device *hs_dev, unsigned int cmd, unsigne
 			configure_muxmode(hs_dev, 1);
 		if (hsi2s_core->target == 8195)
 			p_audio_mux_pin(1);
+		else if (hsi2s_core->target == 8155)
+			h_audio_mux_pin(1);
 		configure_normal_mode(hs_dev, minor);
 		hs_dev->slave = minor;
 
@@ -4330,6 +4353,8 @@ static int ioctl_handler1(struct hsi2s_device *hs_dev, unsigned int cmd, unsigne
 		configure_muxmode(hs_dev, 0);
 		if (hsi2s_core->target == 8195)
 			p_audio_mux_pin(1);
+		else if (hsi2s_core->target == 8155)
+			h_audio_mux_pin(1);
 		configure_ext_loopback_mode(hs_dev, minor);
 		hs_dev->slave = minor;
 	} else {
@@ -4340,6 +4365,8 @@ static int ioctl_handler1(struct hsi2s_device *hs_dev, unsigned int cmd, unsigne
 
 		if (hsi2s_core->target == 8195)
 			p_audio_mux_pin(1);
+		else if (hsi2s_core->target == 8155)
+			h_audio_mux_pin(1);
 		dev_info(hs_dev->dev, "Setting master/slave muxmode configuration\n");
 		configure_muxmode(hs_dev, arg);
 	}
@@ -4473,27 +4500,41 @@ static int ioctl_handler3(struct hsi2s_device *hs_dev, unsigned int cmd, unsigne
 		}
 		dev_info(hs_dev->dev, "Configuring master clock on HS%d interface\n",
 				 hs_dev->minor_num);
-		if (hs_dev->minor_num == 0) {
-			clk_update_reg = ioremap(HS0_BITCLK_CMD_REG, 4);
-			clk_val_reg = ioremap(HS0_BITCLK_CFG_REG, 4);
-
-			clearbits(clk_val_reg, HS_BITCLK_RESET);
-			setbits(clk_val_reg, arg);
-			setbits(clk_update_reg, HS_BITCLK_UPDATE);
-		} else if (hs_dev->minor_num == 1) {
-			clk_update_reg = ioremap(HS1_BITCLK_CMD_REG, 4);
-			clk_val_reg = ioremap(HS1_BITCLK_CFG_REG, 4);
-
-			clearbits(clk_val_reg, HS_BITCLK_RESET);
-			setbits(clk_val_reg, arg);
-			setbits(clk_update_reg, HS_BITCLK_UPDATE);
-		} else {
-			clk_update_reg = ioremap(HS2_BITCLK_CMD_REG, 4);
-			clk_val_reg = ioremap(HS2_BITCLK_CFG_REG, 4);
-
-			clearbits(clk_val_reg, HS_BITCLK_RESET);
-			setbits(clk_val_reg, arg);
-			setbits(clk_update_reg, HS_BITCLK_UPDATE);
+		if ((hsi2s_core->target == 8155)||(hsi2s_core->target == 8195)) {
+			if (hs_dev->minor_num == 0) {
+				clk_update_reg = ioremap(HS0_BITCLK_CMD_REG, 4);
+				clk_val_reg = ioremap(HS0_BITCLK_CFG_REG, 4);
+				clearbits(clk_val_reg, HS_BITCLK_RESET);
+				setbits(clk_val_reg, arg);
+				setbits(clk_update_reg, HS_BITCLK_UPDATE);
+			} else if (hs_dev->minor_num == 1) {
+				clk_update_reg = ioremap(HS1_BITCLK_CMD_REG, 4);
+				clk_val_reg = ioremap(HS1_BITCLK_CFG_REG, 4);
+				clearbits(clk_val_reg, HS_BITCLK_RESET);
+				setbits(clk_val_reg, arg);
+				setbits(clk_update_reg, HS_BITCLK_UPDATE);
+			} else {
+				clk_update_reg = ioremap(HS2_BITCLK_CMD_REG, 4);
+				clk_val_reg = ioremap(HS2_BITCLK_CFG_REG, 4);
+				clearbits(clk_val_reg, HS_BITCLK_RESET);
+				setbits(clk_val_reg, arg);
+				setbits(clk_update_reg, HS_BITCLK_UPDATE);
+			}
+		} else if (hsi2s_core->target == 8255) {
+			/*Lemans master clock settings*/
+                        if (hs_dev->minor_num == 0) {
+                                clk_update_reg = ioremap(L_HS0_BITCLK_CMD_REG, 4);
+                                clk_val_reg = ioremap(L_HS0_BITCLK_CFG_REG, 4);
+                                clearbits(clk_val_reg,HS_BITCLK_RESET);
+                                setbits(clk_val_reg, arg);
+                                setbits(clk_update_reg, HS_BITCLK_UPDATE);
+                        } else if (hs_dev->minor_num == 1) {
+                                clk_update_reg = ioremap(L_HS1_BITCLK_CMD_REG, 4);
+                                clk_val_reg = ioremap(L_HS1_BITCLK_CFG_REG, 4);
+                                clearbits(clk_val_reg, HS_BITCLK_RESET);
+                                setbits(clk_val_reg, arg);
+                                setbits(clk_update_reg, HS_BITCLK_UPDATE);
+                        }
 		}
 		dev_info(hs_dev->dev, "Re-configured master clock\n");
 	} else if (cmd == LPAIF_RESET) {
@@ -5193,10 +5234,10 @@ static int hsi2s_probe(struct platform_device *pdev)
 
 	if (of_device_is_compatible(pdev->dev.of_node, "qcom,hsi2s-interface"))
 		return hsi2s_interface_probe(pdev);
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 19, 0))
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 	place_marker("M - DRIVER HS-I2S Init");
 #else
-	pr_info("M - DRIVER HS-I2S Init");
+	pr_err("boot_kpi: M - DRIVER HS-I2S Init");
 #endif
 
 	hsi2s_core = kzalloc(sizeof(*hsi2s_core), GFP_KERNEL);
@@ -5615,10 +5656,10 @@ static int hsi2s_probe(struct platform_device *pdev)
 		dev_err(hsi2s_core->dev, "Failed to add child devices");
 	else
 		dev_info(hsi2s_core->dev, "Added child devices");
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 19, 0))
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 	place_marker("M - DRIVER HS-I2S Ready");
 #else
-	pr_info("M - DRIVER HS-I2S Ready");
+	pr_err("boot_kpi: M - DRIVER HS-I2S Ready");
 #endif
 
 	return ret;
@@ -5785,6 +5826,17 @@ static int hsi2s_remove(struct platform_device *pdev)
 			}
 		}
 	}
+	/* Reset the output routing gpio for 8155 */
+	else if (hs_core->target == 8155) {
+		if (of_property_read_bool(pdev->dev.of_node, "pinctrl-names")) {
+			dev_info(hs_core->dev, "Reset output routing gpio");
+			ret = hsi2s_configure_gpio_pins(pdev, 0);
+			h_audio_mux_pin(0);
+			if (ret < 0) {
+				dev_err(hs_core->dev, "Failed to reset the output routing gpio");
+			}
+		}
+	}
 	/* Remove the device file */
 	device_destroy(hs_core->class_sdr, hs_core->curr_devid);
 	class_destroy(hs_core->class_sdr);
@@ -5885,7 +5937,7 @@ err_close_hab:
 		}
 	}
 	/* Unregister the device numbers */
-	unregister_chrdev_region(devid, 1);
+	unregister_chrdev_region(devid, hsi2s_core->i_count);
 	/* Free the core data structure */
 	kfree(hs_core->hsi2s_arr);
 	hs_core->hsi2s_arr = NULL;

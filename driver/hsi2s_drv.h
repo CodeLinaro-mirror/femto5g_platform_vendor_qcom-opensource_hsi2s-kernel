@@ -491,6 +491,11 @@ typedef unsigned int __poll_t;
 #define HS_BITCLK_UPDATE 0x1
 #define HS_BITCLK_RESET 0x71F
 
+#define L_HS0_BITCLK_CMD_REG  0x3947000
+#define L_HS0_BITCLK_CFG_REG  0x3947004
+#define L_HS1_BITCLK_CMD_REG  0x3947020
+#define L_HS1_BITCLK_CFG_REG  0x3947024
+
 enum operation_mode {
 	NORMAL,
 	INTERNAL_LB,
