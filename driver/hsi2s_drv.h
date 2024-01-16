@@ -35,7 +35,9 @@
 #include <linux/io.h>
 #include <linux/poll.h>
 #include <linux/soc/qcom/qmi.h>
+#if defined(CONFIG_MSM_HAB_MODULE)
 #include <linux/habmm.h>
+#endif
 #include <linux/version.h>
 #include <uapi/linux/sched/types.h>
 #include <soc/qcom/boot_stats.h>
@@ -135,6 +137,11 @@ typedef unsigned int __poll_t;
 #define M_LPAIF_IRQ2_STAT			0x9018
 #define M_LPAIF_IRQ2_CLEAR			0x9020
 #define M_LPAIF_MUXMODE				0x24
+
+#define L_LPAIF_IRQ3_EN				0x9028
+#define L_LPAIF_IRQ3_STAT			0x902c
+#define L_LPAIF_IRQ3_CLEAR			0x9034
+#define L_LPAIF_MUXMODE				0x5120
 
 /* Bits for I2S control register */
 #define T_I2S_WS_SRC				BIT(2)
@@ -483,6 +490,11 @@ typedef unsigned int __poll_t;
 #define HS2_BITCLK_CFG_REG 0x17048004
 #define HS_BITCLK_UPDATE 0x1
 #define HS_BITCLK_RESET 0x71F
+
+#define L_HS0_BITCLK_CMD_REG  0x3947000
+#define L_HS0_BITCLK_CFG_REG  0x3947004
+#define L_HS1_BITCLK_CMD_REG  0x3947020
+#define L_HS1_BITCLK_CFG_REG  0x3947024
 
 enum operation_mode {
 	NORMAL,
