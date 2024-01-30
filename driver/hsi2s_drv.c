@@ -4522,19 +4522,25 @@ static int ioctl_handler3(struct hsi2s_device *hs_dev, unsigned int cmd, unsigne
 			}
 		} else if (hsi2s_core->target == 8255) {
 			/*Lemans master clock settings*/
-                        if (hs_dev->minor_num == 0) {
-                                clk_update_reg = ioremap(L_HS0_BITCLK_CMD_REG, 4);
-                                clk_val_reg = ioremap(L_HS0_BITCLK_CFG_REG, 4);
-                                clearbits(clk_val_reg,HS_BITCLK_RESET);
-                                setbits(clk_val_reg, arg);
-                                setbits(clk_update_reg, HS_BITCLK_UPDATE);
-                        } else if (hs_dev->minor_num == 1) {
-                                clk_update_reg = ioremap(L_HS1_BITCLK_CMD_REG, 4);
-                                clk_val_reg = ioremap(L_HS1_BITCLK_CFG_REG, 4);
-                                clearbits(clk_val_reg, HS_BITCLK_RESET);
-                                setbits(clk_val_reg, arg);
-                                setbits(clk_update_reg, HS_BITCLK_UPDATE);
-                        }
+			if (hs_dev->minor_num == 0) {
+				clk_update_reg = ioremap(L_HS0_BITCLK_CMD_REG, 4);
+				clk_val_reg = ioremap(L_HS0_BITCLK_CFG_REG, 4);
+				clearbits(clk_val_reg,HS_BITCLK_RESET);
+				setbits(clk_val_reg, arg);
+				setbits(clk_update_reg, HS_BITCLK_UPDATE);
+			} else if (hs_dev->minor_num == 1) {
+				clk_update_reg = ioremap(L_HS1_BITCLK_CMD_REG, 4);
+				clk_val_reg = ioremap(L_HS1_BITCLK_CFG_REG, 4);
+				clearbits(clk_val_reg, HS_BITCLK_RESET);
+				setbits(clk_val_reg, arg);
+				setbits(clk_update_reg, HS_BITCLK_UPDATE);
+			} else if (hs_dev->minor_num == 4) { /*Monaco master clock for HS4 interface*/ 
+				clk_update_reg = ioremap(MO_HS4_BITCLK_CMD_REG, 4);
+				clk_val_reg = ioremap(MO_HS4_BITCLK_CFG_REG, 4);
+				clearbits(clk_val_reg, HS_BITCLK_RESET);
+				setbits(clk_val_reg, arg);
+				setbits(clk_update_reg, HS_BITCLK_UPDATE);
+			}
 		}
 		dev_info(hs_dev->dev, "Re-configured master clock\n");
 	} else if (cmd == LPAIF_RESET) {
@@ -5259,7 +5265,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 		target = 8195;
 	else if (of_device_is_compatible(pdev->dev.of_node, "qcom,sa8295-hsi2s"))
 		target = 8295;
-	else if (of_device_is_compatible(pdev->dev.of_node, "qcom,sa8255-hsi2s"))
+	else if (of_device_is_compatible(pdev->dev.of_node, "qcom,sa8255-hsi2s")||of_device_is_compatible(pdev->dev.of_node, "qcom,sa7255-hsi2s")) /*hsi2s register space is completely same as lemans*/
 		target = 8255;
 	else {
 		dev_err(hsi2s_core->dev, "Uncompatible target");
@@ -5282,7 +5288,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 		dev_info(hsi2s_core->dev, "8295 target detected");
 		m_assign_macros();
 	}else if (target == 8255) {
-		dev_info(hsi2s_core->dev, "8255 target detected");
+		dev_info(hsi2s_core->dev, "8255/7255 target detected");
 		l_assign_macros();
 	}
 
@@ -5873,7 +5879,7 @@ static int hsi2s_remove(struct platform_device *pdev)
 	/* Disable the core clocks */
 	if (hs_core->target == 6155)
 		hsi2s_disable_core_clks(pdev);
-	else if (hs_core->target == 8155 || hs_core->target == 8195 || hs_core->target == 8295) {
+	else if (hs_core->target == 8155 || hs_core->target == 8195 || hs_core->target == 8295 || hs_core->target == 8255) {
 		if (enable_qmi) {
 #if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
 #if defined(CONFIG_QCOM_QMI_HELPERS)
