@@ -126,7 +126,7 @@ int fd_master = -1;
 int is_tx_active;
 
 /* Prints the usage information */
-void help()
+static void help(void)
 {
 	printf("OPERATIONAL MODES:\n\n 0 - Normal Rx\n 1 - Normal Tx*\n 2 - Internal loopback\n 3 - External loopback on master*\n"
 	       " 4 - External loopback on master-slave*\n 5 - Set master/slave mode*\n 6 - Configure master clock*\n"

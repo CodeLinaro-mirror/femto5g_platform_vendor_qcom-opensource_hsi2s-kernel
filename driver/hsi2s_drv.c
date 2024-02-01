@@ -4,11 +4,14 @@
  */
 
 #include "hsi2s_drv.h"
-#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM) && defined(CONFIG_QCOM_QMI_HELPERS)
+#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
 #include "hsi2s_adsp_clk_ctrl.h"
 #endif
 #include "hsi2s_common.h"
-
+#if (LINUX_VERSION_CODE == KERNEL_VERSION(5, 15, 0))
+/*Place marker function declaration*/
+extern void place_marker(const char *name);
+#endif
 /* Device number */
 static dev_t devid;
 
@@ -51,7 +54,7 @@ static u32 bit_depth;
 module_param(bit_depth, uint, 0644);
 MODULE_PARM_DESC(bit_depth, "Bit depth of the I2S interface");
 
-static int enable_qmi;
+static int enable_qmi =1;
 module_param(enable_qmi, int, 0644);
 MODULE_PARM_DESC(enable_qmi, "Is QMI enabled: 0->Disabled 1->Enabled");
 
@@ -613,7 +616,169 @@ static void m_assign_macros(void)
 	hsi2s_core->macro->regfield_rate_sync_sel_sec = T_SYNC_SEL_SEC;
 }
 
+/* SA8255 macros */
+static void l_assign_macros(void)
+{
+	hsi2s_core->macro->offset_i2s_ctl = T_LPAIF_I2S_CTL;
+	hsi2s_core->macro->offset_pcm_ctl = T_LPAIF_PCM_CTL;
+	hsi2s_core->macro->offset_tdm_ctl = T_LPAIF_PCM_TDM_CTL;
+	hsi2s_core->macro->offset_tdm_sample_width = T_LPAIF_PCM_TDM_SAMPLE_WIDTH;
+	hsi2s_core->macro->offset_rpcm_slot_num = T_LPAIF_PCM_RPCM_SLOT_NUM;
+	hsi2s_core->macro->offset_tpcm_slot_num = T_LPAIF_PCM_TPCM_SLOT_NUM;
+	hsi2s_core->macro->offset_pcm_lane_config = T_LPAIF_PCM_LANE_CONFIG;
+	hsi2s_core->macro->offset_i2s_sel = T_LPAIF_PCM_I2S_SEL;
+	hsi2s_core->macro->offset_irq_en = T_LPAIF_IRQ_EN;
+	hsi2s_core->macro->offset_irq_stat = T_LPAIF_IRQ_STAT;
+	hsi2s_core->macro->offset_irq_clear = T_LPAIF_IRQ_CLEAR;
+	hsi2s_core->macro->offset_irq2_en = M_LPAIF_IRQ2_EN;
+	hsi2s_core->macro->offset_irq2_stat = M_LPAIF_IRQ2_STAT;
+	hsi2s_core->macro->offset_irq2_clear = M_LPAIF_IRQ2_CLEAR;
+	hsi2s_core->macro->offset_rddma_ctl = T_LPAIF_RDDMA_CTL;
+	hsi2s_core->macro->offset_rddma_base = T_LPAIF_RDDMA_BASE;
+	hsi2s_core->macro->offset_rddma_buff_len = T_LPAIF_RDDMA_BUFF_LEN;
+	hsi2s_core->macro->offset_rddma_curr_addr = T_LPAIF_RDDMA_CURR_ADDR;
+	hsi2s_core->macro->offset_rddma_per_len = T_LPAIF_RDDMA_PER_LEN;
+	hsi2s_core->macro->offset_rddma_ram_addr = T_LPAIF_RDDMA_RAM_START_ADDR;
+	hsi2s_core->macro->offset_rddma_ram_len = T_LPAIF_RDDMA_RAM_LENGTH;
+	hsi2s_core->macro->offset_wrdma_ctl = T_LPAIF_WRDMA_CTL;
+	hsi2s_core->macro->offset_wrdma_base = T_LPAIF_WRDMA_BASE;
+	hsi2s_core->macro->offset_wrdma_buff_len = T_LPAIF_WRDMA_BUFF_LEN;
+	hsi2s_core->macro->offset_wrdma_curr_addr = T_LPAIF_WRDMA_CURR_ADDR;
+	hsi2s_core->macro->offset_wrdma_per_len = T_LPAIF_WRDMA_PER_LEN;
+	hsi2s_core->macro->offset_wrdma_ram_addr = T_LPAIF_WRDMA_RAM_START_ADDR;
+	hsi2s_core->macro->offset_wrdma_ram_len = T_LPAIF_WRDMA_RAM_LENGTH;
+	hsi2s_core->macro->offset_pri_rate_det_config = T_LPAIF_PRI_RATE_DET_CONFIG;
+	hsi2s_core->macro->offset_pri_rate_det_target1_config = T_LPAIF_PRI_RATE_DET_TARGET1_CONFIG;
+	hsi2s_core->macro->offset_pri_rate_det_target2_config = T_LPAIF_PRI_RATE_DET_TARGET2_CONFIG;
+	hsi2s_core->macro->offset_pri_rate_bin = T_LPAIF_PRI_RATE_BIN;
+	hsi2s_core->macro->offset_pri_stc_diff = T_LPAIF_PRI_STC_DIFF;
+	hsi2s_core->macro->offset_pri_rate_det_sel = T_LPAIF_PRI_RATE_DET_SEL;
+	hsi2s_core->macro->offset_sec_rate_det_config = T_LPAIF_SEC_RATE_DET_CONFIG;
+	hsi2s_core->macro->offset_sec_rate_det_target1_config = T_LPAIF_SEC_RATE_DET_TARGET1_CONFIG;
+	hsi2s_core->macro->offset_sec_rate_det_target2_config = T_LPAIF_SEC_RATE_DET_TARGET2_CONFIG;
+	hsi2s_core->macro->offset_sec_rate_bin = T_LPAIF_SEC_RATE_BIN;
+	hsi2s_core->macro->offset_sec_stc_diff = T_LPAIF_SEC_STC_DIFF;
+	hsi2s_core->macro->offset_sec_rate_det_sel = T_LPAIF_SEC_RATE_DET_SEL;
+	hsi2s_core->macro->bit_ws_src = T_I2S_WS_SRC;
+	hsi2s_core->macro->bit_mic_en = T_I2S_MIC_EN;
+	hsi2s_core->macro->bit_spkr_en = T_I2S_SPKR_EN;
+	hsi2s_core->macro->bit_loopback = T_I2S_LOOPBACK;
+	hsi2s_core->macro->bit_i2s_reset = T_I2S_RESET;
+	hsi2s_core->macro->bit_en_long_rate = T_I2S_EN_LONG_RATE;
+	hsi2s_core->macro->bit_tpcm_width = T_TPCM_WIDTH;
+	hsi2s_core->macro->bit_rpcm_width = T_RPCM_WIDTH;
+	hsi2s_core->macro->bit_aux_mode = T_AUX_MODE;
+	hsi2s_core->macro->bit_sync_src = T_SYNC_SRC;
+	hsi2s_core->macro->bit_pcm_loopback = T_PCM_LOOPBACK;
+	hsi2s_core->macro->bit_ctrl_data_oe = T_CTRL_DATA_OE;
+	hsi2s_core->macro->bit_one_slot_sync_en = T_ONE_SLOT_SYNC_EN;
+	hsi2s_core->macro->bit_pcm_en = T_PCM_ENABLE;
+	hsi2s_core->macro->bit_pcm_en_tx = T_PCM_ENABLE_TX;
+	hsi2s_core->macro->bit_pcm_en_rx = T_PCM_ENABLE_RX;
+	hsi2s_core->macro->bit_pcm_reset = T_PCM_RESET;
+	hsi2s_core->macro->bit_pcm_reset_tx = T_PCM_RESET_TX;
+	hsi2s_core->macro->bit_pcm_reset_rx = T_PCM_RESET_RX;
+	hsi2s_core->macro->bit_tdm_inv_rpcm_sync = T_TDM_INV_RPCM_SYNC;
+	hsi2s_core->macro->bit_tdm_inv_tpcm_sync = T_TDM_INV_TPCM_SYNC;
+	hsi2s_core->macro->bit_tdm_en_diff_sample_width = T_EN_DIFF_SAMPLE_WIDTH;
+	hsi2s_core->macro->bit_tdm_en = T_EN_TDM;
+	hsi2s_core->macro->bit_lane0_dir = T_LANE0_DIR;
+	hsi2s_core->macro->bit_lane1_dir = T_LANE1_DIR;
+	hsi2s_core->macro->bit_lane2_dir = T_LANE2_DIR;
+	hsi2s_core->macro->bit_lane3_dir = T_LANE3_DIR;
+	hsi2s_core->macro->bit_lane0_en = T_LANE0_EN;
+	hsi2s_core->macro->bit_lane1_en = T_LANE1_EN;
+	hsi2s_core->macro->bit_lane2_en = T_LANE2_EN;
+	hsi2s_core->macro->bit_lane3_en = T_LANE3_EN;
+	hsi2s_core->macro->bit_i2s_sel = T_I2S_SEL;
+	hsi2s_core->macro->bit_rddma_en = T_RDDMA_EN;
+	hsi2s_core->macro->bit_rddma_burst_en = T_RDDMA_BURST_EN;
+	hsi2s_core->macro->bit_rddma_dyn_clk = T_RDDMA_DYN_CLK;
+	hsi2s_core->macro->bit_rddma_reset = T_RDDMA_RESET;
+	hsi2s_core->macro->bit_wrdma_en = T_WRDMA_EN;
+	hsi2s_core->macro->bit_wrdma_burst_en = T_WRDMA_BURST_EN;
+	hsi2s_core->macro->bit_wrdma_dyn_clk = T_WRDMA_DYN_CLK;
+	hsi2s_core->macro->bit_wrdma_reset = T_WRDMA_RESET;
+	hsi2s_core->macro->bit_rate_en = T_RATE_DET_EN;
+	hsi2s_core->macro->bit_rate_reset = T_RATE_DET_RESET;
+	hsi2s_core->macro->regfield_i2s_lrate_offset = T_I2S_LONG_RATE_OFFSET;
+	hsi2s_core->macro->regfield_spkr_mode_sd0 = T_I2S_SPKR_MODE_SD0;
+	hsi2s_core->macro->regfield_spkr_mode_sd1 = T_I2S_SPKR_MODE_SD1;
+	hsi2s_core->macro->regfield_spkr_mode_quad01 = T_I2S_SPKR_MODE_QUAD01;
+	hsi2s_core->macro->regfield_spkr_mono = T_I2S_SPKR_MONO;
+	hsi2s_core->macro->regfield_mic_mode_sd0 = T_I2S_MIC_MODE_SD0;
+	hsi2s_core->macro->regfield_mic_mode_sd1 = T_I2S_MIC_MODE_SD1;
+	hsi2s_core->macro->regfield_mic_mode_quad01 = T_I2S_MIC_MODE_QUAD01;
+	hsi2s_core->macro->regfield_mic_mono = T_I2S_MIC_MONO;
+	hsi2s_core->macro->regfield_bit_width16 = T_I2S_BIT_WIDTH_16;
+	hsi2s_core->macro->regfield_bit_width24 = T_I2S_BIT_WIDTH_24;
+	hsi2s_core->macro->regfield_bit_width32 = T_I2S_BIT_WIDTH_32;
+	hsi2s_core->macro->regfield_bit_width25 = T_I2S_BIT_WIDTH_25;
+	hsi2s_core->macro->regfield_pcmrate_8 = T_PCM_RATE_8_BIT_CLKS;
+	hsi2s_core->macro->regfield_pcmrate_16 = T_PCM_RATE_16_BIT_CLKS;
+	hsi2s_core->macro->regfield_pcmrate_32 = T_PCM_RATE_32_BIT_CLKS;
+	hsi2s_core->macro->regfield_pcmrate_64 = T_PCM_RATE_64_BIT_CLKS;
+	hsi2s_core->macro->regfield_pcmrate_128 = T_PCM_RATE_128_BIT_CLKS;
+	hsi2s_core->macro->regfield_pcmrate_256 = T_PCM_RATE_256_BIT_CLKS;
+	hsi2s_core->macro->regfield_sync_delay_0 = T_TDM_SYNC_DELAY_0;
+	hsi2s_core->macro->regfield_sync_delay_1 = T_TDM_SYNC_DELAY_1;
+	hsi2s_core->macro->regfield_sync_delay_2 = T_TDM_SYNC_DELAY_2;
+	hsi2s_core->macro->regfield_rddma_wpscnt_one = T_RDDMA_WPSCNT_ONE;
+	hsi2s_core->macro->regfield_rddma_wpscnt_two = T_RDDMA_WPSCNT_TWO;
+	hsi2s_core->macro->regfield_rddma_wpscnt_four = T_RDDMA_WPSCNT_FOUR;
+	hsi2s_core->macro->regfield_rddma_wpscnt_eight = T_RDDMA_WPSCNT_EIGHT;
+	hsi2s_core->macro->regfield_rddma_pri_audio_intf = T_RDDMA_PRI_AUDIO_INTF;
+	hsi2s_core->macro->regfield_rddma_sec_audio_intf = T_RDDMA_SEC_AUDIO_INTF;
+	hsi2s_core->macro->regfield_rddma_ter_audio_intf = M_RDDMA_TER_AUDIO_INTF;
+	hsi2s_core->macro->regfield_rddma_quat_audio_intf = M_RDDMA_QUAT_AUDIO_INTF;
+	hsi2s_core->macro->regfield_rddma_quin_audio_intf = M_RDDMA_QUIN_AUDIO_INTF;
+	hsi2s_core->macro->regfield_rddma_fifo_wm8 = T_RDDMA_FIFO_WM_8;
+	hsi2s_core->macro->regfield_wrdma_wpscnt_one = T_WRDMA_WPSCNT_ONE;
+	hsi2s_core->macro->regfield_wrdma_wpscnt_two = T_WRDMA_WPSCNT_TWO;
+	hsi2s_core->macro->regfield_wrdma_wpscnt_four = T_WRDMA_WPSCNT_FOUR;
+	hsi2s_core->macro->regfield_wrdma_wpscnt_eight = T_WRDMA_WPSCNT_EIGHT;
+	hsi2s_core->macro->regfield_wrdma_pri_audio_intf = T_WRDMA_PRI_AUDIO_INTF;
+	hsi2s_core->macro->regfield_wrdma_sec_audio_intf = T_WRDMA_SEC_AUDIO_INTF;
+	hsi2s_core->macro->regfield_wrdma_ter_audio_intf = M_WRDMA_TER_AUDIO_INTF;
+	hsi2s_core->macro->regfield_wrdma_quat_audio_intf = M_WRDMA_QUAT_AUDIO_INTF;
+	hsi2s_core->macro->regfield_wrdma_quin_audio_intf = M_WRDMA_QUIN_AUDIO_INTF;
+	hsi2s_core->macro->regfield_wrdma_loopback_ch0 = T_WRDMA_LOOPBACK_CH0;
+	hsi2s_core->macro->regfield_wrdma_loopback_ch1 = T_WRDMA_LOOPBACK_CH1;
+	hsi2s_core->macro->regfield_wrdma_loopback_ch2 = M_WRDMA_LOOPBACK_CH2;
+	hsi2s_core->macro->regfield_wrdma_loopback_ch3 = M_WRDMA_LOOPBACK_CH3;
+	hsi2s_core->macro->regfield_wrdma_loopback_ch4 = M_WRDMA_LOOPBACK_CH4;
+	hsi2s_core->macro->regfield_wrdma_fifo_wm8 = T_WRDMA_FIFO_WM_8;
+	hsi2s_core->macro->regfield_rate_num_fs_1 = T_RATE_NUM_FS_1;
+	hsi2s_core->macro->regfield_rate_num_fs_8 = T_RATE_NUM_FS_8;
+	hsi2s_core->macro->regfield_rate_var_192_176p4_fs1 = T_RATE_VAR_192_176P4_FS1;
+	hsi2s_core->macro->regfield_rate_var_128_44p1_fs1 = T_RATE_VAR_128_44P1_FS1;
+	hsi2s_core->macro->regfield_rate_var_32_8_fs1 = T_RATE_VAR_32_8_FS1;
+	hsi2s_core->macro->regfield_rate_target128_fs1 = T_RATE_TARGET128_FS1;
+	hsi2s_core->macro->regfield_rate_target_176p4_fs1 = T_RATE_TARGET176P4_FS1;
+	hsi2s_core->macro->regfield_rate_target_192_fs1 = T_RATE_TARGET192_FS1;
+	hsi2s_core->macro->regfield_rate_var_192_176p4_fs8 = T_RATE_VAR_192_176P4_FS8;
+	hsi2s_core->macro->regfield_rate_var_128_44p1_fs8 = T_RATE_VAR_128_44P1_FS8;
+	hsi2s_core->macro->regfield_rate_var_32_8_fs8 = T_RATE_VAR_32_8_FS8;
+	hsi2s_core->macro->regfield_rate_target128_fs8 = T_RATE_TARGET128_FS8;
+	hsi2s_core->macro->regfield_rate_target_176p4_fs8 = T_RATE_TARGET176P4_FS8;
+	hsi2s_core->macro->regfield_rate_target_192_fs8 = T_RATE_TARGET192_FS8;
+	hsi2s_core->macro->regfield_rate_sync_sel_pri = T_SYNC_SEL_PRI;
+	hsi2s_core->macro->regfield_rate_sync_sel_sec = T_SYNC_SEL_SEC;
+}
+
+
 /* Register callbacks */
+static u32 l_calculate_muxmode_offset(struct hsi2s_device *hs_dev, int intf)
+{
+	u32 offset = 0;
+
+	if(intf < 5)
+		offset = (0xc * intf);
+
+	dev_info(hs_dev->dev, "lemans intf %d ,Muxmode offset : %u\n", intf, offset);
+
+	return offset;
+}
 static u32 calculate_muxmode_offset(struct hsi2s_device *hs_dev, int intf)
 {
 	u32 offset;
@@ -697,6 +862,13 @@ static int map_registers(struct hsi2s_device *hs_dev, int intf)
 						M_LPAIF_MUXMODE +
 						calculate_muxmode_offset(hs_dev, intf);
 		}
+		if (hsi2s_core->target == 8255)
+		{
+			hs_dev->lpaif_muxmode = hsi2s_core->lpass_core_cc_hs_if +
+						L_LPAIF_MUXMODE +
+						l_calculate_muxmode_offset(hs_dev, intf);
+			dev_info(hs_dev->dev, "base muxmode address %x = %x + %x + %x\n", hs_dev->lpaif_muxmode, hsi2s_core->lpass_core_cc_hs_if, L_LPAIF_MUXMODE , l_calculate_muxmode_offset(hs_dev, intf));
+		}
 	} else {
 		dev_err(hs_dev->dev, "HS-I2S macro structure is NULL");
 		ret = -EINVAL;
@@ -715,7 +887,7 @@ static int map_core_registers(void)
 		hsi2s_core->irq_en = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_irq_en;
 		hsi2s_core->irq_stat = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_irq_stat;
 		hsi2s_core->irq_clear = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_irq_clear;
-		if (hsi2s_core->target == 8295) {
+		if ((hsi2s_core->target == 8295) || (hsi2s_core->target == 8255)) {
 			hsi2s_core->irq2_en = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_irq2_en;
 			hsi2s_core->irq2_stat = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_irq2_stat;
 			hsi2s_core->irq2_clear = hsi2s_core->lpaif_base_va + hsi2s_core->macro->offset_irq2_clear;
@@ -773,7 +945,7 @@ static void reg_clear(void __iomem *addr)
 static void clear_irqs(void)
 {
 	writel_relaxed(0xFFFFFFFF, hsi2s_core->irq_clear);
-	if (hsi2s_core->target == 8295)
+	if ((hsi2s_core->target == 8295) || (hsi2s_core->target == 8255))
 		writel_relaxed(0xFFFFFFFF, hsi2s_core->irq2_clear);
 }
 
@@ -2279,12 +2451,15 @@ static int dma_sg_alloc_compacted(struct sg_buffer *buf)
 	while (size > 0) {
 		struct page *pages;
 		int order;
-		int i;
+		unsigned int i;
 
 		order = get_order(size);
+
 		/* Don't over allocate*/
 		if ((PAGE_SIZE << order) > size)
 			order--;
+		if(order < 0)
+			order = 0;
 
 		pages = NULL;
 		while (!pages) {
@@ -2387,7 +2562,11 @@ static void *dma_sg_alloc(struct device *dev, unsigned long size,
 	/* Store the DMA handle */
 	buf->dma_addr = sg_dma_address(sgt->sgl);
 	/* Create virtual address mapping */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,15,0)
+	buf->vaddr = vm_map_ram(buf->pages, buf->num_pages, -1);
+#else
 	buf->vaddr = vm_map_ram(buf->pages, buf->num_pages, -1, PAGE_KERNEL);
+#endif
 	if (buf->vaddr == NULL) {
 		dev_err(buf->dev, "Failed to map pages to vmalloc space");
 		goto fail_map_sg;
@@ -2531,6 +2710,12 @@ static void hsi2s_buffer_free(struct hsi2s_device *hs_dev)
 static int init_default(struct hsi2s_device *hs_dev, int intf)
 {
 	int ret = 0;
+
+       /*set lpass core cc to hsi2s for hs4*/
+	void __iomem *lpass_core_hsif_ctl;
+	lpass_core_hsif_ctl = ioremap(0x390C000, 4);
+	dev_info(hs_dev->dev, "the lpass core hsis ctl val:%8x \n", readl_relaxed(lpass_core_hsif_ctl));
+	setbits(lpass_core_hsif_ctl,0x10);
 
 	/* Map the hs-i2s registers */
 	ret = map_registers(hs_dev, intf);
@@ -2818,12 +3003,12 @@ static void m_modify_core_clks(int enable)
 			setbits(hs_wrmem, 0x1);
 		if (!(readl_relaxed(lpass_mport) & 0x1))
 			setbits(lpass_mport, 0x1);
-		dev_info(hsi2s_core->dev, "Core clocks enabled for SA8295");
+		dev_info(hsi2s_core->dev, "Core clocks enabled for SA8295/SA8255");
 	} else {
-		dev_info(hsi2s_core->dev, "Disable core clocks for SA8295");
+		dev_info(hsi2s_core->dev, "Disable core clocks for SA8295/SA8255");
 		clearbits(hs_wrmem, 0x1);
 		clearbits(hs_rdmem, 0x1);
-		dev_info(hsi2s_core->dev, "Core clocks disabled for SA8295");
+		dev_info(hsi2s_core->dev, "Core clocks disabled for SA8295/SA855");
 	}
 
 	iounmap(lpass_core_cbcr);
@@ -2831,6 +3016,7 @@ static void m_modify_core_clks(int enable)
 	iounmap(hs_wrmem);
 	iounmap(lpass_mport);
 }
+
 
 /* Function to enable/disable interface clocks for SA8295 */
 static void m_modify_interface_clks(int enable)
@@ -3227,8 +3413,22 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	struct hsi2s_device **hs_arr;
 	int slave;
 
+	void __iomem *lpass_core_cfg_rcgr;
+	static u32 prv_lpass_core_val;
+	u32 new_lpass_core_val;
+
 	hs_arr = hsi2s_core->hsi2s_arr;
 	mutex_lock(&hsi2s_core->irqlock);
+
+	lpass_core_cfg_rcgr = ioremap(0x1701D004, 4);
+	new_lpass_core_val = readl_relaxed(lpass_core_cfg_rcgr);
+
+	if( prv_lpass_core_val != new_lpass_core_val) {
+		dev_info(hsi2s_core->dev, "lpass_core_cfg %8x \n", new_lpass_core_val);
+		prv_lpass_core_val =  new_lpass_core_val;
+	}
+	iounmap(lpass_core_cfg_rcgr);
+
 
 	/* Checking for read DMA interrupt on HS0 interface */
 	if (hs_arr[0]) {
@@ -3788,6 +3988,7 @@ static ssize_t device_write(struct file *file, const char __user *buffer,
 	struct hsi2s_device *hs_dev;
 	int bytes_written = 0;
 	int temp_length;
+	int ret=0;
 
 	hs_dev = (struct hsi2s_device *)file->private_data;
 	temp_length = hs_dev->read_buffer->length;
@@ -3800,14 +4001,18 @@ static ssize_t device_write(struct file *file, const char __user *buffer,
 		}
 
 		if (hs_dev->read_buffer->last_copy) {
-			copy_from_user(hs_dev->read_buffer->ping_start,
+			ret = copy_from_user(hs_dev->read_buffer->ping_start,
 				       (const void __user *)buffer + bytes_written,
 				       temp_length);
 		} else {
-			copy_from_user(hs_dev->read_buffer->pong_start,
+			ret = copy_from_user(hs_dev->read_buffer->pong_start,
 				       (const void __user *)buffer + bytes_written,
 				       temp_length);
 		}
+		if (ret) {
+		dev_err(hs_dev->dev, "Error copying data to userspace");
+		return -ret;
+	    }
 
 		dma_sync_sg_for_device(hsi2s_core->dev,
 				       hs_dev->read_buffer->buffer->dma_sgt->sgl,
@@ -3831,14 +4036,18 @@ static ssize_t device_write(struct file *file, const char __user *buffer,
 
 	if (hs_dev->read_buffer->last_copy) {
 		memset(hs_dev->read_buffer->ping_start, 0, hs_dev->read_buffer->length);
-		copy_from_user(hs_dev->read_buffer->ping_start,
+		ret = copy_from_user(hs_dev->read_buffer->ping_start,
 			       (const void __user *)buffer + bytes_written,
 			       length);
 	} else {
 		memset(hs_dev->read_buffer->pong_start, 0, hs_dev->read_buffer->length);
-		copy_from_user(hs_dev->read_buffer->pong_start,
+		ret = copy_from_user(hs_dev->read_buffer->pong_start,
 			       (const void __user *)buffer + bytes_written,
 			       length);
+	}
+	if (ret) {
+		dev_err(hs_dev->dev, "Error copying data to userspace");
+		return -ret;
 	}
 	dma_sync_sg_for_device(hsi2s_core->dev,
 			       hs_dev->read_buffer->buffer->dma_sgt->sgl,
@@ -3904,7 +4113,7 @@ static int device_release(struct inode *inode, struct file *file)
 static int toggle_bit_clock(struct hsi2s_device *hs_dev)
 {
 	int ret = 0;
-#if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
+#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
 	u32 resp_size = sizeof(msg_t);
 #endif
 
@@ -3923,6 +4132,7 @@ static int toggle_bit_clock(struct hsi2s_device *hs_dev)
 	dev_info(hs_dev->dev, "QMI kernel configuration is not enabled\n");
 #endif
 #else
+#if defined(CONFIG_MSM_HAB)
 	hsi2s_core->hab_req->clk_en = 1;
 
 	ret = habmm_socket_send(hsi2s_core->hab_handle, hsi2s_core->hab_req, resp_size, 0);
@@ -3942,6 +4152,9 @@ static int toggle_bit_clock(struct hsi2s_device *hs_dev)
 		dev_err(hsi2s_core->dev, "error response (%d)\n", hsi2s_core->hab_resp->rsp);
 		return -EIO;
 	}
+#else
+	dev_info(hs_dev->dev, "HAB kernel configuration is not enabled\n");
+#endif
 #endif
 
 	return ret;
@@ -4140,27 +4353,47 @@ static int ioctl_handler3(struct hsi2s_device *hs_dev, unsigned int cmd, unsigne
 		}
 		dev_info(hs_dev->dev, "Configuring master clock on HS%d interface\n",
 				 hs_dev->minor_num);
-		if (hs_dev->minor_num == 0) {
-			clk_update_reg = ioremap(HS0_BITCLK_CMD_REG, 4);
-			clk_val_reg = ioremap(HS0_BITCLK_CFG_REG, 4);
-
-			clearbits(clk_val_reg, HS_BITCLK_RESET);
-			setbits(clk_val_reg, arg);
-			setbits(clk_update_reg, HS_BITCLK_UPDATE);
-		} else if (hs_dev->minor_num == 1) {
-			clk_update_reg = ioremap(HS1_BITCLK_CMD_REG, 4);
-			clk_val_reg = ioremap(HS1_BITCLK_CFG_REG, 4);
-
-			clearbits(clk_val_reg, HS_BITCLK_RESET);
-			setbits(clk_val_reg, arg);
-			setbits(clk_update_reg, HS_BITCLK_UPDATE);
-		} else {
-			clk_update_reg = ioremap(HS2_BITCLK_CMD_REG, 4);
-			clk_val_reg = ioremap(HS2_BITCLK_CFG_REG, 4);
-
-			clearbits(clk_val_reg, HS_BITCLK_RESET);
-			setbits(clk_val_reg, arg);
-			setbits(clk_update_reg, HS_BITCLK_UPDATE);
+		if ((hsi2s_core->target == 8155)||(hsi2s_core->target == 8195)) {
+			if (hs_dev->minor_num == 0) {
+				clk_update_reg = ioremap(HS0_BITCLK_CMD_REG, 4);
+				clk_val_reg = ioremap(HS0_BITCLK_CFG_REG, 4);
+				clearbits(clk_val_reg, HS_BITCLK_RESET);
+				setbits(clk_val_reg, arg);
+				setbits(clk_update_reg, HS_BITCLK_UPDATE);
+			} else if (hs_dev->minor_num == 1) {
+				clk_update_reg = ioremap(HS1_BITCLK_CMD_REG, 4);
+				clk_val_reg = ioremap(HS1_BITCLK_CFG_REG, 4);
+				clearbits(clk_val_reg, HS_BITCLK_RESET);
+				setbits(clk_val_reg, arg);
+				setbits(clk_update_reg, HS_BITCLK_UPDATE);
+			} else {
+				clk_update_reg = ioremap(HS2_BITCLK_CMD_REG, 4);
+				clk_val_reg = ioremap(HS2_BITCLK_CFG_REG, 4);
+				clearbits(clk_val_reg, HS_BITCLK_RESET);
+				setbits(clk_val_reg, arg);
+				setbits(clk_update_reg, HS_BITCLK_UPDATE);
+			}
+		} else if (hsi2s_core->target == 8255) {
+			/*Lemans master clock settings*/
+                        if (hs_dev->minor_num == 0) {
+                                clk_update_reg = ioremap(L_HS0_BITCLK_CMD_REG, 4);
+                                clk_val_reg = ioremap(L_HS0_BITCLK_CFG_REG, 4);
+                                clearbits(clk_val_reg,HS_BITCLK_RESET);
+                                setbits(clk_val_reg, arg);
+                                setbits(clk_update_reg, HS_BITCLK_UPDATE);
+                        } else if (hs_dev->minor_num == 1) {
+                                clk_update_reg = ioremap(L_HS1_BITCLK_CMD_REG, 4);
+                                clk_val_reg = ioremap(L_HS1_BITCLK_CFG_REG, 4);
+                                clearbits(clk_val_reg, HS_BITCLK_RESET);
+                                setbits(clk_val_reg, arg);
+                                setbits(clk_update_reg, HS_BITCLK_UPDATE);
+                        } else if (hs_dev->minor_num == 4) {
+                                clk_update_reg = ioremap(MO_HS4_BITCLK_CMD_REG, 4);
+                                clk_val_reg = ioremap(MO_HS4_BITCLK_CFG_REG, 4);
+                                clearbits(clk_val_reg, HS_BITCLK_RESET);
+                                setbits(clk_val_reg, arg);
+                                setbits(clk_update_reg, HS_BITCLK_UPDATE);
+                        }
 		}
 		dev_info(hs_dev->dev, "Re-configured master clock\n");
 	} else if (cmd == LPAIF_RESET) {
@@ -4234,7 +4467,7 @@ static int ioctl_handler4(struct hsi2s_device *hs_dev, unsigned int cmd, unsigne
 			dev_err(hs_dev->dev, "Failed to allocate params structure\n");
 			return -ENOMEM;
 		}
-		copy_from_user(i2s_params, (const void __user *)arg, sizeof(struct hsi2s_params));
+		ret = copy_from_user(i2s_params, (const void __user *)arg, sizeof(struct hsi2s_params));
 		ret = configure_i2s_params(hs_dev, i2s_params);
 		if (ret < 0) {
 			dev_err(hs_dev->dev, "Failed to configure I2S parameters\n");
@@ -4249,7 +4482,7 @@ static int ioctl_handler4(struct hsi2s_device *hs_dev, unsigned int cmd, unsigne
 			dev_err(hs_dev->dev, "Failed to allocate params structure\n");
 			return -ENOMEM;
 		}
-		copy_from_user(pcm_params, (const void __user *)arg, sizeof(struct hspcm_params));
+		ret = copy_from_user(pcm_params, (const void __user *)arg, sizeof(struct hspcm_params));
 		ret = configure_pcm_params(hs_dev, pcm_params);
 		if (ret < 0) {
 			dev_err(hs_dev->dev, "Failed to configure PCM parameters\n");
@@ -4264,7 +4497,7 @@ static int ioctl_handler4(struct hsi2s_device *hs_dev, unsigned int cmd, unsigne
 			dev_err(hs_dev->dev, "Failed to allocate params structure\n");
 			return -ENOMEM;
 		}
-		copy_from_user(tdm_params, (const void __user *)arg, sizeof(struct hstdm_params));
+		ret = copy_from_user(tdm_params, (const void __user *)arg, sizeof(struct hstdm_params));
 		ret = configure_tdm_params(hs_dev, tdm_params);
 		if (ret < 0) {
 			dev_err(hs_dev->dev, "Failed to configure TDM parameters\n");
@@ -4860,8 +5093,11 @@ static int hsi2s_probe(struct platform_device *pdev)
 
 	if (of_device_is_compatible(pdev->dev.of_node, "qcom,hsi2s-interface"))
 		return hsi2s_interface_probe(pdev);
-
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 19, 0))
 	place_marker("M - DRIVER HS-I2S Init");
+#else
+	pr_info("M - DRIVER HS-I2S Init");
+#endif
 
 	hsi2s_core = kzalloc(sizeof(*hsi2s_core), GFP_KERNEL);
 	if (!hsi2s_core)
@@ -4882,6 +5118,8 @@ static int hsi2s_probe(struct platform_device *pdev)
 		target = 8195;
 	else if (of_device_is_compatible(pdev->dev.of_node, "qcom,sa8295-hsi2s"))
 		target = 8295;
+	else if (of_device_is_compatible(pdev->dev.of_node, "qcom,sa8255-hsi2s")||of_device_is_compatible(pdev->dev.of_node, "qcom,sa7255-hsi2s")) /*hsi2s register space is completely same as lemans*/
+		target = 8255;
 	else {
 		dev_err(hsi2s_core->dev, "Uncompatible target");
 		goto err_free_core;
@@ -4902,6 +5140,9 @@ static int hsi2s_probe(struct platform_device *pdev)
 	} else if (target == 8295) {
 		dev_info(hsi2s_core->dev, "8295 target detected");
 		m_assign_macros();
+	}else if (target == 8255) {
+		dev_info(hsi2s_core->dev, "8255 target detected");
+		l_assign_macros();
 	}
 
 	hsi2s_core->target = target;
@@ -4948,7 +5189,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 		if (ret)
 			goto err_free_macro;
 	}
-	else if (target == 8155 || target == 8195 || target == 8295) {
+	else if (target == 8155 || target == 8195 || target == 8295 || target == 8255) {
 		if (enable_qmi) {
 #if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
 #if defined(CONFIG_QCOM_QMI_HELPERS)
@@ -4994,7 +5235,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 			if (target == 8295) {
 				m_modify_core_clks(1);
 				m_modify_interface_clks(1);
-			} else {
+			} else if ((target == 8155) || (target == 8195)){
 				h_modify_core_clks(1);
 				h_modify_interface_clks(1);
 			}
@@ -5043,7 +5284,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 			if (target == 8295) {
 				m_modify_core_clks(1);
 				m_modify_interface_clks(1);
-			} else {
+			} else if ((target == 8155) || (target == 8195)){
 				h_modify_core_clks(1);
 				h_modify_interface_clks(1);
 			}
@@ -5087,7 +5328,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 
 	}
 
-	if (target == 8295) {
+	if (target == 8295 || target == 8255) {
 		resource = platform_get_resource_byname(pdev, IORESOURCE_MEM,
 						"lpass_core_cc_hs_if");
 		if (!resource) {
@@ -5268,8 +5509,11 @@ static int hsi2s_probe(struct platform_device *pdev)
 		dev_err(hsi2s_core->dev, "Failed to add child devices");
 	else
 		dev_info(hsi2s_core->dev, "Added child devices");
-
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 19, 0))
 	place_marker("M - DRIVER HS-I2S Ready");
+#else
+	pr_info("M - DRIVER HS-I2S Ready");
+#endif
 
 	return ret;
 
@@ -5311,14 +5555,14 @@ err_free_irq:
 err_iounmap_lpass_tcsr:
 	if (target == 8155 || target == 8195)
 		iounmap(hsi2s_core->lpass_tcsr_base_va);
-	else if (target == 8295)
+	else if (target == 8295 || target == 8255)
 		iounmap(hsi2s_core->lpass_core_cc_hs_if);
 err_iounmap_lpaif:
 	iounmap(hsi2s_core->lpaif_base_va);
 err_disable_core_clocks:
 	if (target == 6155) {
 		hsi2s_disable_core_clks(pdev);
-	} else if (target == 8155 || target == 8195 || target == 8295) {
+	} else if (target == 8155 || target == 8195 || target == 8295 || target == 8255) {
 		if (enable_qmi) {
 #if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
 #if defined(CONFIG_QCOM_QMI_HELPERS)
@@ -5328,7 +5572,7 @@ err_disable_core_clocks:
 			if (target == 8295) {
 				m_modify_core_clks(0);
 				m_modify_interface_clks(0);
-			} else {
+			} else if ((target == 8155) || (target == 8195)){
 				h_modify_interface_clks(0);
 				h_modify_core_clks(0);
 			}
@@ -5346,7 +5590,7 @@ err_free_hab_req:
 			if (target == 8295) {
 				m_modify_core_clks(0);
 				m_modify_interface_clks(0);
-			} else {
+			} else if ((target == 8155) || (target == 8195)){
 				h_modify_interface_clks(0);
 				h_modify_core_clks(0);
 			}
@@ -5477,12 +5721,13 @@ static int hsi2s_remove(struct platform_device *pdev)
 			if (hs_core->target == 8295) {
 				m_modify_core_clks(0);
 				m_modify_interface_clks(0);
-			} else {
+			} else if ((target == 8155) || (target == 8195)){
 				h_modify_interface_clks(0);
 				h_modify_core_clks(0);
 			}
 #endif
 #else
+#if defined(CONFIG_MSM_HAB)
 			hs_core->hab_req->clk_en = 0;
 
 			ret = habmm_socket_send(hs_core->hab_handle, hs_core->hab_req, resp_size, 0);
@@ -5509,18 +5754,19 @@ err_close_hab:
 			kfree(hs_core->hab_req);
 			kfree(hs_core->hab_resp);
 #endif
+#endif
 		} else {
 			if (hs_core->target == 8295) {
 				m_modify_core_clks(0);
 				m_modify_interface_clks(0);
-			} else {
+			} else if ((hs_core->target == 8155) || (hs_core->target == 8195)){
 				h_modify_interface_clks(0);
 				h_modify_core_clks(0);
 			}
 		}
 	}
 	/* Unregister the device numbers */
-	unregister_chrdev_region(devid, 1);
+	unregister_chrdev_region(devid, hsi2s_core->i_count);
 	/* Free the core data structure */
 	kfree(hs_core->hsi2s_arr);
 	hs_core->hsi2s_arr = NULL;
@@ -5539,7 +5785,8 @@ err_close_hab:
 static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	int ret = 0;
-#if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
+	//u32 target;
+#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
 	u32 resp_size = sizeof(msg_t);
 #endif
 
@@ -5585,7 +5832,8 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 			h_modify_core_clks(0);
 #endif
 #else
-				hsi2s_core->hab_req->clk_en = 0;
+#if defined(CONFIG_MSM_HAB)
+			hsi2s_core->hab_req->clk_en = 0;
 
 				ret = habmm_socket_send(hsi2s_core->hab_handle, hsi2s_core->hab_req, resp_size, 0);
 				if (ret) {
@@ -5606,6 +5854,7 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 					goto err_suspend;
 				}
 #endif
+#endif
 			} else {
 				h_modify_interface_clks(0);
 				h_modify_core_clks(0);
@@ -5625,6 +5874,8 @@ err_suspend:
 static int hsi2s_resume(struct platform_device *pdev)
 {
 	int ret = 0;
+	struct hsi2s_device *hs_dev = hsi2s_core->hsi2s_arr[0];
+	int i;
 #if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
 	u32 resp_size = sizeof(msg_t);
 #endif
@@ -5670,6 +5921,7 @@ static int hsi2s_resume(struct platform_device *pdev)
 				h_modify_core_clks(1);
 #endif
 #else
+#if defined(CONFIG_MSM_HAB)
 				hsi2s_core->hab_req->clk_en = 1;
 
 				ret = habmm_socket_send(hsi2s_core->hab_handle, hsi2s_core->hab_req, resp_size, 0);
@@ -5691,6 +5943,7 @@ static int hsi2s_resume(struct platform_device *pdev)
 					goto err_resume;
 				}
 #endif
+#endif
 			} else {
 				h_modify_interface_clks(1);
 				h_modify_core_clks(1);
@@ -5705,6 +5958,58 @@ static int hsi2s_resume(struct platform_device *pdev)
 						dev_err(hsi2s_core->dev, "Failed to configure the output routing gpio during resume");
 					}
 				}
+			}
+
+			if (hsi2s_core->suspend_to_disk_trigger_flg) {
+			for(i=0;i<3;i++){
+				hs_dev = hsi2s_core->hsi2s_arr[i];
+				/*LPAIF Reset sequence*/
+				dev_info(hs_dev->dev, "Resetting muxmode register\n");
+				reg_clear(hs_dev->lpaif_muxmode);
+				if (hs_dev->lpaif_mode == HS_I2S) {
+					dev_info(hs_dev->dev, "Resetting I2S control register\n");
+					reg_clear(hs_dev->i2s_ctl);
+					dev_info(hs_dev->dev, "Resetting DMA registers\n");
+					reset_rddma_registers(hs_dev);
+					reset_wrdma_registers(hs_dev);
+					/* Clear IRQs */
+					clear_irqs();
+					/* Reset buffer pointers */
+					hs_dev->read_buffer->last_copy = 1;
+					hs_dev->read_buffer->last_xfer = 1;
+					hs_dev->write_buffer->head = hs_dev->lpass_wrdma_start;
+					hs_dev->write_buffer->tail = hs_dev->lpass_wrdma_start;
+					hs_dev->write_buffer->data_ready = 0;
+					hs_dev->write_buffer->pollin = 0;
+					hs_dev->rddma_xfer_busy = 0;
+					hs_dev->rddma_copy_busy = 1;
+					hs_dev->rddma_in_progress = 0;
+				} else {
+					dev_info(hs_dev->dev, "Resetting PCM control registers\n");
+					reg_clear(hs_dev->pcm_ctl);
+					reg_clear(hs_dev->tdm_ctl);
+					reg_clear(hs_dev->tdm_sample_width);
+					dev_info(hs_dev->dev, "Resetting DMA registers\n");
+					reset_rddma_registers(hs_dev);
+					reset_wrdma_registers(hs_dev);
+					/* Clear IRQs */
+					clear_irqs();
+					/* Reset buffer pointers */
+					hs_dev->read_buffer->last_copy = 1;
+					hs_dev->read_buffer->last_xfer = 1;
+					hs_dev->write_buffer->head = hs_dev->lpass_wrdma_start;
+					hs_dev->write_buffer->tail = hs_dev->lpass_wrdma_start;
+					hs_dev->write_buffer->data_ready = 0;
+					hs_dev->write_buffer->pollin = 0;
+					hs_dev->rddma_xfer_busy = 0;
+					hs_dev->rddma_copy_busy = 1;
+					hs_dev->rddma_in_progress = 0;
+				}
+				/*Normal Rx sequence*/
+				configure_muxmode(hs_dev, 1);
+				configure_normal_mode(hs_dev, i);
+			}
+			hsi2s_core->suspend_to_disk_trigger_flg= false;
 			}
 		}
 	}
@@ -5744,6 +6049,7 @@ static int hsi2s_pm_freeze(struct device *dev)
 	pm_message_t message;
 	struct platform_device *pdev ;
 	hsi2s_core->disable_adsp_clk_flg = false;
+	hsi2s_core->suspend_to_disk_trigger_flg= true;
 	pdev = to_platform_device(dev);
 	message.event = PM_EVENT_FREEZE;
 	ret = hsi2s_suspend(pdev,message);
