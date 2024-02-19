@@ -1,11 +1,11 @@
 HSI2S_ENABLED := true
-ifeq ($(TARGET_USES_QMAA),true)
-        ifdef ($(TARGET_USES_QMAA_OVERRIDE_HSI2S))
+#ifeq ($(TARGET_USES_QMAA),true)
+        ifdef TARGET_USES_QMAA_OVERRIDE_HSI2S
         ifneq ($(TARGET_USES_QMAA_OVERRIDE_HSI2S),true)
            HSI2S_ENABLED := false
         endif # TARGET_USES_QMAA_OVERRIDE_HSI2S
         endif
-endif # TARGET_USES_QMAA
+#endif # TARGET_USES_QMAA
 
 ifeq ($(HSI2S_ENABLED),true)
 LOCAL_PATH := $(call my-dir)
