@@ -1,5 +1,5 @@
-HSI2S_ENABLED := true
 ifneq ($(TARGET_USES_GY), true)
+HSI2S_ENABLED := true
 ifeq ($(TARGET_USES_QMAA),true)
         ifdef TARGET_USES_QMAA_OVERRIDE_HSI2S
         ifneq ($(TARGET_USES_QMAA_OVERRIDE_HSI2S),true)
@@ -7,7 +7,6 @@ ifeq ($(TARGET_USES_QMAA),true)
         endif # TARGET_USES_QMAA_OVERRIDE_HSI2S
         endif
 endif # TARGET_USES_QMAA
-endif # TARGET_USES_GY
 
 ifeq ($(HSI2S_ENABLED),true)
 LOCAL_PATH := $(call my-dir)
@@ -40,4 +39,4 @@ LOCAL_MODULE_TAGS         := optional
 include $(DLKM_DIR)/Build_external_kernelmodule.mk
 include $(LOCAL_PATH)/test/generic/Android.mk
 endif #HSI2S_ENABLED
-
+endif # TARGET_USES_GY
