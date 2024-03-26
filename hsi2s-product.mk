@@ -1,3 +1,9 @@
-ifneq ($(TARGET_DISABLE_HSI2S_DLKM),true)
-PRODUCT_PACKAGES += hsi2s.ko
-endif # TARGET_DISABLE_HSI2S_DLKM
+ifneq ($(TARGET_USES_GY), true)
+ifeq ($(TARGET_USES_QMAA),true)
+     ifdef TARGET_USES_QMAA_OVERRIDE_HSI2S
+     ifeq ($(TARGET_USES_QMAA_OVERRIDE_HSI2S),true)
+              PRODUCT_PACKAGES += hsi2s.ko
+     endif #TARGET_USES_QMAA_OVERRIDE_HSI2S
+     endif
+endif #TARGET_USES_QMAA
+endif #TARGET_USES_GY
