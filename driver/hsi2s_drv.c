@@ -5168,7 +5168,11 @@ static int hsi2s_probe(struct platform_device *pdev)
 		target = 8195;
 	else if (of_device_is_compatible(pdev->dev.of_node, "qcom,sa8295-hsi2s"))
 		target = 8295;
-	else if (of_device_is_compatible(pdev->dev.of_node, "qcom,sa8255-hsi2s")||of_device_is_compatible(pdev->dev.of_node, "qcom,sa7255-hsi2s")) /*hsi2s register space is completely same as lemans*/
+	else if (of_device_is_compatible(pdev->dev.of_node, "qcom,sa8255-hsi2s")
+#ifdef LRH_KERNEL
+		 || of_device_is_compatible(pdev->dev.of_node, "qcom,sa8775-hsi2s")
+#endif
+		 || of_device_is_compatible(pdev->dev.of_node, "qcom,sa7255-hsi2s")) /*hsi2s register space is completely same as lemans*/
 		target = 8255;
 	else {
 		dev_err(hsi2s_core->dev, "Uncompatible target");
