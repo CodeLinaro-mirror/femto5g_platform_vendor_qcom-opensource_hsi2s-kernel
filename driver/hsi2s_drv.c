@@ -5233,6 +5233,8 @@ static int hsi2s_probe(struct platform_device *pdev)
 	u32 target;
 	u32 rate_array[2];
 	int ret = 0;
+	void __iomem *lpass_core_hsif_ctl;
+
 #if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
 	int handle;
 	u32 resp_size = sizeof(msg_t);
@@ -5330,6 +5332,12 @@ static int hsi2s_probe(struct platform_device *pdev)
 					sizeof(struct hsi2s_device *),
 					GFP_KERNEL);
 
+	/*set lpass core cc to hsi2s for hs4*/
+	if (of_device_is_compatible(pdev->dev.of_node, "qcom,sa7255-hsi2s")) {
+		lpass_core_hsif_ctl = ioremap(0x390C000, 4);
+		dev_info(hsi2s_core->dev, "the lpass core hsis ctl val:%8x \n", readl_relaxed(lpass_core_hsif_ctl));
+		setbits(lpass_core_hsif_ctl,0x10);
+	}
 	/* Enable the core clocks */
 	if (target == 6155) {
 		ret = hsi2s_enable_core_clks(pdev);
