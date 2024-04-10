@@ -33,6 +33,7 @@
 #include <errno.h>
 #include <getopt.h>
 #include <sched.h>
+#include <signal.h>
 #include "hsi2s_common.h"
 
 /* Macros */
@@ -44,7 +45,7 @@
 #define BILLION 1000000000L
 #define DAB_TUNER_COUNT 3
 #define PG_SIZE 4096
-#define SHM_SIZE (PG_SIZE * 3)
+#define SHM_SIZE (PG_SIZE * 5)
 #define SHM_WRDMA_BASE 0
 #define SHM_WRDMA_CURRENT 1
 #define BBIQ_ALLOWED_ERROR  2
@@ -121,9 +122,11 @@ long ch1_error_cnt;
 long total_samples;
 int test_previous;
 int is_ramp;
+int fd_master = -1;
+int is_tx_active;
 
 /* Prints the usage information */
-void help()
+static void help(void)
 {
 	printf("OPERATIONAL MODES:\n\n 0 - Normal Rx\n 1 - Normal Tx*\n 2 - Internal loopback\n 3 - External loopback on master*\n"
 	       " 4 - External loopback on master-slave*\n 5 - Set master/slave mode*\n 6 - Configure master clock*\n"
@@ -357,32 +360,32 @@ void *poll_read_fast(void *arg)
 			printf("Poll failed\n");
 		} else if (pfd.revents & EPOLLIN) {
 			curr_addr_phy = *((uint32_t *)(shm) + ((minor * PG_SIZE) / BYTES_PER_WORD) + SHM_WRDMA_CURRENT);
-			curr_addr = mmap_ptr + (curr_addr_phy - base_addr_phy);
+			curr_addr = (char *)mmap_ptr + (curr_addr_phy - base_addr_phy);
 
 			if(prev_addr < curr_addr) {
-				read_len = curr_addr - prev_addr;
+				read_len = (char *)curr_addr - (char *)prev_addr;
 				read_len_blk = mmap_len * (read_len/mmap_len);
 				if (r_limit + read_len_blk > read_limit) {
 					if (!is_ramp)
 						fwrite(prev_addr,read_limit - r_limit,1,fd_write_op);
 					else
 						bbiq_analyze(prev_addr, read_limit - r_limit);
-					prev_addr += (read_limit - r_limit);
+					prev_addr = (char *)prev_addr + (read_limit - r_limit);
 					r_limit += (read_limit - r_limit);
 				} else {
 					if (!is_ramp)
 						fwrite(prev_addr,read_len_blk,1,fd_write_op);
 					else
 						bbiq_analyze(prev_addr, read_len_blk);
-					prev_addr += read_len_blk;
+					prev_addr = (char *)prev_addr + read_len_blk;
 					r_limit += read_len_blk;
 				}
 			} else {
-				read_len = (mmap_end - prev_addr) + (curr_addr - mmap_ptr);
+				read_len = ((char *)mmap_end - (char *)prev_addr) + ((char *)curr_addr - (char *)mmap_ptr);
 				read_len_blk = mmap_len * (read_len/mmap_len);
 				if (r_limit + read_len_blk > read_limit) {
-					if (prev_addr + (read_limit - r_limit) > mmap_end) {
-						temp = mmap_end - prev_addr;
+					if ((char *)prev_addr + (read_limit - r_limit) > (char *)mmap_end) {
+						temp = (char *)mmap_end - (char *)prev_addr;
 						if (!is_ramp)
 							fwrite(prev_addr,temp,1,fd_write_op);
 						else
@@ -392,18 +395,18 @@ void *poll_read_fast(void *arg)
 							fwrite(mmap_ptr,temp,1,fd_write_op);
 						else
 							bbiq_analyze(mmap_ptr, temp);
-						prev_addr = mmap_ptr + temp;
+						prev_addr = (char *)mmap_ptr + temp;
 					} else {
 						if (!is_ramp)
 							fwrite(prev_addr,read_limit - r_limit,1,fd_write_op);
 						else
 							bbiq_analyze(prev_addr, read_limit - r_limit);
-						prev_addr += (read_limit - r_limit);
+						prev_addr = (char *)prev_addr + (read_limit - r_limit);
 					}
 					r_limit += (read_limit - r_limit);
 				} else {
-					if (prev_addr + read_len_blk > mmap_end) {
-						temp = mmap_end - prev_addr;
+					if ((char *)prev_addr + read_len_blk > (char *)mmap_end) {
+						temp = (char *)mmap_end - (char *)prev_addr;
 						if (!is_ramp)
 							fwrite(prev_addr,temp,1,fd_write_op);
 						else
@@ -413,13 +416,13 @@ void *poll_read_fast(void *arg)
 							fwrite(mmap_ptr,temp,1,fd_write_op);
 						else
 							bbiq_analyze(mmap_ptr, temp);
-						prev_addr = mmap_ptr + temp;
+						prev_addr = (char *)mmap_ptr + temp;
 					} else {
 						if (!is_ramp)
 							fwrite(prev_addr,read_len_blk,1,fd_write_op);
 						else
 							bbiq_analyze(prev_addr, read_len_blk);
-						prev_addr += read_len_blk;
+						prev_addr = (char *)prev_addr + read_len_blk;
 					}
 					r_limit += read_len_blk;
 				}
@@ -493,8 +496,8 @@ void *poll_read_normal(void *arg)
 			printf("Poll failed\n");
 		} else if (pfd.revents & EPOLLIN) {
 			if (r_limit + mmap_len > read_limit) {
-				if (mmap_read + (read_limit - r_limit) > mmap_end) {
-					temp = mmap_end - mmap_read;
+				if ((char *)mmap_read + (read_limit - r_limit) > (char *)mmap_end) {
+					temp = (char *)mmap_end - (char *)mmap_read;
 					if (!is_ramp)
 						fwrite(mmap_read,temp,1,fd_write_op);
 					else
@@ -504,19 +507,19 @@ void *poll_read_normal(void *arg)
 						fwrite(mmap_ptr,temp,1,fd_write_op);
 					else
 						bbiq_analyze(mmap_ptr,temp);
-					mmap_read = mmap_ptr + temp;
+					mmap_read = (char *)mmap_ptr + temp;
 
 				} else {
 					if (!is_ramp)
 						fwrite(mmap_read,read_limit - r_limit,1,fd_write_op);
 					else
 						bbiq_analyze(mmap_read,read_limit - r_limit);
-					mmap_read += (read_limit - r_limit);
+					mmap_read = (char *)mmap_read + (read_limit - r_limit);
 				}
 				r_limit += (read_limit - r_limit);
 			} else {
-				if (mmap_read + mmap_len > mmap_end) {
-					temp = mmap_end - mmap_read;
+				if ((char *)mmap_read + mmap_len > (char *)mmap_end) {
+					temp = (char *)mmap_end - (char *)mmap_read;
 					if (!is_ramp)
 						fwrite(mmap_read,temp,1,fd_write_op);
 					else
@@ -526,13 +529,13 @@ void *poll_read_normal(void *arg)
 						fwrite(mmap_ptr,temp,1,fd_write_op);
 					else
 						bbiq_analyze(mmap_ptr,temp);
-					mmap_read = mmap_ptr + temp;
+					mmap_read = (char *)mmap_ptr + temp;
 				} else {
 					if (!is_ramp)
 						fwrite(mmap_read,mmap_len,1,fd_write_op);
 					else
 						bbiq_analyze(mmap_read,mmap_len);
-					mmap_read += mmap_len;
+					mmap_read = (char *)mmap_read + mmap_len;
 				}
 				r_limit += mmap_len;
 			}
@@ -556,9 +559,25 @@ void *poll_read_normal(void *arg)
 	return NULL;
 }
 
+/* Signal handler */
+void signal_handler(int sig_id)
+{
+	int ret = 0;
+	if (sig_id == SIGINT) {
+		if (is_tx_active) {
+			printf("Disabling Tx on read DMA channel\n");
+			ret = ioctl(fd_master, LPAIF_DEINIT_TX);
+			if (ret < 0) {
+				printf("Failed to stop Tx on hsi2s device\n");
+			}
+			is_tx_active = 0;
+		}
+		exit(0);
+	}
+}
+
 int main(int argc, char **argv)
 {
-	int fd_master = -1;
 	int fd_slave = -1;
 	int fd_core = -1;
 	FILE *fd_read_ip = NULL;
@@ -614,6 +633,7 @@ int main(int argc, char **argv)
 	FILE *fd_out_b = NULL;
 	struct thread_params *params;
 	int use_normal_read = 0;
+	struct sigaction sa;
 
 	struct option   long_opt[] =
 	{
@@ -663,6 +683,11 @@ int main(int argc, char **argv)
 	read_length_bytes = READ_LENGTH_MB * 1024 * 1024;
 	read_length_words = READ_LENGTH_WORDS;
 	mmap_len = read_length_bytes;
+
+	/* Set the signal handler */
+	memset(&sa, 0, sizeof(sa));
+	sa.sa_handler = &signal_handler;
+	sigaction(SIGINT, &sa, NULL);
 
 	/*Allocate thread params structure */
 	params = (struct thread_params *) malloc(sizeof(struct thread_params));
@@ -996,7 +1021,7 @@ int main(int argc, char **argv)
 				break;
 			} else {
 				params->mmap_read = params->mmap_ptr;
-				params->mmap_end = params->mmap_ptr + (read_length_bytes * 2);
+				params->mmap_end = (char *)params->mmap_ptr + (read_length_bytes * 2);
 			}
 			/* Map the register info memory */
 			printf("Mapping userspace memory with kernel memory for core\n");
@@ -1055,7 +1080,7 @@ int main(int argc, char **argv)
 				printf("Failed to configure speaker\n");
 				break;
 			}
-
+			is_tx_active = 1;
 			printf("Reading i/p file...\n");
 			wav_data = (int32_t *) malloc(no_words * sizeof(int32_t));
 			if (!wav_data) {
@@ -1085,6 +1110,7 @@ int main(int argc, char **argv)
 				printf("Failed to stop Tx on hsi2s device\n");
 				break;
 			}
+			is_tx_active = 0;
 			break;
 
 		case INTERNAL_LB:
@@ -1123,6 +1149,7 @@ int main(int argc, char **argv)
 				printf("Failed to trigger internal loopback\n");
 				break;
 			}
+			is_tx_active = 1;
 			/* Map the device write DMA buffer */
 			params->pfd.fd = fd_master;
 			params->pfd.events = EPOLLIN | EPOLLRDNORM;
@@ -1134,7 +1161,7 @@ int main(int argc, char **argv)
 				break;
 			} else {
 				params->mmap_read = params->mmap_ptr;
-				params->mmap_end = params->mmap_ptr + (read_length_bytes * 2);
+				params->mmap_end = (char *)params->mmap_ptr + (read_length_bytes * 2);
 			}
 			/* Map the register info memory */
 			printf("Mapping userspace memory with kernel memory for core\n");
@@ -1192,6 +1219,7 @@ int main(int argc, char **argv)
 				printf("Failed to stop Tx on hsi2s device\n");
 				break;
 			}
+			is_tx_active = 0;
 			break;
 
 		case EXTERNAL_LB_MASTER:
@@ -1230,7 +1258,7 @@ int main(int argc, char **argv)
 				printf("Failed to trigger external loopback\n");
 				break;
 			}
-
+			is_tx_active = 1;
 			/* Map the device write DMA buffer */
 			params->pfd.fd = fd_master;
 			params->pfd.events = EPOLLIN | EPOLLRDNORM;
@@ -1242,7 +1270,7 @@ int main(int argc, char **argv)
 				break;
 			} else {
 				params->mmap_read = params->mmap_ptr;
-				params->mmap_end = params->mmap_ptr + (read_length_bytes * 2);
+				params->mmap_end = (char *)params->mmap_ptr + (read_length_bytes * 2);
 			}
 			/* Map the register info memory */
 			printf("Mapping userspace memory with kernel memory for core\n");
@@ -1300,6 +1328,7 @@ int main(int argc, char **argv)
 				printf("Failed to stop Tx on hsi2s device\n");
 				break;
 			}
+			is_tx_active = 0;
 			break;
 
 		case EXTERNAL_LB_MASTER_SLAVE:
@@ -1364,7 +1393,7 @@ int main(int argc, char **argv)
 				printf("Failed to configure speaker\n");
 				break;
 			}
-
+			is_tx_active = 1;
 			/* Set the minor number */
 			minor_num = slave;
 
@@ -1379,7 +1408,7 @@ int main(int argc, char **argv)
 				break;
 			} else {
 				params->mmap_read = params->mmap_ptr;
-				params->mmap_end = params->mmap_ptr + (read_length_bytes * 2);
+				params->mmap_end = (char *)params->mmap_ptr + (read_length_bytes * 2);
 			}
 			/* Map the register info memory */
 			printf("Mapping userspace memory with kernel memory for core\n");
@@ -1437,6 +1466,7 @@ int main(int argc, char **argv)
 				printf("Failed to stop Tx on hsi2s device\n");
 				break;
 			}
+			is_tx_active = 0;
 			break;
 
 		case SET_MUXMODE:
@@ -1704,7 +1734,7 @@ int main(int argc, char **argv)
 						goto exit_app;
 					} else {
 					dab_params[i]->mmap_read = dab_params[i]->mmap_ptr;
-					dab_params[i]->mmap_end = dab_params[i]->mmap_ptr + (read_length_bytes * 2);
+					dab_params[i]->mmap_end = (char *)dab_params[i]->mmap_ptr + (read_length_bytes * 2);
 					}
 					dab_params[i]->minor = i;
 				}
@@ -1792,6 +1822,14 @@ exit_app:
 		fd_slave = -1;
 	}
 	if (fd_master >= 0) {
+		if (is_tx_active) {
+			printf("Disabling Tx on read DMA channel\n");
+			ret = ioctl(fd_master, LPAIF_DEINIT_TX);
+			if (ret < 0) {
+				printf("Failed to stop Tx on hsi2s device\n");
+			}
+			is_tx_active = 0;
+		}
 		close(fd_master);
 		fd_master = -1;
 	}
