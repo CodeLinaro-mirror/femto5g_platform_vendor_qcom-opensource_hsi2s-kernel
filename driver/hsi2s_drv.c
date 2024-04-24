@@ -5124,8 +5124,8 @@ err_out:
 			hsi2s_core->is_irq_enabled = true;
 		}
 	}
-	return ret;
 #endif
+	return ret;
 }
 
 #if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
