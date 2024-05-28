@@ -5223,6 +5223,57 @@ err_out:
 	return ret;
 }
 
+#if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
+/* enabling clock after reset in gvm case only */
+static int adsp_clk_init_hab(struct hsi2s_core *hsi2s_core_d){
+
+	struct hsi2s_core * local_hsi2s_core = hsi2s_core_d;
+	int ret =0;
+#if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
+	int handle;
+	u32 resp_size = sizeof(msg_t);
+#endif
+
+	local_hsi2s_core->hab_req = kzalloc(sizeof(msg_t), GFP_KERNEL);
+	if (!local_hsi2s_core->hab_req) {
+		dev_err(local_hsi2s_core->dev, "Failed to allocate HAB request message");
+		ret = -ENOMEM;
+		return ret;
+	}
+	local_hsi2s_core->hab_resp = kzalloc(sizeof(msg_t), GFP_KERNEL);
+	if (!local_hsi2s_core->hab_resp) {
+		dev_err(local_hsi2s_core->dev, "Failed to allocate HAB response message");
+		ret = -ENOMEM;
+		return ret;
+	}
+	ret = habmm_socket_open(&handle, MM_HSI2S_1, 0, 0);
+	if (ret) {
+		pr_err("open habmm socket failed (%d)\n", ret);
+		return ret;
+	}
+	local_hsi2s_core->hab_handle = handle;
+	local_hsi2s_core->hab_req->clk_en = 1;
+	ret = habmm_socket_send(handle, local_hsi2s_core->hab_req, resp_size, 0);
+	if (ret) {
+		dev_err(local_hsi2s_core->dev, "habmm socket send failed (%d)\n", ret);
+		return ret;
+	}
+	ret = habmm_socket_recv(handle, local_hsi2s_core->hab_resp, &resp_size, UINT_MAX, HABMM_SOCKET_RECV_FLAGS_UNINTERRUPTIBLE);
+	if (ret) {
+		dev_err(local_hsi2s_core->dev, "habmm socket receive failed (%d)\n", ret);
+		return ret;
+	}
+	if (local_hsi2s_core->hab_resp->rsp) {
+		dev_err(local_hsi2s_core->dev, "error response (%d)\n", local_hsi2s_core->hab_resp->rsp);
+		ret = -EIO;
+		return ret;
+	}
+	/*clock enabled successfully*/
+	dev_info(local_hsi2s_core->dev, "Clock enabled successful via HAB\n");
+	return ret;
+}
+#endif
+
 /* Function to initialise the device */
 static int hsi2s_probe(struct platform_device *pdev)
 {
@@ -5235,10 +5286,6 @@ static int hsi2s_probe(struct platform_device *pdev)
 	int ret = 0;
 	void __iomem *lpass_core_hsif_ctl;
 
-#if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
-	int handle;
-	u32 resp_size = sizeof(msg_t);
-#endif
 
 	if (of_device_is_compatible(pdev->dev.of_node, "qcom,hsi2s-interface"))
 		return hsi2s_interface_probe(pdev);
@@ -5398,45 +5445,6 @@ static int hsi2s_probe(struct platform_device *pdev)
 				h_modify_interface_clks(1);
 			}
 #endif
-#else
-			hsi2s_core->hab_req = kzalloc(sizeof(msg_t), GFP_KERNEL);
-			if (!hsi2s_core->hab_req) {
-				dev_err(hsi2s_core->dev, "Failed to allocate HAB request message");
-				ret = -ENOMEM;
-				goto err_free_macro;
-			}
-			hsi2s_core->hab_resp = kzalloc(sizeof(msg_t), GFP_KERNEL);
-			if (!hsi2s_core->hab_resp) {
-				dev_err(hsi2s_core->dev, "Failed to allocate HAB response message");
-				ret = -ENOMEM;
-				goto err_free_hab_req;
-			}
-
-			ret = habmm_socket_open(&handle, MM_HSI2S_1, 0, 0);
-			if (ret) {
-				pr_err("open habmm socket failed (%d)\n", ret);
-				goto err_free_hab_resp;
-			}
-			hsi2s_core->hab_handle = handle;
-			hsi2s_core->hab_req->clk_en = 1;
-
-			ret = habmm_socket_send(handle, hsi2s_core->hab_req, resp_size, 0);
-			if (ret) {
-				dev_err(hsi2s_core->dev, "habmm socket send failed (%d)\n", ret);
-				goto err_close_hab;
-			}
-
-			ret = habmm_socket_recv(handle, hsi2s_core->hab_resp, &resp_size, UINT_MAX, HABMM_SOCKET_RECV_FLAGS_UNINTERRUPTIBLE);
-			if (ret) {
-				dev_err(hsi2s_core->dev, "habmm socket receive failed (%d)\n", ret);
-				goto err_close_hab;
-			}
-
-			if (hsi2s_core->hab_resp->rsp) {
-				dev_err(hsi2s_core->dev, "error response (%d)\n", hsi2s_core->hab_resp->rsp);
-				ret = -EIO;
-				goto err_close_hab;
-			}
 #endif
 		} else {
 			if (target == 8295) {
@@ -5670,6 +5678,11 @@ static int hsi2s_probe(struct platform_device *pdev)
 		dev_err(hsi2s_core->dev, "Failed to add child devices");
 	else
 		dev_info(hsi2s_core->dev, "Added child devices");
+#if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
+	ret = adsp_clk_init_hab(hsi2s_core);
+	if (ret)
+		goto err_close_hab;
+#endif
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 	place_marker("M - DRIVER HS-I2S Ready");
 #else
@@ -5743,11 +5756,9 @@ err_disable_core_clocks:
 #endif
 #else
 err_close_hab:
-			habmm_socket_close(handle);
+			habmm_socket_close(hsi2s_core->hab_handle);
 			hsi2s_core->hab_handle = 0;
-err_free_hab_resp:
 			kfree(hsi2s_core->hab_req);
-err_free_hab_req:
 			kfree(hsi2s_core->hab_resp);
 #endif
 		} else {
