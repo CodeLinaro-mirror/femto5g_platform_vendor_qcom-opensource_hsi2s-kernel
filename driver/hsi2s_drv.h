@@ -143,6 +143,8 @@ typedef unsigned int __poll_t;
 #define L_LPAIF_IRQ3_CLEAR			0x9034
 #define L_LPAIF_MUXMODE				0x5120
 
+#define L_LPASS_CORE_CC_I2S_IF_CTL	(0x390C000)
+
 /* Bits for I2S control register */
 #define T_I2S_WS_SRC				BIT(2)
 #define T_I2S_MIC_EN				BIT(9)
@@ -288,6 +290,10 @@ typedef unsigned int __poll_t;
 #define IRQ2_PER_WRDMA_CH4			BIT(4)
 #define IRQ2_OVR_WRDMA_CH4			BIT(5)
 #define IRQ2_ERR_WRDMA_CH4			BIT(6)
+
+/* Bits for LPAIF_CTL */
+#define L_LPASS_CORE_TER_I2S_CTL BIT(4)
+#define L_LPASS_CORE_SEC_I2S_CTL BIT(0)
 
 /* Additional macros */
 #define DEVICE_NAME "hsi2s_driver"
@@ -528,6 +534,7 @@ struct hsi2s_core {
 	void __iomem *lpaif_base_va;
 	void __iomem *lpass_tcsr_base_va;
 	void __iomem *lpass_core_cc_hs_if;
+	void __iomem *lpass_core_cc_hs_if_ctl;
 
 	/* IRQ */
 	struct irq_desc *desc;
@@ -892,6 +899,8 @@ struct hsi2s_macros {
 	u32 bit_wrdma_reset;
 	u32 bit_rate_en;
 	u32 bit_rate_reset;
+	u32 bit_sec_hs_if_en;
+	u32 bit_ter_hs_if_en;
 
 	/* Register fields */
 	u32 regfield_i2s_lrate_offset;
