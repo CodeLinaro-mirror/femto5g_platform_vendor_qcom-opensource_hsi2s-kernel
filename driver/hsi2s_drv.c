@@ -5704,9 +5704,11 @@ static int hsi2s_probe(struct platform_device *pdev)
 	else
 		dev_info(hsi2s_core->dev, "Added child devices");
 #if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
-	ret = adsp_clk_init_hab(hsi2s_core);
-	if (ret)
-		goto err_close_hab;
+	if (target != 6155) {
+		ret = adsp_clk_init_hab(hsi2s_core);
+		if (ret)
+			goto err_close_hab;
+	}
 #endif
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 	place_marker("M - DRIVER HS-I2S Ready");
