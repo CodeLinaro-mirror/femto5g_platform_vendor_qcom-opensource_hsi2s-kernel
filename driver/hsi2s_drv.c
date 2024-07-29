@@ -6068,9 +6068,6 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	int ret = 0;
 	//u32 target;
-#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
-	u32 resp_size = sizeof(msg_t);
-#endif
 
 	if (of_device_is_compatible(pdev->dev.of_node,
 				    "qcom,hsi2s-interface")) {
