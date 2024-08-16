@@ -12,7 +12,6 @@ ifeq ($(HSI2S_ENABLED),true)
 LOCAL_PATH := $(call my-dir)
 DLKM_DIR := $(TOP)/device/qcom/common/dlkm
 
-BOARD_VENDOR_KERNEL_MODULES += $(KERNEL_MODULES_OUT)/hsi2s.ko
 
 #KBUILD_OPTIONS
 KBUILD_OPTIONS += KERNEL_ROOT=$(TOP)/kernel/msm-$(TARGET_KERNEL_VERSION)/
