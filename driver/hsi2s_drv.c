@@ -2726,12 +2726,14 @@ static void hsi2s_buffer_free(struct hsi2s_device *hs_dev)
 static int init_default(struct hsi2s_device *hs_dev, int intf)
 {
 	int ret = 0;
-
-       /*set lpass core cc to hsi2s for hs4*/
-	void __iomem *lpass_core_hsif_ctl;
-	lpass_core_hsif_ctl = ioremap(0x390C000, 4);
-	dev_info(hs_dev->dev, "the lpass core hsis ctl val:%8x \n", readl_relaxed(lpass_core_hsif_ctl));
-	setbits(lpass_core_hsif_ctl,0x10);
+	void __iomem *lpass_core_hsif_ctl=NULL;
+       /*set lpass core cc as HS-I2S mode for hs4 in targets 8295/8255/7255*/
+	if ((hsi2s_core->target == 8295) || (hsi2s_core->target == 8255)) {
+		lpass_core_hsif_ctl = ioremap(0x390C000, 4);
+		dev_info(hs_dev->dev, "the lpass core hsis ctl val:%8x \n", readl_relaxed(lpass_core_hsif_ctl));
+		setbits(lpass_core_hsif_ctl,0x10);
+		iounmap(lpass_core_hsif_ctl);
+	}
 
 	/* Map the hs-i2s registers */
 	ret = map_registers(hs_dev, intf);
@@ -2752,7 +2754,7 @@ static int init_default(struct hsi2s_device *hs_dev, int intf)
 	/* Initialize the wait queues */
 	init_waitqueue_head(&hs_dev->wq_rddma);
 	init_waitqueue_head(&hs_dev->wq_wrdma);
-
+	
 	return ret;
 }
 
