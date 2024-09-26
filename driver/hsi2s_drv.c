@@ -8,9 +8,16 @@
 #include "hsi2s_adsp_clk_ctrl.h"
 #endif
 #include "hsi2s_common.h"
-#if (LINUX_VERSION_CODE == KERNEL_VERSION(5, 15, 0))
-/*Place marker function declaration*/
-extern void place_marker(const char *name);
+
+#if LINUX_VERSION_CODE == KERNEL_VERSION(5,14,0)
+#define LRH_KERNEL
+#endif
+
+#ifdef LRH_KERNEL
+#define place_marker pr_info
+#include <linux/pinctrl/consumer.h>
+#else
+#include <soc/qcom/boot_stats.h>
 #endif
 /* Device number */
 static dev_t devid;
@@ -58,6 +65,11 @@ static int enable_qmi =1;
 module_param(enable_qmi, int, 0644);
 MODULE_PARM_DESC(enable_qmi, "Is QMI enabled: 0->Disabled 1->Enabled");
 
+#ifdef LRH_KERNEL
+static char *qmi_app = "/usr/bin/hsi2s_qmi_test";
+module_param(qmi_app, charp, 0644);
+MODULE_PARM_DESC(qmi_app, "application that enable/disable hsi2s ADSP clock");
+#endif
 #if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM) && defined(CONFIG_QCOM_QMI_HELPERS)
 /* QMI callbacks */
 static int hsi2s_clk_ctrl_send_sync_msg(struct qmi_handle *dev, int en)
@@ -2342,8 +2354,12 @@ static int dab_enabler(void *data)
 
 	hs_dev = (struct hsi2s_device *)data;
 
+#ifdef LRH_KERNEL
+	sched_set_fifo(current);
+#else
 	/* Set maximum priority */
 	sched_setscheduler(current, SCHED_FIFO, &param);
+#endif
 
 	while (1) {
 		if (kthread_should_stop()) {
@@ -2562,7 +2578,7 @@ static void *dma_sg_alloc(struct device *dev, unsigned long size,
 	/* Store the DMA handle */
 	buf->dma_addr = sg_dma_address(sgt->sgl);
 	/* Create virtual address mapping */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,15,0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,15,0) || defined(LRH_KERNEL)
 	buf->vaddr = vm_map_ram(buf->pages, buf->num_pages, -1);
 #else
 	buf->vaddr = vm_map_ram(buf->pages, buf->num_pages, -1, PAGE_KERNEL);
@@ -2880,6 +2896,31 @@ static int hsi2s_adsp_enable_clks(void)
 		dev_err(hsi2s_core->dev, "Failed to enable LPASS clocks\n");
 
 	return ret;
+}
+#endif
+
+#ifdef LRH_KERNEL
+static int do_hsi2s_clk_ctrl_via_qmi_app(int en)
+{
+	int ret = 0;
+	char *envp[3];
+	char *argv[] = {qmi_app, "1", NULL};
+
+	argv[1] = en ? "1" : "0";
+	envp[0] = "HOME=/home/root";
+	envp[1] = "PATH=/sbin:/bin:/usr/sbin:/usr/bin";
+	envp[2] = NULL;
+
+	dev_info(hsi2s_core->dev, "%s() en=%d, argv[0]=%s argv[1]=%s\n", __func__, en, argv[0], argv[1]);
+	ret = call_usermodehelper(argv[0], argv, envp, UMH_WAIT_PROC);
+	dev_info(hsi2s_core->dev, "%s() ret = %d\n", __func__, ret);
+	return ret;
+}
+
+static int hsi2s_clk_ctrl_via_qmi_app(int en)
+{
+	do_hsi2s_clk_ctrl_via_qmi_app(en);
+	return 0;
 }
 #endif
 
@@ -3420,14 +3461,16 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	hs_arr = hsi2s_core->hsi2s_arr;
 	mutex_lock(&hsi2s_core->irqlock);
 
-	lpass_core_cfg_rcgr = ioremap(0x1701D004, 4);
-	new_lpass_core_val = readl_relaxed(lpass_core_cfg_rcgr);
+	if (8155 == hsi2s_core->target || 8195 == hsi2s_core->target) {
+		lpass_core_cfg_rcgr = ioremap(0x1701D004, 4);
+		new_lpass_core_val = readl_relaxed(lpass_core_cfg_rcgr);
 
-	if( prv_lpass_core_val != new_lpass_core_val) {
-		dev_info(hsi2s_core->dev, "lpass_core_cfg %8x \n", new_lpass_core_val);
-		prv_lpass_core_val =  new_lpass_core_val;
+		if( prv_lpass_core_val != new_lpass_core_val) {
+			dev_info(hsi2s_core->dev, "lpass_core_cfg %8x \n", new_lpass_core_val);
+			prv_lpass_core_val =  new_lpass_core_val;
+		}
+		iounmap(lpass_core_cfg_rcgr);
 	}
-	iounmap(lpass_core_cfg_rcgr);
 
 
 	/* Checking for read DMA interrupt on HS0 interface */
@@ -4130,6 +4173,9 @@ static int toggle_bit_clock(struct hsi2s_device *hs_dev)
 	dev_info(hs_dev->dev, "Toggled bit clock direction\n");
 #else
 	dev_info(hs_dev->dev, "QMI kernel configuration is not enabled\n");
+#ifdef LRH_KERNEL
+       ret = hsi2s_clk_ctrl_via_qmi_app(1);
+#endif //LRH_KERNEL
 #endif
 #else
 #if defined(CONFIG_MSM_HAB)
@@ -5019,8 +5065,12 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	else
 		devname = SDR4;
 
+#ifdef LRH_KERNEL
+	hs_dev->class_sdr = class_create(devname);
+#else
 	hs_dev->class_sdr = class_create(THIS_MODULE,
 					 devname);
+#endif
 	if (!hs_dev->class_sdr) {
 		dev_err(hs_dev->dev, "Failed to create device class %d"
 		       , minor);
@@ -5056,6 +5106,7 @@ err_free_hsdev:
 	hs_dev = NULL;
 	hsi2s_core->hsi2s_arr[minor] = NULL;
 err_out:
+#ifndef LRH_KERNEL
 	/* Enable the IRQ line */
 	if (minor == (hsi2s_core->i_count - 1) && !(hsi2s_core->is_irq_enabled)) {
 		if (hsi2s_core->irq0 > 0) {
@@ -5073,8 +5124,60 @@ err_out:
 			hsi2s_core->is_irq_enabled = true;
 		}
 	}
+#endif
 	return ret;
 }
+
+#if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
+/* enabling clock after reset in gvm case only */
+static int adsp_clk_init_hab(struct hsi2s_core *hsi2s_core_d){
+
+	struct hsi2s_core * local_hsi2s_core = hsi2s_core_d;
+	int ret =0;
+#if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
+	int handle;
+	u32 resp_size = sizeof(msg_t);
+#endif
+
+	local_hsi2s_core->hab_req = kzalloc(sizeof(msg_t), GFP_KERNEL);
+	if (!local_hsi2s_core->hab_req) {
+		dev_err(local_hsi2s_core->dev, "Failed to allocate HAB request message");
+		ret = -ENOMEM;
+		return ret;
+	}
+	local_hsi2s_core->hab_resp = kzalloc(sizeof(msg_t), GFP_KERNEL);
+	if (!local_hsi2s_core->hab_resp) {
+		dev_err(local_hsi2s_core->dev, "Failed to allocate HAB response message");
+		ret = -ENOMEM;
+		return ret;
+	}
+	ret = habmm_socket_open(&handle, MM_HSI2S_1, 0, 0);
+	if (ret) {
+		pr_err("open habmm socket failed (%d)\n", ret);
+		return ret;
+	}
+	local_hsi2s_core->hab_handle = handle;
+	local_hsi2s_core->hab_req->clk_en = 1;
+	ret = habmm_socket_send(handle, local_hsi2s_core->hab_req, resp_size, 0);
+	if (ret) {
+		dev_err(local_hsi2s_core->dev, "habmm socket send failed (%d)\n", ret);
+		return ret;
+	}
+	ret = habmm_socket_recv(handle, local_hsi2s_core->hab_resp, &resp_size, UINT_MAX, HABMM_SOCKET_RECV_FLAGS_UNINTERRUPTIBLE);
+	if (ret) {
+		dev_err(local_hsi2s_core->dev, "habmm socket receive failed (%d)\n", ret);
+		return ret;
+	}
+	if (local_hsi2s_core->hab_resp->rsp) {
+		dev_err(local_hsi2s_core->dev, "error response (%d)\n", local_hsi2s_core->hab_resp->rsp);
+		ret = -EIO;
+		return ret;
+	}
+	/*clock enabled successfully*/
+	dev_info(local_hsi2s_core->dev, "Clock enabled successful via HAB\n");
+	return ret;
+}
+#endif
 
 /* Function to initialise the device */
 static int hsi2s_probe(struct platform_device *pdev)
@@ -5086,10 +5189,6 @@ static int hsi2s_probe(struct platform_device *pdev)
 	u32 target;
 	u32 rate_array[2];
 	int ret = 0;
-#if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
-	int handle;
-	u32 resp_size = sizeof(msg_t);
-#endif
 
 	if (of_device_is_compatible(pdev->dev.of_node, "qcom,hsi2s-interface"))
 		return hsi2s_interface_probe(pdev);
@@ -5118,7 +5217,11 @@ static int hsi2s_probe(struct platform_device *pdev)
 		target = 8195;
 	else if (of_device_is_compatible(pdev->dev.of_node, "qcom,sa8295-hsi2s"))
 		target = 8295;
-	else if (of_device_is_compatible(pdev->dev.of_node, "qcom,sa8255-hsi2s")||of_device_is_compatible(pdev->dev.of_node, "qcom,sa7255-hsi2s")) /*hsi2s register space is completely same as lemans*/
+	else if (of_device_is_compatible(pdev->dev.of_node, "qcom,sa8255-hsi2s")
+#ifdef LRH_KERNEL
+		 || of_device_is_compatible(pdev->dev.of_node, "qcom,sa8775-hsi2s")
+#endif
+		 || of_device_is_compatible(pdev->dev.of_node, "qcom,sa7255-hsi2s")) /*hsi2s register space is completely same as lemans*/
 		target = 8255;
 	else {
 		dev_err(hsi2s_core->dev, "Uncompatible target");
@@ -5239,46 +5342,10 @@ static int hsi2s_probe(struct platform_device *pdev)
 				h_modify_core_clks(1);
 				h_modify_interface_clks(1);
 			}
+#ifdef LRH_KERNEL
+			ret = hsi2s_clk_ctrl_via_qmi_app(1);
+#endif //LRH_KERNEL
 #endif
-#else
-			hsi2s_core->hab_req = kzalloc(sizeof(msg_t), GFP_KERNEL);
-			if (!hsi2s_core->hab_req) {
-				dev_err(hsi2s_core->dev, "Failed to allocate HAB request message");
-				ret = -ENOMEM;
-				goto err_free_macro;
-			}
-			hsi2s_core->hab_resp = kzalloc(sizeof(msg_t), GFP_KERNEL);
-			if (!hsi2s_core->hab_resp) {
-				dev_err(hsi2s_core->dev, "Failed to allocate HAB response message");
-				ret = -ENOMEM;
-				goto err_free_hab_req;
-			}
-
-			ret = habmm_socket_open(&handle, MM_HSI2S_1, 0, 0);
-			if (ret) {
-				pr_err("open habmm socket failed (%d)\n", ret);
-				goto err_free_hab_resp;
-			}
-			hsi2s_core->hab_handle = handle;
-			hsi2s_core->hab_req->clk_en = 1;
-
-			ret = habmm_socket_send(handle, hsi2s_core->hab_req, resp_size, 0);
-			if (ret) {
-				dev_err(hsi2s_core->dev, "habmm socket send failed (%d)\n", ret);
-				goto err_close_hab;
-			}
-
-			ret = habmm_socket_recv(handle, hsi2s_core->hab_resp, &resp_size, UINT_MAX, HABMM_SOCKET_RECV_FLAGS_UNINTERRUPTIBLE);
-			if (ret) {
-				dev_err(hsi2s_core->dev, "habmm socket receive failed (%d)\n", ret);
-				goto err_close_hab;
-			}
-
-			if (hsi2s_core->hab_resp->rsp) {
-				dev_err(hsi2s_core->dev, "error response (%d)\n", hsi2s_core->hab_resp->rsp);
-				ret = -EIO;
-				goto err_close_hab;
-			}
 #endif
 		} else {
 			if (target == 8295) {
@@ -5420,6 +5487,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 		goto err_iounmap_lpass_tcsr;
 	}
 
+#ifndef LRH_KERNEL
 	ret =
 	devm_request_threaded_irq(&pdev->dev,
 				  hsi2s_core->irq0,
@@ -5433,8 +5501,11 @@ static int hsi2s_probe(struct platform_device *pdev)
 		goto err_iounmap_lpass_tcsr;
 	}
 
+#endif
 	/* Disable the irq line until child devices are probed */
+#ifndef LRH_KERNEL
 	disable_irq_nosync(hsi2s_core->irq0);
+#endif
 	hsi2s_core->is_irq_enabled = false;
 
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
@@ -5476,7 +5547,11 @@ static int hsi2s_probe(struct platform_device *pdev)
 		goto err_free_cdev;
 	}
 
+#ifdef LRH_KERNEL
+	hsi2s_core->class_sdr = class_create("hsi2s_reginfo");
+#else
 	hsi2s_core->class_sdr = class_create(THIS_MODULE, "hsi2s_reginfo");
+#endif
 	if (!hsi2s_core->class_sdr) {
 		dev_err(hsi2s_core->dev, "Failed to create device class");
 		ret = -EEXIST;
@@ -5509,6 +5584,31 @@ static int hsi2s_probe(struct platform_device *pdev)
 		dev_err(hsi2s_core->dev, "Failed to add child devices");
 	else
 		dev_info(hsi2s_core->dev, "Added child devices");
+
+#if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
+	ret = adsp_clk_init_hab(hsi2s_core);
+	if (ret)
+		goto err_close_hab;
+#endif
+#ifdef LRH_KERNEL
+	/* Enable the IRQ line */
+	ret = devm_request_threaded_irq(hsi2s_core->dev,
+			hsi2s_core->irq0,
+			i2s_interrupt_handler,
+			irq_thread_fn,
+			IRQF_TRIGGER_HIGH | IRQF_ONESHOT,
+			"lpaif_hs_out0_irq", hsi2s_core);
+	if (ret) {
+		dev_err(hsi2s_core->dev, "Request_irq failed:%d: err:%d\n",
+				hsi2s_core->irq0, ret);
+		hsi2s_core->irq0 = 0;
+	} else {
+		dev_info(hsi2s_core->dev, "Request_irq succeed : irq0 = %d \n",
+				hsi2s_core->irq0);
+		hsi2s_core->is_irq_enabled = true;
+	}
+
+#endif
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 19, 0))
 	place_marker("M - DRIVER HS-I2S Ready");
 #else
@@ -5551,7 +5651,9 @@ err_free_smmu:
 	}
 #endif
 err_free_irq:
+#ifndef LRH_KERNEL
 	devm_free_irq(hsi2s_core->dev, hsi2s_core->irq0, hsi2s_core);
+#endif
 err_iounmap_lpass_tcsr:
 	if (target == 8155 || target == 8195)
 		iounmap(hsi2s_core->lpass_tcsr_base_va);
@@ -5576,14 +5678,15 @@ err_disable_core_clocks:
 				h_modify_interface_clks(0);
 				h_modify_core_clks(0);
 			}
+#ifdef LRH_KERNEL
+			hsi2s_clk_ctrl_via_qmi_app(0);
+#endif //LRH_KERNEL
 #endif
 #else
 err_close_hab:
-			habmm_socket_close(handle);
+			habmm_socket_close(hsi2s_core->hab_handle);
 			hsi2s_core->hab_handle = 0;
-err_free_hab_resp:
 			kfree(hsi2s_core->hab_req);
-err_free_hab_req:
 			kfree(hsi2s_core->hab_resp);
 #endif
 		} else {
@@ -5699,7 +5802,10 @@ static int hsi2s_remove(struct platform_device *pdev)
 	}
 #endif
 	/* Free IRQ */
-	devm_free_irq(&pdev->dev, hs_core->irq0, hs_core);
+#ifdef LRH_KERNEL
+	if (hsi2s_core->irq0 && hsi2s_core->is_irq_enabled)
+#endif
+		devm_free_irq(&pdev->dev, hs_core->irq0, hs_core);
 	/* Reset rate detection block */
 	if (hs_core->is_rate_enabled) {
 		reset_rate_detection(PRI_RATE_DET);
@@ -5708,7 +5814,7 @@ static int hsi2s_remove(struct platform_device *pdev)
 	/* Disable the core clocks */
 	if (hs_core->target == 6155)
 		hsi2s_disable_core_clks(pdev);
-	else if (hs_core->target == 8155 || hs_core->target == 8195 || hs_core->target == 8295) {
+	else if (hs_core->target == 8155 || hs_core->target == 8195 || hs_core->target == 8295 || hs_core->target == 8255) {
 		if (enable_qmi) {
 #if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
 #if defined(CONFIG_QCOM_QMI_HELPERS)
@@ -5721,10 +5827,13 @@ static int hsi2s_remove(struct platform_device *pdev)
 			if (hs_core->target == 8295) {
 				m_modify_core_clks(0);
 				m_modify_interface_clks(0);
-			} else if ((target == 8155) || (target == 8195)){
+			} else if ((hs_core->target == 8155) || (hs_core->target == 8195)){
 				h_modify_interface_clks(0);
 				h_modify_core_clks(0);
 			}
+#ifdef LRH_KERNEL
+			hsi2s_clk_ctrl_via_qmi_app(0);
+#endif //LRH_KERNEL
 #endif
 #else
 #if defined(CONFIG_MSM_HAB)
@@ -5830,6 +5939,9 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 #else
 			h_modify_interface_clks(0);
 			h_modify_core_clks(0);
+#ifdef LRH_KERNEL
+			hsi2s_clk_ctrl_via_qmi_app(0);
+#endif //LRH_KERNEL
 #endif
 #else
 #if defined(CONFIG_MSM_HAB)
