@@ -3585,12 +3585,13 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	u32 irq_stat;
 	struct hsi2s_device **hs_arr;
 	int slave;
+	int intf_count = hsi2s_core->i_count;
 
 	hs_arr = hsi2s_core->hsi2s_arr;
 	mutex_lock(&hsi2s_core->irqlock);
 
 	/* Checking for read DMA interrupt on HS0 interface */
-	if (hs_arr[0]) {
+	if ((0U < intf_count) && (hs_arr[0])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Periodic interrupt on read channel 0 */
 		if (irq_stat & IRQ_PER_RDDMA_CH0) {
@@ -3602,7 +3603,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Checking for read DMA interrupt on HS1 interface */
-	if (hs_arr[1]) {
+	if ((1U < intf_count) && (hs_arr[1])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Periodic interrupt on read channel 1 */
 		if (irq_stat & IRQ_PER_RDDMA_CH1) {
@@ -3614,7 +3615,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Checking for read DMA interrupt on HS2 interface */
-	if (hs_arr[2]) {
+	if ((2U < intf_count) && (hs_arr[2])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Periodic interrupt on read channel 2 */
 		if (irq_stat & IRQ_PER_RDDMA_CH2) {
@@ -3626,7 +3627,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Checking for read DMA interrupt on HS3 interface */
-	if (hs_arr[3]) {
+	if ((3U < intf_count) && (hs_arr[3])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Periodic interrupt on read channel 3 */
 		if (irq_stat & IRQ_PER_RDDMA_CH3) {
@@ -3638,7 +3639,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Checking for read DMA interrupt on HS4 interface */
-	if (hs_arr[4]) {
+	if ((4U < intf_count) && (hs_arr[4])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Periodic interrupt on read channel 4 */
 		if (irq_stat & IRQ_PER_RDDMA_CH4) {
@@ -3650,7 +3651,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Checking for write DMA interrupt on HS0 interface */
-	if (hs_arr[0]) {
+	if ((0U < intf_count) && (hs_arr[0])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Periodic interrupt on write channel 0 */
 		if (irq_stat & IRQ_PER_WRDMA_CH0) {
@@ -3677,7 +3678,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Checking for write DMA interrupt on HS1 interface */
-	if (hs_arr[1]) {
+	if ((1U < intf_count) && (hs_arr[1])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Periodic interrupt on write channel 1 */
 		if (irq_stat & IRQ_PER_WRDMA_CH1) {
@@ -3704,7 +3705,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Checking for write DMA interrupt on HS2 interface */
-	if (hs_arr[2]) {
+	if ((2U < intf_count) && (hs_arr[2])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Periodic interrupt on write channel 2 */
 		if (irq_stat & IRQ_PER_WRDMA_CH2) {
@@ -3731,7 +3732,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Checking for write DMA interrupt on HS3 interface */
-	if (hs_arr[3]) {
+	if ((3U < intf_count) && (hs_arr[3])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Periodic interrupt on write channel 3 */
 		if (irq_stat & IRQ_PER_WRDMA_CH3) {
@@ -3758,7 +3759,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Checking for write DMA interrupt on HS4 interface */
-	if (hs_arr[4]) {
+	if ((4U < intf_count) && (hs_arr[4])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq2_stat);
 		/* Periodic interrupt on write channel 4 */
 		if (irq_stat & IRQ2_PER_WRDMA_CH4) {
@@ -3785,7 +3786,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Check for DMA errors on HS0 interface */
-	if (hs_arr[0]) {
+	if ((0U < intf_count) && (hs_arr[0])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Error on read channel 0 */
 		if (irq_stat & (IRQ_UNDR_RDDMA_CH0 | IRQ_ERR_RDDMA_CH0)) {
@@ -3815,7 +3816,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Check for DMA errors on HS1 interface */
-	if (hs_arr[1]) {
+	if ((1U < intf_count) && (hs_arr[1])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Error on read channel 1 */
 		if (irq_stat & (IRQ_UNDR_RDDMA_CH1 | IRQ_ERR_RDDMA_CH1)) {
@@ -3845,7 +3846,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Check for DMA errors on HS2 interface */
-	if (hs_arr[2]) {
+	if ((2U < intf_count) && (hs_arr[2])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Error on read channel 2 */
 		if (irq_stat & (IRQ_UNDR_RDDMA_CH2 | IRQ_ERR_RDDMA_CH2)) {
@@ -3875,7 +3876,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Check for DMA errors on HS3 interface */
-	if (hs_arr[3]) {
+	if ((3U < intf_count) && (hs_arr[3])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Error on read channel 3 */
 		if (irq_stat & (IRQ_UNDR_RDDMA_CH3 | IRQ_ERR_RDDMA_CH3)) {
@@ -3904,7 +3905,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Check for DMA errors on HS4 interface */
-	if (hs_arr[4]) {
+	if ((4U < intf_count) && (hs_arr[4])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Error on read channel 4 */
 		if (irq_stat & (IRQ_UNDR_RDDMA_CH4 | IRQ_ERR_RDDMA_CH4)) {
