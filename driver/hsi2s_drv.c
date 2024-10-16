@@ -6071,6 +6071,8 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 
 	if (of_device_is_compatible(pdev->dev.of_node,
 				    "qcom,hsi2s-interface")) {
+		/* Call reset_registers before suspending the core clocks */
+		reset_registers((struct hsi2s_device *)platform_get_drvdata(pdev));
 		/* Set the GPIOs in sleep state */
 		ret = hsi2s_configure_gpio_pins(pdev, 0);
 		if (ret < 0) {
@@ -6145,9 +6147,11 @@ err_suspend:
 static int hsi2s_resume(struct platform_device *pdev)
 {
 	int ret = 0;
+    struct hsi2s_device * hs_dev = NULL;
 
 	if (of_device_is_compatible(pdev->dev.of_node,
 				    "qcom,hsi2s-interface")) {
+		hs_dev = (struct hsi2s_device *)platform_get_drvdata(pdev);
 		/* Resume the interface clocks */
 		if (hsi2s_core->target == 6155) {
 			ret = hsi2s_resume_intf_clks(pdev);
@@ -6170,7 +6174,21 @@ static int hsi2s_resume(struct platform_device *pdev)
                 }
 
 #endif
-	} else {
+		/* Reset Registers from S2R/S2D */
+		ioctl_handler3(hs_dev, LPAIF_RESET, 0);
+		/* Configure the operational mode */
+		if (operation_mode) {
+			/* Setting slave mode for SA8155/SA8195 targets */
+			if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195)
+				configure_muxmode(hs_dev, 1);
+			configure_normal_mode(hs_dev, hs_dev->minor_num );
+		}
+		else {
+			if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195)
+				configure_muxmode(hs_dev, 0);
+			configure_int_loopback_mode(hs_dev, hs_dev->minor_num);
+		}
+	 } else {
 		/* Resume the core clocks */
 		if (hsi2s_core->target == 6155) {
 			ret = hsi2s_resume_core_clks(pdev);
