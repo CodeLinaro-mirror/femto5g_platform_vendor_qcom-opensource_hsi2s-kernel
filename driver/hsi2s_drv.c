@@ -879,7 +879,7 @@ static int map_registers(struct hsi2s_device *hs_dev, int intf)
 			hs_dev->lpaif_muxmode = hsi2s_core->lpass_core_cc_hs_if +
 						L_LPAIF_MUXMODE +
 						l_calculate_muxmode_offset(hs_dev, intf);
-			dev_info(hs_dev->dev, "base muxmode address %x = %x + %x + %x\n", hs_dev->lpaif_muxmode, hsi2s_core->lpass_core_cc_hs_if, L_LPAIF_MUXMODE , l_calculate_muxmode_offset(hs_dev, intf));
+			dev_info(hs_dev->dev, "base muxmode address %p = %p + %x + %x\n", hs_dev->lpaif_muxmode, hsi2s_core->lpass_core_cc_hs_if, L_LPAIF_MUXMODE , l_calculate_muxmode_offset(hs_dev, intf));
 		}
 	} else {
 		dev_err(hs_dev->dev, "HS-I2S macro structure is NULL");
@@ -2509,7 +2509,7 @@ static unsigned long get_contiguous_size(struct sg_table *sgt)
 	unsigned long size = 0;
 
 	for_each_sg(sgt->sgl, s, sgt->nents, i) {
-		pr_info("hsi2s: index=%lu size=%lu", i, sg_dma_len(s));
+		pr_info("hsi2s: index=%u size=%u", i, sg_dma_len(s));
 		size += sg_dma_len(s);
 	}
 	return size;
@@ -3826,7 +3826,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 			setbits(hsi2s_core->irq_clear, IRQ_PRI_RD_DIFF_RATE);
 			/* Get the new WS rate */
 			hsi2s_core->pri_ws_rate = get_ws_rate(PRI_RATE_DET);
-			dev_info(hsi2s_core->dev, "WS rate detected as %lu Hz ", hsi2s_core->pri_ws_rate);
+			dev_info(hsi2s_core->dev, "WS rate detected as %u Hz ", hsi2s_core->pri_ws_rate);
 			if (hsi2s_core->pri_ws_rate) {
 				slave = hsi2s_core->pri_rate_interface;
 				/* Disable mic */
@@ -3839,7 +3839,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 				hs_arr[slave]->wrdma_periodic_length_bytes = (set_periodic_length(calculate_bit_rate(hs_arr[slave], PRI_RATE_DET),
 															  hs_arr[slave]->data_buffer_ms_val));
 				hs_arr[slave]->wrdma_periodic_length = hs_arr[slave]->wrdma_periodic_length_bytes / BYTES_PER_SAMPLE;
-				dev_info(hsi2s_core->dev, "Periodic length reconfigured to %lu words", hs_arr[slave]->wrdma_periodic_length);
+				dev_info(hsi2s_core->dev, "Periodic length reconfigured to %u words", hs_arr[slave]->wrdma_periodic_length);
 				writel_relaxed(hs_arr[slave]->wrdma_periodic_length - 1, hs_arr[slave]->wrdma_per_len);
 				/* Enable mic */
 				setbits(hs_arr[slave]->wrdma_ctl, hsi2s_core->macro->bit_wrdma_en);
@@ -3855,7 +3855,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 			setbits(hsi2s_core->irq_clear, IRQ_SEC_RD_DIFF_RATE);
 			/* Get the new WS rate */
 			hsi2s_core->sec_ws_rate = get_ws_rate(SEC_RATE_DET);
-			dev_info(hsi2s_core->dev, "WS rate detected as %lu Hz ", hsi2s_core->sec_ws_rate);
+			dev_info(hsi2s_core->dev, "WS rate detected as %u Hz ", hsi2s_core->sec_ws_rate);
 			if (hsi2s_core->sec_ws_rate) {
 				slave = hsi2s_core->sec_rate_interface;
 				/* Disable mic */
@@ -3868,7 +3868,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 				hs_arr[slave]->wrdma_periodic_length_bytes = (set_periodic_length(calculate_bit_rate(hs_arr[slave],SEC_RATE_DET),
 															  hs_arr[slave]->data_buffer_ms_val));
 				hs_arr[slave]->wrdma_periodic_length = hs_arr[slave]->wrdma_periodic_length_bytes / BYTES_PER_SAMPLE;
-				dev_info(hsi2s_core->dev, "Periodic length reconfigured to %lu words", hs_arr[slave]->wrdma_periodic_length);
+				dev_info(hsi2s_core->dev, "Periodic length reconfigured to %u words", hs_arr[slave]->wrdma_periodic_length);
 				writel_relaxed(hs_arr[slave]->wrdma_periodic_length - 1, hs_arr[slave]->wrdma_per_len);
 				/* Enable mic */
 				setbits(hs_arr[slave]->wrdma_ctl, hsi2s_core->macro->bit_wrdma_en);
@@ -4346,7 +4346,7 @@ static int ioctl_handler2(struct hsi2s_device *hs_dev, unsigned int cmd, unsigne
 			dev_err(hs_dev->dev, "Mode not supported by target\n");
 			return -EINVAL;
 		}
-		dev_info(hs_dev->dev, "Triggering external loopback with hs%d master and hs%d slave\n",
+		dev_info(hs_dev->dev, "Triggering external loopback with hs%d master and hs%lu slave\n",
 				 hs_dev->minor_num, arg);
 		hs_dev->slave = arg;
 		hs_dev->mode = EXTERNAL_LB_MASTER_SLAVE;
@@ -4705,7 +4705,7 @@ static int c_device_mmap(struct file *file, struct vm_area_struct *vma)
 	pfn = (pa >> PAGE_SHIFT) + vma->vm_pgoff;
 
 	if (len > SHM_SIZE) {
-		dev_err(hsi2s_core->dev, "Size of map area(%d) exceeds shared memory size", len);
+		dev_err(hsi2s_core->dev, "Size of map area(%lu) exceeds shared memory size", len);
 		ret = -EINVAL;
 	} else {
 		ret = remap_pfn_range(vma, vma->vm_start, pfn, len, vma->vm_page_prot);
