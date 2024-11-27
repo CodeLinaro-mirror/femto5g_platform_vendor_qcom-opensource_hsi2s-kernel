@@ -6039,7 +6039,6 @@ static int hsi2s_resume(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct hsi2s_device *hs_dev = hsi2s_core->hsi2s_arr[0];
-	int i;
 
 	if (of_device_is_compatible(pdev->dev.of_node,
 				    "qcom,hsi2s-interface")) {
