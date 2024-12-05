@@ -3585,12 +3585,13 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	u32 irq_stat;
 	struct hsi2s_device **hs_arr;
 	int slave;
+	int intf_count = hsi2s_core->i_count;
 
 	hs_arr = hsi2s_core->hsi2s_arr;
 	mutex_lock(&hsi2s_core->irqlock);
 
 	/* Checking for read DMA interrupt on HS0 interface */
-	if (hs_arr[0]) {
+	if ((0U < intf_count) && (hs_arr[0])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Periodic interrupt on read channel 0 */
 		if (irq_stat & IRQ_PER_RDDMA_CH0) {
@@ -3602,7 +3603,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Checking for read DMA interrupt on HS1 interface */
-	if (hs_arr[1]) {
+	if ((1U < intf_count) && (hs_arr[1])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Periodic interrupt on read channel 1 */
 		if (irq_stat & IRQ_PER_RDDMA_CH1) {
@@ -3614,7 +3615,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Checking for read DMA interrupt on HS2 interface */
-	if (hs_arr[2]) {
+	if ((2U < intf_count) && (hs_arr[2])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Periodic interrupt on read channel 2 */
 		if (irq_stat & IRQ_PER_RDDMA_CH2) {
@@ -3626,7 +3627,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Checking for read DMA interrupt on HS3 interface */
-	if (hs_arr[3]) {
+	if ((3U < intf_count) && (hs_arr[3])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Periodic interrupt on read channel 3 */
 		if (irq_stat & IRQ_PER_RDDMA_CH3) {
@@ -3638,7 +3639,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Checking for read DMA interrupt on HS4 interface */
-	if (hs_arr[4]) {
+	if ((4U < intf_count) && (hs_arr[4])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Periodic interrupt on read channel 4 */
 		if (irq_stat & IRQ_PER_RDDMA_CH4) {
@@ -3650,7 +3651,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Checking for write DMA interrupt on HS0 interface */
-	if (hs_arr[0]) {
+	if ((0U < intf_count) && (hs_arr[0])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Periodic interrupt on write channel 0 */
 		if (irq_stat & IRQ_PER_WRDMA_CH0) {
@@ -3677,7 +3678,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Checking for write DMA interrupt on HS1 interface */
-	if (hs_arr[1]) {
+	if ((1U < intf_count) && (hs_arr[1])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Periodic interrupt on write channel 1 */
 		if (irq_stat & IRQ_PER_WRDMA_CH1) {
@@ -3704,7 +3705,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Checking for write DMA interrupt on HS2 interface */
-	if (hs_arr[2]) {
+	if ((2U < intf_count) && (hs_arr[2])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Periodic interrupt on write channel 2 */
 		if (irq_stat & IRQ_PER_WRDMA_CH2) {
@@ -3731,7 +3732,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Checking for write DMA interrupt on HS3 interface */
-	if (hs_arr[3]) {
+	if ((3U < intf_count) && (hs_arr[3])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Periodic interrupt on write channel 3 */
 		if (irq_stat & IRQ_PER_WRDMA_CH3) {
@@ -3758,7 +3759,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Checking for write DMA interrupt on HS4 interface */
-	if (hs_arr[4]) {
+	if ((4U < intf_count) && (hs_arr[4])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq2_stat);
 		/* Periodic interrupt on write channel 4 */
 		if (irq_stat & IRQ2_PER_WRDMA_CH4) {
@@ -3785,7 +3786,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Check for DMA errors on HS0 interface */
-	if (hs_arr[0]) {
+	if ((0U < intf_count) && (hs_arr[0])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Error on read channel 0 */
 		if (irq_stat & (IRQ_UNDR_RDDMA_CH0 | IRQ_ERR_RDDMA_CH0)) {
@@ -3815,7 +3816,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Check for DMA errors on HS1 interface */
-	if (hs_arr[1]) {
+	if ((1U < intf_count) && (hs_arr[1])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Error on read channel 1 */
 		if (irq_stat & (IRQ_UNDR_RDDMA_CH1 | IRQ_ERR_RDDMA_CH1)) {
@@ -3845,7 +3846,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Check for DMA errors on HS2 interface */
-	if (hs_arr[2]) {
+	if ((2U < intf_count) && (hs_arr[2])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Error on read channel 2 */
 		if (irq_stat & (IRQ_UNDR_RDDMA_CH2 | IRQ_ERR_RDDMA_CH2)) {
@@ -3875,7 +3876,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Check for DMA errors on HS3 interface */
-	if (hs_arr[3]) {
+	if ((3U < intf_count) && (hs_arr[3])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Error on read channel 3 */
 		if (irq_stat & (IRQ_UNDR_RDDMA_CH3 | IRQ_ERR_RDDMA_CH3)) {
@@ -3904,7 +3905,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Check for DMA errors on HS4 interface */
-	if (hs_arr[4]) {
+	if ((4U < intf_count) && (hs_arr[4])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Error on read channel 4 */
 		if (irq_stat & (IRQ_UNDR_RDDMA_CH4 | IRQ_ERR_RDDMA_CH4)) {
@@ -6071,6 +6072,8 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 
 	if (of_device_is_compatible(pdev->dev.of_node,
 				    "qcom,hsi2s-interface")) {
+		/* Call reset_registers before suspending the core clocks */
+		reset_registers((struct hsi2s_device *)platform_get_drvdata(pdev));
 		/* Set the GPIOs in sleep state */
 		ret = hsi2s_configure_gpio_pins(pdev, 0);
 		if (ret < 0) {
@@ -6145,9 +6148,11 @@ err_suspend:
 static int hsi2s_resume(struct platform_device *pdev)
 {
 	int ret = 0;
+    struct hsi2s_device * hs_dev = NULL;
 
 	if (of_device_is_compatible(pdev->dev.of_node,
 				    "qcom,hsi2s-interface")) {
+		hs_dev = (struct hsi2s_device *)platform_get_drvdata(pdev);
 		/* Resume the interface clocks */
 		if (hsi2s_core->target == 6155) {
 			ret = hsi2s_resume_intf_clks(pdev);
@@ -6170,7 +6175,21 @@ static int hsi2s_resume(struct platform_device *pdev)
                 }
 
 #endif
-	} else {
+		/* Reset Registers from S2R/S2D */
+		ioctl_handler3(hs_dev, LPAIF_RESET, 0);
+		/* Configure the operational mode */
+		if (operation_mode) {
+			/* Setting slave mode for SA8155/SA8195 targets */
+			if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195)
+				configure_muxmode(hs_dev, 1);
+			configure_normal_mode(hs_dev, hs_dev->minor_num );
+		}
+		else {
+			if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195)
+				configure_muxmode(hs_dev, 0);
+			configure_int_loopback_mode(hs_dev, hs_dev->minor_num);
+		}
+	 } else {
 		/* Resume the core clocks */
 		if (hsi2s_core->target == 6155) {
 			ret = hsi2s_resume_core_clks(pdev);
