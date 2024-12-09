@@ -879,7 +879,7 @@ static int map_registers(struct hsi2s_device *hs_dev, int intf)
 			hs_dev->lpaif_muxmode = hsi2s_core->lpass_core_cc_hs_if +
 						L_LPAIF_MUXMODE +
 						l_calculate_muxmode_offset(hs_dev, intf);
-			dev_info(hs_dev->dev, "base muxmode address %x = %x + %x + %x\n", hs_dev->lpaif_muxmode, hsi2s_core->lpass_core_cc_hs_if, L_LPAIF_MUXMODE , l_calculate_muxmode_offset(hs_dev, intf));
+			dev_info(hs_dev->dev, "base muxmode address %p = %p + %x + %x\n", hs_dev->lpaif_muxmode, hsi2s_core->lpass_core_cc_hs_if, L_LPAIF_MUXMODE , l_calculate_muxmode_offset(hs_dev, intf));
 		}
 	} else {
 		dev_err(hs_dev->dev, "HS-I2S macro structure is NULL");
@@ -2509,7 +2509,7 @@ static unsigned long get_contiguous_size(struct sg_table *sgt)
 	unsigned long size = 0;
 
 	for_each_sg(sgt->sgl, s, sgt->nents, i) {
-		pr_info("hsi2s: index=%lu size=%lu", i, sg_dma_len(s));
+		pr_info("hsi2s: index=%u size=%u", i, sg_dma_len(s));
 		size += sg_dma_len(s);
 	}
 	return size;
@@ -3455,6 +3455,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	u32 irq_stat;
 	struct hsi2s_device **hs_arr;
 	int slave;
+	int intf_count = hsi2s_core->i_count;
 
 	void __iomem *lpass_core_cfg_rcgr;
 	static u32 prv_lpass_core_val;
@@ -3476,7 +3477,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 
 
 	/* Checking for read DMA interrupt on HS0 interface */
-	if (hs_arr[0]) {
+	if ((0U < intf_count) && (hs_arr[0])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Periodic interrupt on read channel 0 */
 		if (irq_stat & IRQ_PER_RDDMA_CH0) {
@@ -3488,7 +3489,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Checking for read DMA interrupt on HS1 interface */
-	if (hs_arr[1]) {
+	if ((1U < intf_count) && (hs_arr[1])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Periodic interrupt on read channel 1 */
 		if (irq_stat & IRQ_PER_RDDMA_CH1) {
@@ -3500,7 +3501,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Checking for read DMA interrupt on HS2 interface */
-	if (hs_arr[2]) {
+	if ((2U < intf_count) && (hs_arr[2])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Periodic interrupt on read channel 2 */
 		if (irq_stat & IRQ_PER_RDDMA_CH2) {
@@ -3512,7 +3513,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Checking for read DMA interrupt on HS3 interface */
-	if (hs_arr[3]) {
+	if ((3U < intf_count) && (hs_arr[3])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Periodic interrupt on read channel 3 */
 		if (irq_stat & IRQ_PER_RDDMA_CH3) {
@@ -3524,7 +3525,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Checking for read DMA interrupt on HS4 interface */
-	if (hs_arr[4]) {
+	if ((4U < intf_count) && (hs_arr[4])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Periodic interrupt on read channel 4 */
 		if (irq_stat & IRQ_PER_RDDMA_CH4) {
@@ -3536,7 +3537,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Checking for write DMA interrupt on HS0 interface */
-	if (hs_arr[0]) {
+	if ((0U < intf_count) && (hs_arr[0])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Periodic interrupt on write channel 0 */
 		if (irq_stat & IRQ_PER_WRDMA_CH0) {
@@ -3563,7 +3564,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Checking for write DMA interrupt on HS1 interface */
-	if (hs_arr[1]) {
+	if ((1U < intf_count) && (hs_arr[1])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Periodic interrupt on write channel 1 */
 		if (irq_stat & IRQ_PER_WRDMA_CH1) {
@@ -3590,7 +3591,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Checking for write DMA interrupt on HS2 interface */
-	if (hs_arr[2]) {
+	if ((2U < intf_count) && (hs_arr[2])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Periodic interrupt on write channel 2 */
 		if (irq_stat & IRQ_PER_WRDMA_CH2) {
@@ -3617,7 +3618,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Checking for write DMA interrupt on HS3 interface */
-	if (hs_arr[3]) {
+	if ((3U < intf_count) && (hs_arr[3])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Periodic interrupt on write channel 3 */
 		if (irq_stat & IRQ_PER_WRDMA_CH3) {
@@ -3644,7 +3645,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Checking for write DMA interrupt on HS4 interface */
-	if (hs_arr[4]) {
+	if ((4U < intf_count) && (hs_arr[4])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq2_stat);
 		/* Periodic interrupt on write channel 4 */
 		if (irq_stat & IRQ2_PER_WRDMA_CH4) {
@@ -3671,7 +3672,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Check for DMA errors on HS0 interface */
-	if (hs_arr[0]) {
+	if ((0U < intf_count) && (hs_arr[0])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Error on read channel 0 */
 		if (irq_stat & (IRQ_UNDR_RDDMA_CH0 | IRQ_ERR_RDDMA_CH0)) {
@@ -3701,7 +3702,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Check for DMA errors on HS1 interface */
-	if (hs_arr[1]) {
+	if ((1U < intf_count) && (hs_arr[1])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Error on read channel 1 */
 		if (irq_stat & (IRQ_UNDR_RDDMA_CH1 | IRQ_ERR_RDDMA_CH1)) {
@@ -3731,7 +3732,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Check for DMA errors on HS2 interface */
-	if (hs_arr[2]) {
+	if ((2U < intf_count) && (hs_arr[2])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Error on read channel 2 */
 		if (irq_stat & (IRQ_UNDR_RDDMA_CH2 | IRQ_ERR_RDDMA_CH2)) {
@@ -3761,7 +3762,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Check for DMA errors on HS3 interface */
-	if (hs_arr[3]) {
+	if ((3U < intf_count) && (hs_arr[3])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Error on read channel 3 */
 		if (irq_stat & (IRQ_UNDR_RDDMA_CH3 | IRQ_ERR_RDDMA_CH3)) {
@@ -3790,7 +3791,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 	}
 
 	/* Check for DMA errors on HS4 interface */
-	if (hs_arr[4]) {
+	if ((4U < intf_count) && (hs_arr[4])) {
 		irq_stat = readl_relaxed(hsi2s_core->irq_stat);
 		/* Error on read channel 4 */
 		if (irq_stat & (IRQ_UNDR_RDDMA_CH4 | IRQ_ERR_RDDMA_CH4)) {
@@ -3826,7 +3827,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 			setbits(hsi2s_core->irq_clear, IRQ_PRI_RD_DIFF_RATE);
 			/* Get the new WS rate */
 			hsi2s_core->pri_ws_rate = get_ws_rate(PRI_RATE_DET);
-			dev_info(hsi2s_core->dev, "WS rate detected as %lu Hz ", hsi2s_core->pri_ws_rate);
+			dev_info(hsi2s_core->dev, "WS rate detected as %u Hz ", hsi2s_core->pri_ws_rate);
 			if (hsi2s_core->pri_ws_rate) {
 				slave = hsi2s_core->pri_rate_interface;
 				/* Disable mic */
@@ -3839,7 +3840,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 				hs_arr[slave]->wrdma_periodic_length_bytes = (set_periodic_length(calculate_bit_rate(hs_arr[slave], PRI_RATE_DET),
 															  hs_arr[slave]->data_buffer_ms_val));
 				hs_arr[slave]->wrdma_periodic_length = hs_arr[slave]->wrdma_periodic_length_bytes / BYTES_PER_SAMPLE;
-				dev_info(hsi2s_core->dev, "Periodic length reconfigured to %lu words", hs_arr[slave]->wrdma_periodic_length);
+				dev_info(hsi2s_core->dev, "Periodic length reconfigured to %u words", hs_arr[slave]->wrdma_periodic_length);
 				writel_relaxed(hs_arr[slave]->wrdma_periodic_length - 1, hs_arr[slave]->wrdma_per_len);
 				/* Enable mic */
 				setbits(hs_arr[slave]->wrdma_ctl, hsi2s_core->macro->bit_wrdma_en);
@@ -3855,7 +3856,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 			setbits(hsi2s_core->irq_clear, IRQ_SEC_RD_DIFF_RATE);
 			/* Get the new WS rate */
 			hsi2s_core->sec_ws_rate = get_ws_rate(SEC_RATE_DET);
-			dev_info(hsi2s_core->dev, "WS rate detected as %lu Hz ", hsi2s_core->sec_ws_rate);
+			dev_info(hsi2s_core->dev, "WS rate detected as %u Hz ", hsi2s_core->sec_ws_rate);
 			if (hsi2s_core->sec_ws_rate) {
 				slave = hsi2s_core->sec_rate_interface;
 				/* Disable mic */
@@ -3868,7 +3869,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 				hs_arr[slave]->wrdma_periodic_length_bytes = (set_periodic_length(calculate_bit_rate(hs_arr[slave],SEC_RATE_DET),
 															  hs_arr[slave]->data_buffer_ms_val));
 				hs_arr[slave]->wrdma_periodic_length = hs_arr[slave]->wrdma_periodic_length_bytes / BYTES_PER_SAMPLE;
-				dev_info(hsi2s_core->dev, "Periodic length reconfigured to %lu words", hs_arr[slave]->wrdma_periodic_length);
+				dev_info(hsi2s_core->dev, "Periodic length reconfigured to %u words", hs_arr[slave]->wrdma_periodic_length);
 				writel_relaxed(hs_arr[slave]->wrdma_periodic_length - 1, hs_arr[slave]->wrdma_per_len);
 				/* Enable mic */
 				setbits(hs_arr[slave]->wrdma_ctl, hsi2s_core->macro->bit_wrdma_en);
@@ -4346,7 +4347,7 @@ static int ioctl_handler2(struct hsi2s_device *hs_dev, unsigned int cmd, unsigne
 			dev_err(hs_dev->dev, "Mode not supported by target\n");
 			return -EINVAL;
 		}
-		dev_info(hs_dev->dev, "Triggering external loopback with hs%d master and hs%d slave\n",
+		dev_info(hs_dev->dev, "Triggering external loopback with hs%d master and hs%lu slave\n",
 				 hs_dev->minor_num, arg);
 		hs_dev->slave = arg;
 		hs_dev->mode = EXTERNAL_LB_MASTER_SLAVE;
@@ -4705,7 +4706,7 @@ static int c_device_mmap(struct file *file, struct vm_area_struct *vma)
 	pfn = (pa >> PAGE_SHIFT) + vma->vm_pgoff;
 
 	if (len > SHM_SIZE) {
-		dev_err(hsi2s_core->dev, "Size of map area(%d) exceeds shared memory size", len);
+		dev_err(hsi2s_core->dev, "Size of map area(%lu) exceeds shared memory size", len);
 		ret = -EINVAL;
 	} else {
 		ret = remap_pfn_range(vma, vma->vm_start, pfn, len, vma->vm_page_prot);
@@ -5958,6 +5959,8 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 
 	if (of_device_is_compatible(pdev->dev.of_node,
 				    "qcom,hsi2s-interface")) {
+		/* Call reset_registers before suspending the core clocks */
+		reset_registers((struct hsi2s_device *)platform_get_drvdata(pdev));
 		/* Set the GPIOs in sleep state */
 		ret = hsi2s_configure_gpio_pins(pdev, 0);
 		if (ret < 0) {
@@ -6036,10 +6039,10 @@ static int hsi2s_resume(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct hsi2s_device *hs_dev = hsi2s_core->hsi2s_arr[0];
-	int i;
 
 	if (of_device_is_compatible(pdev->dev.of_node,
 				    "qcom,hsi2s-interface")) {
+		hs_dev  = (struct hsi2s_device *)platform_get_drvdata(pdev);
 		/* Resume the interface clocks */
 		if (hsi2s_core->target == 6155) {
 			ret = hsi2s_resume_intf_clks(pdev);
@@ -6053,6 +6056,20 @@ static int hsi2s_resume(struct platform_device *pdev)
 		if (ret < 0) {
 			dev_err(&pdev->dev, "Failed to set gpios in active state");
 			goto err_resume;
+		}
+		/* Reset Registers from S2R/S2D */
+		ioctl_handler3(hs_dev, LPAIF_RESET, 0);
+		/* Configure the operational mode */
+		if (operation_mode) {
+			/* Setting slave mode for SA8155/SA8195 targets */
+			if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195)
+				configure_muxmode(hs_dev, 1);
+			configure_normal_mode(hs_dev, hs_dev->minor_num );
+		}
+		else {
+			if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195)
+				configure_muxmode(hs_dev, 0);
+			configure_int_loopback_mode(hs_dev, hs_dev->minor_num);
 		}
 #if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
                 ret = resume_via_hab();
@@ -6110,57 +6127,6 @@ static int hsi2s_resume(struct platform_device *pdev)
 				}
 			}
 
-			if (hsi2s_core->suspend_to_disk_trigger_flg) {
-			for(i=0;i<3;i++){
-				hs_dev = hsi2s_core->hsi2s_arr[i];
-				/*LPAIF Reset sequence*/
-				dev_info(hs_dev->dev, "Resetting muxmode register\n");
-				reg_clear(hs_dev->lpaif_muxmode);
-				if (hs_dev->lpaif_mode == HS_I2S) {
-					dev_info(hs_dev->dev, "Resetting I2S control register\n");
-					reg_clear(hs_dev->i2s_ctl);
-					dev_info(hs_dev->dev, "Resetting DMA registers\n");
-					reset_rddma_registers(hs_dev);
-					reset_wrdma_registers(hs_dev);
-					/* Clear IRQs */
-					clear_irqs();
-					/* Reset buffer pointers */
-					hs_dev->read_buffer->last_copy = 1;
-					hs_dev->read_buffer->last_xfer = 1;
-					hs_dev->write_buffer->head = hs_dev->lpass_wrdma_start;
-					hs_dev->write_buffer->tail = hs_dev->lpass_wrdma_start;
-					hs_dev->write_buffer->data_ready = 0;
-					hs_dev->write_buffer->pollin = 0;
-					hs_dev->rddma_xfer_busy = 0;
-					hs_dev->rddma_copy_busy = 1;
-					hs_dev->rddma_in_progress = 0;
-				} else {
-					dev_info(hs_dev->dev, "Resetting PCM control registers\n");
-					reg_clear(hs_dev->pcm_ctl);
-					reg_clear(hs_dev->tdm_ctl);
-					reg_clear(hs_dev->tdm_sample_width);
-					dev_info(hs_dev->dev, "Resetting DMA registers\n");
-					reset_rddma_registers(hs_dev);
-					reset_wrdma_registers(hs_dev);
-					/* Clear IRQs */
-					clear_irqs();
-					/* Reset buffer pointers */
-					hs_dev->read_buffer->last_copy = 1;
-					hs_dev->read_buffer->last_xfer = 1;
-					hs_dev->write_buffer->head = hs_dev->lpass_wrdma_start;
-					hs_dev->write_buffer->tail = hs_dev->lpass_wrdma_start;
-					hs_dev->write_buffer->data_ready = 0;
-					hs_dev->write_buffer->pollin = 0;
-					hs_dev->rddma_xfer_busy = 0;
-					hs_dev->rddma_copy_busy = 1;
-					hs_dev->rddma_in_progress = 0;
-				}
-				/*Normal Rx sequence*/
-				configure_muxmode(hs_dev, 1);
-				configure_normal_mode(hs_dev, i);
-			}
-			hsi2s_core->suspend_to_disk_trigger_flg= false;
-			}
 		}
 	}
 
