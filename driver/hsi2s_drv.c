@@ -5980,7 +5980,10 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 	if (of_device_is_compatible(pdev->dev.of_node,
 				    "qcom,hsi2s-interface")) {
 		/* Call reset_registers before suspending the core clocks */
+		if(((struct hsi2s_device *)platform_get_drvdata(pdev))->rddma_thread){
+		kthread_stop(((struct hsi2s_device *)platform_get_drvdata(pdev))->rddma_thread);
 		reset_registers((struct hsi2s_device *)platform_get_drvdata(pdev));
+		}
 		/* Set the GPIOs in sleep state */
 		ret = hsi2s_configure_gpio_pins(pdev, 0);
 		if (ret < 0) {
