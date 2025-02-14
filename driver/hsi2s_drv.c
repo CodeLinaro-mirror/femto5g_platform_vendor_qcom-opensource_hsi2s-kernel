@@ -5971,11 +5971,13 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 		if (hsi2s_core->target == 6155)
 			hsi2s_suspend_intf_clks(pdev);
 #if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
-                ret = suspend_via_hab();
-                if (ret) {
-                        dev_err(hsi2s_core->dev, "suspend_via_hab failed (%d)", ret);
-                        goto err_suspend;
-                }
+		if (hsi2s_core->target != 6155) {
+			ret = suspend_via_hab();
+			if (ret) {
+				dev_err(hsi2s_core->dev, "suspend_via_hab failed (%d)", ret);
+				goto err_suspend;
+			}
+		}
 #endif
 
 	} else {
@@ -6072,11 +6074,13 @@ static int hsi2s_resume(struct platform_device *pdev)
 			configure_int_loopback_mode(hs_dev, hs_dev->minor_num);
 		}
 #if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
-                ret = resume_via_hab();
-                if (ret) {
-                        dev_err(hsi2s_core->dev, "resume_via_hab failed (%d)", ret);
-                        goto err_resume;
-                }
+		if (hsi2s_core->target != 6155) {
+			ret = resume_via_hab();
+			if (ret) {
+				dev_err(hsi2s_core->dev, "resume_via_hab failed (%d)", ret);
+				goto err_resume;
+			}
+		}
 
 #endif
 	} else {
