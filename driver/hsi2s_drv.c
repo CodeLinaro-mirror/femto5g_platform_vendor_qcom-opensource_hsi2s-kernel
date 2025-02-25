@@ -4292,6 +4292,10 @@ static int toggle_bit_clock(struct hsi2s_device *hs_dev)
 #endif
 #else
 #if defined(CONFIG_MSM_HAB)
+	if (hsi2s_core->hab_req->clk_en == 1) {
+		dev_info(hsi2s_core->dev, "clock (via hab) already enabled\n");
+		return 0;
+	}
 	hsi2s_core->hab_req->clk_en = 1;
 
 	ret = habmm_socket_send(hsi2s_core->hab_handle, hsi2s_core->hab_req, resp_size, 0);
@@ -5464,6 +5468,12 @@ static int hsi2s_probe(struct platform_device *pdev)
 			}
 #endif
 #endif
+
+#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
+			ret = adsp_clk_init_hab(hsi2s_core);
+			if (ret)
+				goto err_disable_core_clocks;
+#endif
 		} else {
 			if (target == 8295) {
 				m_modify_core_clks(1);
@@ -5704,13 +5714,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 		dev_err(hsi2s_core->dev, "Failed to add child devices");
 	else
 		dev_info(hsi2s_core->dev, "Added child devices");
-#if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
-	if (target != 6155) {
-		ret = adsp_clk_init_hab(hsi2s_core);
-		if (ret)
-			goto err_close_hab;
-	}
-#endif
+
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 	place_marker("M - DRIVER HS-I2S Ready");
 #else
@@ -5783,8 +5787,9 @@ err_disable_core_clocks:
 				h_modify_core_clks(0);
 			}
 #endif
-#else
-err_close_hab:
+#endif
+
+#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
 			habmm_socket_close(hsi2s_core->hab_handle);
 			hsi2s_core->hab_handle = 0;
 			kfree(hsi2s_core->hab_req);
@@ -6012,6 +6017,10 @@ int suspend_via_hab(void)
         int ret;
         u32 resp_size = sizeof(msg_t);
 
+	if (hsi2s_core->hab_req->clk_en == 0) {
+		dev_info(hsi2s_core->dev, "clock (via hab) already disabled\n");
+		return 0;
+	}
         hsi2s_core->hab_req->clk_en = 0;
         ret = habmm_socket_send(hsi2s_core->hab_handle, hsi2s_core->hab_req, resp_size, 0);
         if (ret) {
@@ -6031,6 +6040,7 @@ int suspend_via_hab(void)
                 ret = -EIO;
                 return ret;
         }
+	dev_info(hsi2s_core->dev, "clock (via hab) disabled\n");
         return 0;
 }
 
@@ -6039,6 +6049,10 @@ int resume_via_hab(void)
         int ret;
         u32 resp_size = sizeof(msg_t);
 
+	if (hsi2s_core->hab_req->clk_en == 1) {
+		dev_info(hsi2s_core->dev, "clock (via hab) already enabled\n");
+		return 0;
+	}
         hsi2s_core->hab_req->clk_en = 1;
 
         ret = habmm_socket_send(hsi2s_core->hab_handle, hsi2s_core->hab_req, resp_size, 0);
@@ -6059,6 +6073,7 @@ int resume_via_hab(void)
                 ret = -EIO;
                 return ret;
         }
+	dev_info(hsi2s_core->dev, "clock (via hab) enabled\n");
 
         return 0;
 }
@@ -6084,11 +6099,13 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 		if (hsi2s_core->target == 6155)
 			hsi2s_suspend_intf_clks(pdev);
 #if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
-                ret = suspend_via_hab();
-                if (ret) {
-                        dev_err(hsi2s_core->dev, "suspend_via_hab failed (%d)", ret);
-                        goto err_suspend;
-                }
+		if (hsi2s_core->target != 6155) {
+			ret = suspend_via_hab();
+			if (ret) {
+				dev_err(hsi2s_core->dev, "suspend_via_hab failed (%d)", ret);
+				goto err_suspend;
+			}
+		}
 #endif
 
 	} else {
@@ -6168,12 +6185,13 @@ static int hsi2s_resume(struct platform_device *pdev)
 			goto err_resume;
 		}
 #if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
-                ret = resume_via_hab();
-                if (ret) {
-                        dev_err(hsi2s_core->dev, "resume_via_hab failed (%d)", ret);
-                        goto err_resume;
-                }
-
+		if (hsi2s_core->target != 6155) {
+			ret = resume_via_hab();
+			if (ret) {
+				dev_err(hsi2s_core->dev, "resume_via_hab failed (%d)", ret);
+				goto err_resume;
+			}
+		}
 #endif
 		/* Reset Registers from S2R/S2D */
 		ioctl_handler3(hs_dev, LPAIF_RESET, 0);
