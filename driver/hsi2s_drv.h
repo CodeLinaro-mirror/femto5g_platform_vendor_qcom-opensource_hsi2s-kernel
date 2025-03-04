@@ -57,6 +57,8 @@ typedef unsigned int __poll_t;
 #endif
 #endif
 
+#define IRQ0_PENDING_MASK 			0x00000200
+
 /* Register offsets */
 #define T_LPAIF_I2S_CTL				0x1000
 #define T_LPAIF_PCM_I2S_SEL			0x1200
