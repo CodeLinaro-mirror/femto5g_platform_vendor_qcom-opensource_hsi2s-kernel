@@ -1431,9 +1431,13 @@ static void configure_i2s_spkr(struct hsi2s_device *hs_dev)
 static void configure_i2s_mic(struct hsi2s_device *hs_dev)
 {
 	setbits(hs_dev->i2s_ctl, hs_dev->mic_mode |
-				 hsi2s_core->macro->bit_ws_src |
 				 hs_dev->mic_channel_count |
 				 hs_dev->bit_depth);
+	/* if muxmode is set, set ws_src. */
+	if (readl(hs_dev->lpaif_muxmode) == 1) {
+		setbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_ws_src);
+	}
+
 	if (hs_dev->en_long_rate) {
 		setbits(hs_dev->i2s_ctl, hs_dev->long_rate);
 		setbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_en_long_rate);
@@ -4182,6 +4186,10 @@ static int toggle_bit_clock(struct hsi2s_device *hs_dev)
 #endif
 #else
 #if defined(CONFIG_MSM_HAB)
+	if (hsi2s_core->hab_req->clk_en == 1) {
+		dev_info(hsi2s_core->dev, "clock (via hab) already enabled\n");
+		return 0;
+	}
 	hsi2s_core->hab_req->clk_en = 1;
 
 	ret = habmm_socket_send(hsi2s_core->hab_handle, hsi2s_core->hab_req, resp_size, 0);
@@ -5350,6 +5358,12 @@ static int hsi2s_probe(struct platform_device *pdev)
 #endif //LRH_KERNEL
 #endif
 #endif
+
+#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
+			ret = adsp_clk_init_hab(hsi2s_core);
+			if (ret)
+				goto err_disable_core_clocks;
+#endif
 		} else {
 			if (target == 8295) {
 				m_modify_core_clks(1);
@@ -5588,11 +5602,6 @@ static int hsi2s_probe(struct platform_device *pdev)
 	else
 		dev_info(hsi2s_core->dev, "Added child devices");
 
-#if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
-	ret = adsp_clk_init_hab(hsi2s_core);
-	if (ret)
-		goto err_close_hab;
-#endif
 #ifdef LRH_KERNEL
 	/* Enable the IRQ line */
 	ret = devm_request_threaded_irq(hsi2s_core->dev,
@@ -5685,8 +5694,9 @@ err_disable_core_clocks:
 			hsi2s_clk_ctrl_via_qmi_app(0);
 #endif //LRH_KERNEL
 #endif
-#else
-err_close_hab:
+#endif
+
+#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
 			habmm_socket_close(hsi2s_core->hab_handle);
 			hsi2s_core->hab_handle = 0;
 			kfree(hsi2s_core->hab_req);
@@ -5899,6 +5909,10 @@ int suspend_via_hab(void)
         int ret;
         u32 resp_size = sizeof(msg_t);
 
+	if (hsi2s_core->hab_req->clk_en == 0) {
+		dev_info(hsi2s_core->dev, "clock (via hab) already disabled\n");
+		return 0;
+	}
         hsi2s_core->hab_req->clk_en = 0;
         ret = habmm_socket_send(hsi2s_core->hab_handle, hsi2s_core->hab_req, resp_size, 0);
         if (ret) {
@@ -5918,6 +5932,7 @@ int suspend_via_hab(void)
                 ret = -EIO;
                 return ret;
         }
+	dev_info(hsi2s_core->dev, "clock (via hab) disabled\n");
         return 0;
 }
 
@@ -5926,6 +5941,10 @@ int resume_via_hab(void)
         int ret;
         u32 resp_size = sizeof(msg_t);
 
+	if (hsi2s_core->hab_req->clk_en == 1) {
+		dev_info(hsi2s_core->dev, "clock (via hab) already enabled\n");
+		return 0;
+	}
         hsi2s_core->hab_req->clk_en = 1;
 
         ret = habmm_socket_send(hsi2s_core->hab_handle, hsi2s_core->hab_req, resp_size, 0);
@@ -5946,6 +5965,7 @@ int resume_via_hab(void)
                 ret = -EIO;
                 return ret;
         }
+	dev_info(hsi2s_core->dev, "clock (via hab) enabled\n");
 
         return 0;
 }
@@ -5971,11 +5991,13 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 		if (hsi2s_core->target == 6155)
 			hsi2s_suspend_intf_clks(pdev);
 #if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
-                ret = suspend_via_hab();
-                if (ret) {
-                        dev_err(hsi2s_core->dev, "suspend_via_hab failed (%d)", ret);
-                        goto err_suspend;
-                }
+		if (hsi2s_core->target != 6155) {
+			ret = suspend_via_hab();
+			if (ret) {
+				dev_err(hsi2s_core->dev, "suspend_via_hab failed (%d)", ret);
+				goto err_suspend;
+			}
+		}
 #endif
 
 	} else {
@@ -6072,11 +6094,13 @@ static int hsi2s_resume(struct platform_device *pdev)
 			configure_int_loopback_mode(hs_dev, hs_dev->minor_num);
 		}
 #if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
-                ret = resume_via_hab();
-                if (ret) {
-                        dev_err(hsi2s_core->dev, "resume_via_hab failed (%d)", ret);
-                        goto err_resume;
-                }
+		if (hsi2s_core->target != 6155) {
+			ret = resume_via_hab();
+			if (ret) {
+				dev_err(hsi2s_core->dev, "resume_via_hab failed (%d)", ret);
+				goto err_resume;
+			}
+		}
 
 #endif
 	} else {
