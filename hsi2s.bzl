@@ -4,6 +4,9 @@ load("//build/bazel_common_rules/dist:dist.bzl", "copy_to_dist_dir")
 def hsi2s_get_srcs():
     srcs = [
         "driver/hsi2s_drv.c",
+        "driver/hsi2s_param.c",
+        "driver/lemans.c",
+        "driver/nord.c",
     ]
 
     return srcs
@@ -34,7 +37,12 @@ def define_target_variant_module(target, variant):
         srcs = hsi2s_get_srcs(),
         hdrs = ["driver/hsi2s_drv.h",
                 "driver/hsi2s_common.h",
-                "driver/hsi2s_adsp_clk_ctrl.h"],
+                "driver/hsi2s_adsp_clk_ctrl.h",
+                "driver/hsi2s_param.h",
+                "driver/log.h",
+                "driver/target_ops.h"
+        ],
+
         includes = ["include"],
         deps = ["//common:all_headers",
                 "//soc-repo:all_headers",
