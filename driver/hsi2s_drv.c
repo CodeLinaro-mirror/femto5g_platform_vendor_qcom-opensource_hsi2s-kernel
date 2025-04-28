@@ -1434,7 +1434,7 @@ static void configure_i2s_mic(struct hsi2s_device *hs_dev)
 				 hs_dev->mic_channel_count |
 				 hs_dev->bit_depth);
 	/* if muxmode is set, set ws_src. */
-	if (readl(hs_dev->lpaif_muxmode) == 1) {
+	if ((hsi2s_core->target==6155) || ((hs_dev->lpaif_muxmode!=NULL) && (readl(hs_dev->lpaif_muxmode) == 1))) {
 		setbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_ws_src);
 	}
 
