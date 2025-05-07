@@ -8,9 +8,18 @@
 #include "hsi2s_adsp_clk_ctrl.h"
 #endif
 #include "hsi2s_common.h"
+#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
+#include <linux/reboot.h>
+#include <linux/notifier.h>
+#endif
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 /*Place marker function declaration*/
 extern void place_marker(const char *name);
+#endif
+
+#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
+/* restart notifier */
+static struct notifier_block restart_hsi2s;
 #endif
 /* Device number */
 static dev_t devid;
@@ -4471,6 +4480,38 @@ static int ioctl_handler1(struct hsi2s_device *hs_dev, unsigned int cmd, unsigne
 	return ret;
 }
 
+/*do vm restart handler for hsi2s*/
+#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
+static int do_vm_hsi2s_restart(struct notifier_block *unused, unsigned long action, void *arg)
+{
+	int i;
+	struct hsi2s_device *hs_dev = NULL;
+
+	dev_info(hsi2s_core->dev, "HS-I2S going down for vm restart now\n");
+	/* Disable the irq line until next insmod */
+	if(hsi2s_core->is_irq_enabled == true) {
+		dev_info(hsi2s_core->dev, "Disabling IRQ line");
+		disable_irq_nosync(hsi2s_core->irq0);
+		hsi2s_core->is_irq_enabled = false;
+	}
+	dev_info(hsi2s_core->dev, "HS-I2S going down for vm restart now\n");
+	for(i=0;i<hsi2s_core->i_count;i++) {
+		if(hsi2s_core->hsi2s_arr[i] == NULL)
+			continue;
+		hs_dev = hsi2s_core->hsi2s_arr[i];
+		reset_registers(hs_dev);
+		/* Free the allocated buffers and device data structures */
+		hsi2s_buffer_free(hs_dev);
+	}
+	/* disable core clock */
+	if(hsi2s_core->target != 6155) {
+		habmm_socket_close(hsi2s_core->hab_handle);
+		hsi2s_core->hab_handle = 0;
+	}
+	return NOTIFY_DONE;
+}
+#endif
+
 static int ioctl_handler2(struct hsi2s_device *hs_dev, unsigned int cmd, unsigned long arg)
 {
 	int ret = 0;
@@ -5543,6 +5584,10 @@ static int hsi2s_probe(struct platform_device *pdev)
 #endif
 
 #if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
+		/*Adding restart handler for gvm case only*/
+		restart_hsi2s.notifier_call = do_vm_hsi2s_restart;
+		restart_hsi2s.priority = 200;
+		register_restart_handler(&restart_hsi2s);
 			ret = adsp_clk_init_hab(hsi2s_core);
 			if (ret)
 				goto err_disable_core_clocks;
