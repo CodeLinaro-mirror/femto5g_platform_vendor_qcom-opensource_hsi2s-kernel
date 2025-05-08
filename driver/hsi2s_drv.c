@@ -8,11 +8,16 @@
 #include "hsi2s_adsp_clk_ctrl.h"
 #endif
 #include "hsi2s_common.h"
+#include <linux/reboot.h>
+#include <linux/notifier.h>
 
 #if LINUX_VERSION_CODE == KERNEL_VERSION(5,14,0)
 #define LRH_KERNEL
 #endif
-
+#if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
+/* restart notifier */
+static struct notifier_block restart_hsi2s;
+#endif
 #ifdef LRH_KERNEL
 #define place_marker pr_info
 #include <linux/pinctrl/consumer.h>
@@ -4344,6 +4349,36 @@ static int ioctl_handler1(struct hsi2s_device *hs_dev, unsigned int cmd, unsigne
 	return ret;
 }
 
+#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
+/*do vm restart handler for hsi2s*/
+static int do_vm_hsi2s_restart(struct notifier_block *unused, unsigned long action, void *arg)
+{
+	int i;
+	struct hsi2s_device *hs_dev = NULL;
+	/* Disable the irq line until next insmod */
+	if(hsi2s_core->is_irq_enabled == true) {
+		dev_info(hsi2s_core->dev, "Disabling IRQ line");
+		disable_irq_nosync(hsi2s_core->irq0);
+		hsi2s_core->is_irq_enabled = false;
+	}
+    dev_info(hsi2s_core->dev, "HS-I2S going down for vm restart now\n");
+    for(i=0;i<hsi2s_core->i_count;i++) {
+		if(hsi2s_core->hsi2s_arr[i] == NULL)
+			continue;
+		hs_dev = hsi2s_core->hsi2s_arr[i];
+		reset_registers(hs_dev);
+		/* Free the allocated buffers and device data structures */
+		hsi2s_buffer_free(hs_dev);
+		}
+	/* disable core clock */
+	if(hsi2s_core->target != 6155) {
+		habmm_socket_close(hsi2s_core->hab_handle);
+		hsi2s_core->hab_handle = 0;
+	}
+	return NOTIFY_DONE;
+}
+#endif
+
 static int ioctl_handler2(struct hsi2s_device *hs_dev, unsigned int cmd, unsigned long arg)
 {
 	int ret = 0;
@@ -5362,12 +5397,28 @@ static int hsi2s_probe(struct platform_device *pdev)
 	hsi2s_core->hsi2s_arr = kcalloc(interface_count,
 					sizeof(struct hsi2s_device *),
 					GFP_KERNEL);
+	if (!hsi2s_core->hsi2s_arr) {
+		dev_err(hsi2s_core->dev, "hsi2s core allocation failed");
+		goto err_free_macro;
+	}
 
+#if (defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM))
+	/*Adding restart handler for gvm case only*/
+	restart_hsi2s.notifier_call = do_vm_hsi2s_restart;
+	restart_hsi2s.priority = 200;
+	register_restart_handler(&restart_hsi2s);
+	if (ret < 0) {
+		dev_err(hsi2s_core->dev, "Failed to regsiter restart notifier handler");
+		goto err_free_macro;
+	}
+	dev_info(hsi2s_core->dev, "registered restart handler successfully");
+#endif
 	/* Enable the core clocks */
 	if (target == 6155) {
 		ret = hsi2s_enable_core_clks(pdev);
 		if (ret)
 			goto err_free_macro;
+		dev_info(hsi2s_core->dev, "hsi2s core enabled succcessfully in 6155");
 	}else if (target == 8155 || target == 8195 || target == 8295 || target == 8255) {
 		if (enable_qmi) {
 #if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
@@ -5428,12 +5479,6 @@ static int hsi2s_probe(struct platform_device *pdev)
 				goto err_close_hab;
 			}
 #endif
-
-#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
-			ret = adsp_clk_init_hab(hsi2s_core);
-			if (ret)
-				goto err_disable_core_clocks;
-#endif
 		} else {
 			if (target == 8295) {
 				m_modify_core_clks(1);
@@ -5461,7 +5506,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 		ret = PTR_ERR(hsi2s_core->lpaif_base_va);
 		goto err_disable_core_clocks;
 	}
-
+	dev_info(hsi2s_core->dev, " mapped to lpaif registers successfully");
 	if (target == 8155 || target == 8195) {
 		resource = platform_get_resource_byname(pdev, IORESOURCE_MEM,
 						"lpass_tcsr");
@@ -5479,7 +5524,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 			ret = PTR_ERR(hsi2s_core->lpass_tcsr_base_va);
 			goto err_iounmap_lpaif;
 		}
-
+	dev_info(hsi2s_core->dev, " mapped to lpass_tcsr_base_va registers successfully");
 	}
 
 	if (target == 8295 || target == 8255) {
@@ -5499,6 +5544,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 			ret = PTR_ERR(hsi2s_core->lpass_core_cc_hs_if);
 			goto err_iounmap_lpaif;
 		}
+		dev_info(hsi2s_core->dev, " mapped to lpass_core_cc_hs_if registers successfully");
 	}
 
 	/* Map the core registers */
@@ -5507,6 +5553,8 @@ static int hsi2s_probe(struct platform_device *pdev)
 		dev_err(hsi2s_core->dev, "Unable to map core registers");
 		goto err_iounmap_lpass_tcsr;
 	}
+
+	dev_info(hsi2s_core->dev, " returned from map_core_registers registers successfully");
 
 #ifndef DISABLE_RATE_DETECTION
 	ret = of_property_read_u32(dev->of_node, "number-of-rate-detectors",
@@ -5565,6 +5613,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 
 	/* Initialize the IRQ mutex */
 	mutex_init(&hsi2s_core->irqlock);
+	dev_info(hsi2s_core->dev, " initialized irq mutex successfully");
 
 	/* Enable the interrupt line 0 */
 	hsi2s_core->irq0 = platform_get_irq(pdev, 0);
@@ -5587,11 +5636,12 @@ static int hsi2s_probe(struct platform_device *pdev)
 		       hsi2s_core->irq0, ret);
 		goto err_iounmap_lpass_tcsr;
 	}
-
+	dev_info(hsi2s_core->dev, " returned from devm_request_threaded_irq successfully");
 #endif
 	/* Disable the irq line until child devices are probed */
 #ifndef LRH_KERNEL
 	disable_irq_nosync(hsi2s_core->irq0);
+	dev_info(hsi2s_core->dev, " Disable the irq line until child devices are probed successfully");
 #endif
 	hsi2s_core->is_irq_enabled = false;
 
@@ -5615,7 +5665,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 		goto err_free_irq;
 #endif
 	}
-
+	dev_info(hsi2s_core->dev, "Created shared memory for register info");
 	/* Create device file for register mapping */
 	hsi2s_core->cdev_sdr = kzalloc(sizeof(*hsi2s_core->cdev_sdr),
 				   GFP_KERNEL);
@@ -5650,7 +5700,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 		ret = -EINVAL;
 		goto err_class_destroy;
 	}
-
+	dev_info(hsi2s_core->dev, "Create device file for register mapping");
 	/* Configure the output routing gpio for 8195 */
 	if (target == 8195) {
 		if (of_property_read_bool(pdev->dev.of_node, "pinctrl-names")) {
