@@ -1,4 +1,4 @@
-ifneq ($(TARGET_USES_GY), true)
+ifneq ($(TARGET_DISABLE_HSI2S_DLKM), true)
 HSI2S_ENABLED := true
 ifeq ($(TARGET_USES_QMAA),true)
         ifdef TARGET_USES_QMAA_OVERRIDE_HSI2S
@@ -37,4 +37,4 @@ LOCAL_MODULE_TAGS         := optional
 include $(DLKM_DIR)/Build_external_kernelmodule.mk
 include $(LOCAL_PATH)/test/generic/Android.mk
 endif #HSI2S_ENABLED
-endif # TARGET_USES_GY
+endif #TARGET_DISABLE_HSI2S_DLKM
