@@ -1,4 +1,4 @@
-ifneq ($(TARGET_USES_GY), true)
+ifneq ($(TARGET_DISABLE_HSI2S_DLKM), true)
 ifeq ($(TARGET_USES_QMAA),true)
      ifdef TARGET_USES_QMAA_OVERRIDE_HSI2S
      ifeq ($(TARGET_USES_QMAA_OVERRIDE_HSI2S),true)
@@ -6,4 +6,4 @@ ifeq ($(TARGET_USES_QMAA),true)
      endif #TARGET_USES_QMAA_OVERRIDE_HSI2S
      endif
 endif #TARGET_USES_QMAA
-endif #TARGET_USES_GY
+endif #TARGET_DISABLE_HSI2S_DLKM

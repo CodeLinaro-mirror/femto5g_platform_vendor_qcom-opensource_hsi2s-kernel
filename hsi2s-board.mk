@@ -1,5 +1,5 @@
 # Build HSI2S kernel driver
-ifneq ($(TARGET_USES_GY), true)
+ifneq ($(TARGET_DISABLE_HSI2S_DLKM) ,true)
 INCLUDE_KO_FILES := true
 ifeq ($(TARGET_USES_QMAA),true)
      ifdef TARGET_USES_QMAA_OVERRIDE_HSI2S
@@ -13,4 +13,4 @@ endif #TARGET_USES_QMAA
 ifeq ($(INCLUDE_KO_FILES),true)
 	BOARD_VENDOR_KERNEL_MODULES += $(KERNEL_MODULES_OUT)/hsi2s.ko
 endif #INCLUDE_KO_FILES
-endif #TARGET_USUS_GY
+endif #TARGET_DISABLE_HSI2S_DLKM
