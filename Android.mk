@@ -10,6 +10,10 @@ endif # TARGET_USES_QMAA
 
 ifeq ($(HSI2S_ENABLED),true)
 LOCAL_PATH := $(call my-dir)
+$(warning @@@@@hsi2s@@@@@@@)
+LOCAL_MODULE_DDK_BUILD := true
+LOCAL_MODULE_DDK_ALLOW_UNSAFE_HEADERS := true
+LOCAL_MODULE_KO_DIRS := hsi2s.ko
 DLKM_DIR := $(TOP)/device/qcom/common/dlkm
 
 
