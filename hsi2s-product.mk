@@ -1,7 +1,9 @@
 ifneq ($(TARGET_DISABLE_HSI2S_DLKM), true)
 ifeq ($(TARGET_USES_QMAA),true)
+$(warning TARGET_USES_QMAA is set to: $(TARGET_USES_QMAA))
      ifdef TARGET_USES_QMAA_OVERRIDE_HSI2S
      ifeq ($(TARGET_USES_QMAA_OVERRIDE_HSI2S),true)
+$(warning TARGET_USES_QMAA_OVERRIDE_HSI2S is set to: $(TARGET_USES_QMAA_OVERRIDE_HSI2S))
               PRODUCT_PACKAGES += hsi2s.ko
      endif #TARGET_USES_QMAA_OVERRIDE_HSI2S
      endif
