@@ -3561,7 +3561,7 @@ static int ssr_notify(void *data)
 	resp_size = sizeof(msg_t);
 	hs_core = (struct hsi2s_core *)data;
 	if(hs_core == NULL){
-		dev_err(hs_core->dev, "hs_core is null\n");
+		pr_err("hs_core is null\n");
 		return -1;
 	}
 
