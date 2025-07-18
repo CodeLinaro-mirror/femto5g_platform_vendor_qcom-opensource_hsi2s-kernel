@@ -4,11 +4,11 @@
  */
 
 #include "hsi2s_drv.h"
-#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
+#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM) && !defined(CONFIG_ARCH_QTI_VM)
 #include "hsi2s_adsp_clk_ctrl.h"
 #endif
 #include "hsi2s_common.h"
-#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
+#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM) || defined(CONFIG_ARCH_QTI_VM)) && defined(CONFIG_MSM_HAB))
 #include <linux/reboot.h>
 #include <linux/notifier.h>
 #endif
@@ -17,7 +17,7 @@
 extern void place_marker(const char *name);
 #endif
 
-#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
+#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM) || defined(CONFIG_ARCH_QTI_VM)) && defined(CONFIG_MSM_HAB))
 /* restart notifier */
 static struct notifier_block restart_hsi2s;
 #endif
@@ -30,7 +30,7 @@ static u32 dma_buffer_length_words;
 /* HS-I2S core structure */
 static struct hsi2s_core *hsi2s_core;
 
-#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM) && defined(CONFIG_QCOM_QMI_HELPERS)
+#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM) && defined(CONFIG_QCOM_QMI_HELPERS) && !defined(CONFIG_ARCH_QTI_VM)
 static struct sockaddr_qrtr sq;
 #endif
 
@@ -67,7 +67,7 @@ static int enable_qmi = 1;
 module_param(enable_qmi, int, 0644);
 MODULE_PARM_DESC(enable_qmi, "Is QMI enabled: 0->Disabled 1->Enabled");
 
-#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM) && defined(CONFIG_QCOM_QMI_HELPERS)
+#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM) && !defined(CONFIG_ARCH_QTI_VM) && defined(CONFIG_QCOM_QMI_HELPERS)
 /* QMI callbacks */
 static int hsi2s_clk_ctrl_send_sync_msg(struct qmi_handle *dev, int en)
 {
@@ -880,7 +880,7 @@ static int map_registers(struct hsi2s_device *hs_dev, int intf)
 			hs_dev->lpaif_muxmode = hsi2s_core->lpass_core_cc_hs_if +
 						L_LPAIF_MUXMODE +
 						l_calculate_muxmode_offset(hs_dev, intf);
-			dev_info(hs_dev->dev, "base muxmode address %x = %x + %x + %x\n", hs_dev->lpaif_muxmode, hsi2s_core->lpass_core_cc_hs_if, L_LPAIF_MUXMODE , l_calculate_muxmode_offset(hs_dev, intf));
+			dev_info(hs_dev->dev, "base muxmode address %p = %p + %x + %x\n", hs_dev->lpaif_muxmode, hsi2s_core->lpass_core_cc_hs_if, L_LPAIF_MUXMODE , l_calculate_muxmode_offset(hs_dev, intf));
 		}
 	} else {
 		dev_err(hs_dev->dev, "HS-I2S macro structure is NULL");
@@ -2556,7 +2556,7 @@ static unsigned long get_contiguous_size(struct sg_table *sgt)
 	unsigned long size = 0;
 
 	for_each_sg(sgt->sgl, s, sgt->nents, i) {
-		pr_info("hsi2s: index=%lu size=%lu", i, sg_dma_len(s));
+		pr_info("hsi2s: index=%u size=%u", i, sg_dma_len(s));
 		size += sg_dma_len(s);
 	}
 	return size;
@@ -2919,7 +2919,7 @@ static int hsi2s_configure_gpio_pins(struct platform_device *pdev, int active)
 
 /* Clock management functions */
 
-#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM) && defined(CONFIG_QCOM_QMI_HELPERS)
+#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)  && !defined(CONFIG_ARCH_QTI_VM) && defined(CONFIG_QCOM_QMI_HELPERS)
 /* Function to disable clocks for SA8155/SA8195 using QMI */
 static int hsi2s_adsp_disable_clks(void)
 {
@@ -3548,7 +3548,7 @@ static int hsi2s_resume_intf_clks(struct platform_device *pdev)
 	return ret;
 }
 
-#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
+#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM) || defined(CONFIG_ARCH_QTI_VM)) && defined(CONFIG_MSM_HAB))
 /* SSR notifcaiton thread */
 
 static int ssr_notify(void *data)
@@ -3601,7 +3601,7 @@ static int ssr_notify(void *data)
 			ret = habmm_socket_recv(hs_core->hab_handle, hs_core->hab_resp, &resp_size,
 				UINT_MAX, HABMM_SOCKET_RECV_FLAGS_UNINTERRUPTIBLE);
 			if (ret || hs_core->hab_resp) {
-				dev_err(hs_core->dev, "habmm socket receive failed (%d) with response (%d)", ret, hs_core->hab_resp);
+				dev_err(hs_core->dev, "habmm socket receive failed (%d) with response (%d)", ret, hs_core->hab_resp->rsp);
 				break;
 			}
 			// /* interface lvl cleanup */
@@ -4033,7 +4033,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 			setbits(hsi2s_core->irq_clear, IRQ_PRI_RD_DIFF_RATE);
 			/* Get the new WS rate */
 			hsi2s_core->pri_ws_rate = get_ws_rate(PRI_RATE_DET);
-			dev_info(hsi2s_core->dev, "WS rate detected as %lu Hz ", hsi2s_core->pri_ws_rate);
+			dev_info(hsi2s_core->dev, "WS rate detected as %u Hz ", hsi2s_core->pri_ws_rate);
 			if (hsi2s_core->pri_ws_rate) {
 				slave = hsi2s_core->pri_rate_interface;
 				/* Disable mic */
@@ -4046,7 +4046,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 				hs_arr[slave]->wrdma_periodic_length_bytes = (set_periodic_length(calculate_bit_rate(hs_arr[slave], PRI_RATE_DET),
 															  hs_arr[slave]->data_buffer_ms_val));
 				hs_arr[slave]->wrdma_periodic_length = hs_arr[slave]->wrdma_periodic_length_bytes / BYTES_PER_SAMPLE;
-				dev_info(hsi2s_core->dev, "Periodic length reconfigured to %lu words", hs_arr[slave]->wrdma_periodic_length);
+				dev_info(hsi2s_core->dev, "Periodic length reconfigured to %u words", hs_arr[slave]->wrdma_periodic_length);
 				writel_relaxed(hs_arr[slave]->wrdma_periodic_length - 1, hs_arr[slave]->wrdma_per_len);
 				/* Enable mic */
 				setbits(hs_arr[slave]->wrdma_ctl, hsi2s_core->macro->bit_wrdma_en);
@@ -4062,7 +4062,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 			setbits(hsi2s_core->irq_clear, IRQ_SEC_RD_DIFF_RATE);
 			/* Get the new WS rate */
 			hsi2s_core->sec_ws_rate = get_ws_rate(SEC_RATE_DET);
-			dev_info(hsi2s_core->dev, "WS rate detected as %lu Hz ", hsi2s_core->sec_ws_rate);
+			dev_info(hsi2s_core->dev, "WS rate detected as %u Hz ", hsi2s_core->sec_ws_rate);
 			if (hsi2s_core->sec_ws_rate) {
 				slave = hsi2s_core->sec_rate_interface;
 				/* Disable mic */
@@ -4075,7 +4075,7 @@ static irqreturn_t irq_thread_fn(int irq, void *devid)
 				hs_arr[slave]->wrdma_periodic_length_bytes = (set_periodic_length(calculate_bit_rate(hs_arr[slave],SEC_RATE_DET),
 															  hs_arr[slave]->data_buffer_ms_val));
 				hs_arr[slave]->wrdma_periodic_length = hs_arr[slave]->wrdma_periodic_length_bytes / BYTES_PER_SAMPLE;
-				dev_info(hsi2s_core->dev, "Periodic length reconfigured to %lu words", hs_arr[slave]->wrdma_periodic_length);
+				dev_info(hsi2s_core->dev, "Periodic length reconfigured to %u words", hs_arr[slave]->wrdma_periodic_length);
 				writel_relaxed(hs_arr[slave]->wrdma_periodic_length - 1, hs_arr[slave]->wrdma_per_len);
 				/* Enable mic */
 				setbits(hs_arr[slave]->wrdma_ctl, hsi2s_core->macro->bit_wrdma_en);
@@ -4364,12 +4364,12 @@ static int device_release(struct inode *inode, struct file *file)
 static int toggle_bit_clock(struct hsi2s_device *hs_dev)
 {
 	int ret = 0;
-#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
+#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM) || defined(CONFIG_ARCH_QTI_VM)) && defined(CONFIG_MSM_HAB))
 	u32 resp_size = sizeof(msg_t);
 #endif
 
 	dev_info(hsi2s_core->dev, "Toggling bit clock directions\n");
-#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
+#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM) && !defined(CONFIG_ARCH_QTI_VM)
 #if defined(CONFIG_QCOM_QMI_HELPERS)
 	if (hsi2s_core->qmi_dev) {
 		ret = hsi2s_adsp_enable_clks();
@@ -4481,7 +4481,7 @@ static int ioctl_handler1(struct hsi2s_device *hs_dev, unsigned int cmd, unsigne
 }
 
 /*do vm restart handler for hsi2s*/
-#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
+#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM) || defined(CONFIG_ARCH_QTI_VM)) && defined(CONFIG_MSM_HAB))
 static int do_vm_hsi2s_restart(struct notifier_block *unused, unsigned long action, void *arg)
 {
 	int i;
@@ -4583,7 +4583,7 @@ static int ioctl_handler2(struct hsi2s_device *hs_dev, unsigned int cmd, unsigne
 			dev_err(hs_dev->dev, "Mode not supported by target\n");
 			return -EINVAL;
 		}
-		dev_info(hs_dev->dev, "Triggering external loopback with hs%d master and hs%d slave\n",
+		dev_info(hs_dev->dev, "Triggering external loopback with hs%d master and hs%lu slave\n",
 				 hs_dev->minor_num, arg);
 		hs_dev->slave = arg;
 		hs_dev->mode = EXTERNAL_LB_MASTER_SLAVE;
@@ -4946,7 +4946,7 @@ static int c_device_mmap(struct file *file, struct vm_area_struct *vma)
 	pfn = (pa >> PAGE_SHIFT) + vma->vm_pgoff;
 
 	if (len > SHM_SIZE) {
-		dev_err(hsi2s_core->dev, "Size of map area(%d) exceeds shared memory size", len);
+		dev_err(hsi2s_core->dev, "Size of map area(%lu) exceeds shared memory size", len);
 		ret = -EINVAL;
 	} else {
 		ret = remap_pfn_range(vma, vma->vm_start, pfn, len, vma->vm_page_prot);
@@ -5308,8 +5308,12 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	else
 		devname = SDR4;
 
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
+	hs_dev->class_sdr = class_create(devname);
+#else
 	hs_dev->class_sdr = class_create(THIS_MODULE,
 					 devname);
+#endif
 	if (!hs_dev->class_sdr) {
 		dev_err(hs_dev->dev, "Failed to create device class %d"
 		       , minor);
@@ -5365,16 +5369,14 @@ err_out:
 	return ret;
 }
 
-#if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
+#if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM) || defined(CONFIG_ARCH_QTI_VM)
 /* enabling clock after reset in gvm case only */
 static int adsp_clk_init_hab(struct hsi2s_core *hsi2s_core_d){
 
 	struct hsi2s_core * local_hsi2s_core = hsi2s_core_d;
 	int ret =0;
-#if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
 	int handle;
 	u32 resp_size = sizeof(msg_t);
-#endif
 
 	local_hsi2s_core->hab_req = kzalloc(sizeof(msg_t), GFP_KERNEL);
 	if (!local_hsi2s_core->hab_req) {
@@ -5529,7 +5531,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 	}
 	else if (target == 8155 || target == 8195 || target == 8295 || target == 8255) {
 		if (enable_qmi) {
-#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
+#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM) && !defined(CONFIG_ARCH_QTI_VM)
 #if defined(CONFIG_QCOM_QMI_HELPERS)
 			/* Allocate QMI handle */
 			hsi2s_core->qmi_dev = kzalloc(sizeof(*hsi2s_core->qmi_dev), GFP_KERNEL);
@@ -5583,7 +5585,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 #endif
 #endif
 
-#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
+#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM) || defined(CONFIG_ARCH_QTI_VM)) && defined(CONFIG_MSM_HAB))
 		/*Adding restart handler for gvm case only*/
 		restart_hsi2s.notifier_call = do_vm_hsi2s_restart;
 		restart_hsi2s.priority = 200;
@@ -5798,8 +5800,11 @@ static int hsi2s_probe(struct platform_device *pdev)
 		dev_err(hsi2s_core->dev, "Unable to add cdev for core interface");
 		goto err_free_cdev;
 	}
-
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
+	hsi2s_core->class_sdr = class_create("hsi2s_reginfo");
+#else
 	hsi2s_core->class_sdr = class_create(THIS_MODULE, "hsi2s_reginfo");
+#endif
 	if (!hsi2s_core->class_sdr) {
 		dev_err(hsi2s_core->dev, "Failed to create device class");
 		ret = -EEXIST;
@@ -5832,7 +5837,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 		dev_err(hsi2s_core->dev, "Failed to add child devices");
 	else
 		dev_info(hsi2s_core->dev, "Added child devices");
-#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
+#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM) || defined(CONFIG_ARCH_QTI_VM)) && defined(CONFIG_MSM_HAB))
 	if (target != 6155) {
 		hsi2s_core->ssr_thread = kthread_create(ssr_notify, hsi2s_core, "SSR scheduler thread");
 		if (hsi2s_core->ssr_thread) {
@@ -5899,7 +5904,7 @@ err_disable_core_clocks:
 		hsi2s_disable_core_clks(pdev);
 	} else if (target == 8155 || target == 8195 || target == 8295 || target == 8255) {
 		if (enable_qmi) {
-#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
+#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM) && !defined(CONFIG_ARCH_QTI_VM)
 #if defined(CONFIG_QCOM_QMI_HELPERS)
 			if (hsi2s_core->qmi_dev)
 				kfree(hsi2s_core->qmi_dev);
@@ -5917,7 +5922,7 @@ err_disable_core_clocks:
 #endif
 #endif
 
-#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
+#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM) || defined(CONFIG_ARCH_QTI_VM)) && defined(CONFIG_MSM_HAB))
 			habmm_socket_close(hsi2s_core->hab_handle);
 			hsi2s_core->hab_handle = 0;
 			kfree(hsi2s_core->hab_req);
@@ -5994,6 +5999,7 @@ static int hsi2s_interface_remove(struct platform_device *pdev)
 }
 
 /* Function to release all resources from driver */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0))
 static int hsi2s_remove(struct platform_device *pdev)
 {
 	struct hsi2s_core *hs_core;
@@ -6102,6 +6108,151 @@ static int hsi2s_remove(struct platform_device *pdev)
 					kthread_stop(hs_core->ssr_thread);
 			}
 
+err_close_hab:
+			habmm_socket_close(hs_core->hab_handle);
+			hs_core->hab_handle = 0;
+			kfree(hs_core->hab_req);
+			kfree(hs_core->hab_resp);
+#endif
+#endif
+		} else {
+			if (hs_core->target == 8295) {
+				m_modify_core_clks(0);
+				m_modify_interface_clks(0);
+			} else if (hs_core->target == 8255){
+				l_modify_core_clks(0);
+				l_modify_interface_clks(0);
+			} else {
+				h_modify_interface_clks(0);
+				h_modify_core_clks(0);
+			}
+		}
+	}
+	/* Unregister the device numbers */
+	unregister_chrdev_region(devid, hsi2s_core->i_count);
+	/* Free the core data structure */
+	kfree(hs_core->hsi2s_arr);
+	hs_core->hsi2s_arr = NULL;
+	kfree(hs_core->macro);
+	hs_core->macro = NULL;
+	kfree(hs_core);
+	hs_core = NULL;
+	hsi2s_core = NULL;
+
+	pr_info("[hsi2s] Core device removed");
+
+	return 0;
+}
+#else
+static void hsi2s_remove(struct platform_device *pdev)
+{
+	struct hsi2s_core *hs_core;
+	int ret = 0;
+#if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM) || defined(CONFIG_ARCH_QTI_VM)
+	u32 resp_size = sizeof(msg_t);
+#endif
+
+if (of_device_is_compatible(pdev->dev.of_node, "qcom,hsi2s-interface")) {
+	hsi2s_interface_remove(pdev);
+}
+else {
+	/* Remove the child devices */
+	of_platform_depopulate(&pdev->dev);
+	/* Remove the core device */
+	hs_core = (struct hsi2s_core *)platform_get_drvdata(pdev);
+	/* Reset the output routing gpio for 8195 */
+	if (hs_core->target == 8195) {
+		if (of_property_read_bool(pdev->dev.of_node, "pinctrl-names")) {
+			dev_info(hs_core->dev, "Reset output routing gpio");
+			ret = hsi2s_configure_gpio_pins(pdev, 0);
+			p_audio_mux_pin(0);
+			if (ret < 0) {
+				dev_err(hs_core->dev, "Failed to reset the output routing gpio");
+			}
+		}
+	}
+	/* Reset the output routing gpio for 8155 */
+	else if (hs_core->target == 8155) {
+		if (of_property_read_bool(pdev->dev.of_node, "pinctrl-names")) {
+			dev_info(hs_core->dev, "Reset output routing gpio");
+			ret = hsi2s_configure_gpio_pins(pdev, 0);
+			h_audio_mux_pin(0);
+			if (ret < 0) {
+				dev_err(hs_core->dev, "Failed to reset the output routing gpio");
+			}
+		}
+	}
+	/* Remove the device file */
+	device_destroy(hs_core->class_sdr, hs_core->curr_devid);
+	class_destroy(hs_core->class_sdr);
+	cdev_del(hs_core->cdev_sdr);
+	kfree(hs_core->cdev_sdr);
+	hs_core->cdev_sdr = NULL;
+	kfree(hs_core->sh_mem);
+	hs_core->sh_mem = NULL;
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
+	/* Detach and release iommu mapping */
+	if (hs_core->hsi2s_smmu_ctx) {
+		if (hs_core->hsi2s_smmu_ctx->valid) {
+			if (hs_core->hsi2s_smmu_ctx->smmu_pdev)
+				arm_iommu_detach_device(&hs_core->hsi2s_smmu_ctx->smmu_pdev->dev);
+			if (hs_core->hsi2s_smmu_ctx->mapping)
+				arm_iommu_release_mapping(hs_core->hsi2s_smmu_ctx->mapping);
+			hs_core->hsi2s_smmu_ctx->valid = false;
+			hs_core->hsi2s_smmu_ctx->mapping = NULL;
+			hs_core->hsi2s_smmu_ctx->pdev_master = NULL;
+			hs_core->hsi2s_smmu_ctx->smmu_pdev = NULL;
+			dev_info(hs_core->dev, "Detached and released iommu mapping");
+		}
+		kfree(hs_core->hsi2s_smmu_ctx);
+		hs_core->hsi2s_smmu_ctx = NULL;
+	}
+#endif
+	/* Free IRQ */
+	devm_free_irq(&pdev->dev, hs_core->irq0, hs_core);
+	/* Reset rate detection block */
+	if (hs_core->is_rate_enabled) {
+		reset_rate_detection(PRI_RATE_DET);
+		reset_rate_detection(SEC_RATE_DET);
+	}
+	/* Disable the core clocks */
+	if (hs_core->target == 6155)
+		hsi2s_disable_core_clks(pdev);
+	else if (hs_core->target == 8155 || hs_core->target == 8195 || hs_core->target == 8295 || hs_core->target == 8255) {
+		if (enable_qmi) {
+#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM) && !defined(CONFIG_ARCH_QTI_VM)
+#if defined(CONFIG_QCOM_QMI_HELPERS)
+			if (hs_core->qmi_dev) {
+				hsi2s_adsp_disable_clks();
+				qmi_handle_release(hs_core->qmi_dev);
+				kfree(hs_core->qmi_dev);
+			}
+#else
+			if (hs_core->target == 8295) {
+				m_modify_core_clks(0);
+				m_modify_interface_clks(0);
+			} else if (hs_core->target == 8255){
+				l_modify_core_clks(0);
+				l_modify_interface_clks(0);
+			} else {
+				h_modify_interface_clks(0);
+				h_modify_core_clks(0);
+			}
+#endif
+#else
+#if defined(CONFIG_MSM_HAB)
+			hs_core->hab_req->clk_en = 0;
+
+			ret = habmm_socket_send(hs_core->hab_handle, hs_core->hab_req, resp_size, 0);
+			if (ret) {
+				dev_err(hs_core->dev, "habmm socket send failed (%d)\n", ret);
+				goto err_close_hab;
+			}
+
+			if(hs_core->ssr_thread_active && hs_core->ssr_thread){
+					kthread_stop(hs_core->ssr_thread);
+			}
+
 			// ret = habmm_socket_recv(hs_core->hab_handle, hs_core->hab_resp, &resp_size, UINT_MAX, HABMM_SOCKET_RECV_FLAGS_UNINTERRUPTIBLE);
 			// if (ret) {
 			// 	dev_err(hs_core->dev, "habmm socket receive failed (%d)\n", ret);
@@ -6147,10 +6298,11 @@ err_close_hab:
 
 	pr_info("[hsi2s] Core device removed");
 
-	return 0;
+	}
 }
+#endif
 
-#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
+#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM) || defined(CONFIG_ARCH_QTI_VM)) && defined(CONFIG_MSM_HAB))
 int suspend_via_hab(void)
 {
         int ret;
@@ -6250,7 +6402,7 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 			}
 			if((hsi2s_core->disable_adsp_clk_flg)){
 				if (enable_qmi) {
-#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
+#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM) && !defined(CONFIG_ARCH_QTI_VM)
 #if defined(CONFIG_QCOM_QMI_HELPERS)
 					if (hsi2s_core->qmi_dev) {
 						ret = hsi2s_adsp_disable_clks();
@@ -6264,7 +6416,7 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 					h_modify_core_clks(0);
 #endif
 #endif
-#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
+#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM) || defined(CONFIG_ARCH_QTI_VM)) && defined(CONFIG_MSM_HAB))
 					ret = suspend_via_hab();
 					if (ret) {
 						dev_err(hsi2s_core->dev, "suspend_via_hab failed (%d)", ret);
@@ -6313,7 +6465,7 @@ static int hsi2s_resume(struct platform_device *pdev)
 			dev_err(&pdev->dev, "Failed to set gpios in active state");
 			goto err_resume;
 		}
-#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
+#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM) || defined(CONFIG_ARCH_QTI_VM)) && defined(CONFIG_MSM_HAB))
 		if (hsi2s_core->target != 6155) {
 			ret = resume_via_hab();
 			if (ret) {
@@ -6369,7 +6521,7 @@ static int hsi2s_resume(struct platform_device *pdev)
 		} else if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195) {
 			if(hsi2s_core->enable_adsp_clk_flg){
 				if (enable_qmi) {
-#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM)
+#if !defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM) && !defined(CONFIG_ARCH_QTI_VM)
 #if defined(CONFIG_QCOM_QMI_HELPERS)
 					if (hsi2s_core->qmi_dev) {
 						ret = hsi2s_adsp_enable_clks();
@@ -6383,7 +6535,7 @@ static int hsi2s_resume(struct platform_device *pdev)
 					h_modify_core_clks(1);
 #endif
 #endif
-#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
+#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM) || defined(CONFIG_ARCH_QTI_VM)) && defined(CONFIG_MSM_HAB))
 					ret = resume_via_hab();
 					if (ret) {
 						dev_err(hsi2s_core->dev, "resume_via_hab failed (%d)", ret);

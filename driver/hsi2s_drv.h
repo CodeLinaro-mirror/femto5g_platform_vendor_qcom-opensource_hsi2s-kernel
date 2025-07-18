@@ -22,6 +22,7 @@
 #include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/slab.h>
+#include <linux/vmalloc.h>
 #include <linux/string.h>
 #include <linux/gpio.h>
 #include <linux/of_gpio.h>
@@ -35,19 +36,22 @@
 #include <linux/io.h>
 #include <linux/poll.h>
 #include <linux/soc/qcom/qmi.h>
+#include <linux/pinctrl/consumer.h>
 #if defined(CONFIG_MSM_HAB_MODULE)
 #include <linux/habmm.h>
 #endif
 #include <linux/version.h>
 #include <uapi/linux/sched/types.h>
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 #include <soc/qcom/boot_stats.h>
+#endif
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
 #include <asm/dma-iommu.h>
 #include <linux/eventpoll.h>
 typedef unsigned int __poll_t;
 #endif
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5,15,0)
-#if (!defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM))
+#if (!defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM) && !defined(CONFIG_ARCH_QTI_VM))
 #if defined(CONFIG_QCOM_QMI_HELPERS_MODULE)
 #define CONFIG_QCOM_QMI_HELPERS 1
 #endif
