@@ -35,7 +35,7 @@ static struct sockaddr_qrtr sq;
 #endif
 
 /* Module parameters */
-static int lpaif_mode = HS_I2S;
+static int lpaif_mode = HS_PCM;
 module_param(lpaif_mode, int, 0644);
 MODULE_PARM_DESC(lpaif_mode, "LPAIF mode: 0->I2S(Default) 1->PCM");
 
