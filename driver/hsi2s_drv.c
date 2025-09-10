@@ -4612,8 +4612,8 @@ static void set_master_clock(struct hsi2s_device *hs_dev, unsigned long arg)
 		return target_ops->set_master_clock(minor2intf(hs_dev->minor_num), arg);
 	}
 
-	void __iomem *clk_val_reg;
-	void __iomem *clk_update_reg;
+	void __iomem *clk_val_reg = NULL;
+	void __iomem *clk_update_reg = NULL;
 	if ((hsi2s_core->target == 8155)||(hsi2s_core->target == 8195)) {
 		if (hs_dev->minor_num == 0) {
 			clk_update_reg = ioremap(HS0_BITCLK_CMD_REG, 4);
@@ -4636,26 +4636,19 @@ static void set_master_clock(struct hsi2s_device *hs_dev, unsigned long arg)
 		}
 	} else if (hsi2s_core->target == 8255) {
 		/*Lemans master clock settings*/
-		if (hs_dev->minor_num == 0) {
-			clk_update_reg = ioremap(L_HS0_BITCLK_CMD_REG, 4);
-			clk_val_reg = ioremap(L_HS0_BITCLK_CFG_REG, 4);
+		if (hs_dev->minor_num >= 0 && hs_dev->minor_num <= 4) {
+			clk_update_reg = ioremap(L_HS0_BITCLK_CMD_REG + 0x20 * hs_dev->minor_num, 4);
+			clk_val_reg = ioremap(L_HS0_BITCLK_CFG_REG + 0x20 * hs_dev->minor_num, 4);
 			clearbits(clk_val_reg,HS_BITCLK_RESET);
 			setbits(clk_val_reg, arg);
 			setbits(clk_update_reg, HS_BITCLK_UPDATE);
-		} else if (hs_dev->minor_num == 1) {
-			clk_update_reg = ioremap(L_HS1_BITCLK_CMD_REG, 4);
-			clk_val_reg = ioremap(L_HS1_BITCLK_CFG_REG, 4);
-			clearbits(clk_val_reg, HS_BITCLK_RESET);
-			setbits(clk_val_reg, arg);
-			setbits(clk_update_reg, HS_BITCLK_UPDATE);
-		} else if (hs_dev->minor_num == 4) {
-			/*Monaco master clock for HS4 interface*/
-			clk_update_reg = ioremap(MO_HS4_BITCLK_CMD_REG, 4);
-			clk_val_reg = ioremap(MO_HS4_BITCLK_CFG_REG, 4);
-			clearbits(clk_val_reg, HS_BITCLK_RESET);
-			setbits(clk_val_reg, arg);
-			setbits(clk_update_reg, HS_BITCLK_UPDATE);
 		}
+	}
+	if (clk_update_reg) {
+		iounmap(clk_update_reg);
+	}
+	if (clk_val_reg) {
+		iounmap(clk_val_reg);
 	}
 }
 
