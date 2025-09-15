@@ -4486,6 +4486,10 @@ static int do_vm_hsi2s_restart(struct notifier_block *unused, unsigned long acti
 {
 	int i;
 	struct hsi2s_device *hs_dev = NULL;
+	if (hsi2s_core == NULL) {
+		pr_err("%s hsi2s_core == NULL\n", __func__);
+		return NOTIFY_DONE;
+	}
 
 	dev_info(hsi2s_core->dev, "HS-I2S going down for vm restart now\n");
 	/* Disable the irq line until next insmod */
@@ -5927,6 +5931,7 @@ err_disable_core_clocks:
 			hsi2s_core->hab_handle = 0;
 			kfree(hsi2s_core->hab_req);
 			kfree(hsi2s_core->hab_resp);
+			unregister_restart_handler(&restart_hsi2s);
 #endif
 		} else {
 			if (target == 8295) {
@@ -6113,6 +6118,7 @@ err_close_hab:
 			hs_core->hab_handle = 0;
 			kfree(hs_core->hab_req);
 			kfree(hs_core->hab_resp);
+			unregister_restart_handler(&restart_hsi2s);
 #endif
 #endif
 		} else {
