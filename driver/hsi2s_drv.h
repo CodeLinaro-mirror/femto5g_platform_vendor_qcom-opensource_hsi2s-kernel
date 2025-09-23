@@ -40,7 +40,6 @@
 #endif
 #include <linux/version.h>
 #include <uapi/linux/sched/types.h>
-#include <soc/qcom/boot_stats.h>
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
 #include <asm/dma-iommu.h>
 #include <linux/eventpoll.h>
@@ -56,6 +55,11 @@ typedef unsigned int __poll_t;
 #define CONFIG_MSM_HAB 1
 #endif
 #endif
+
+/* Userful Macros*/
+#define IRQ0_PENDING_MASK 			0x00000200
+#define SSR_FAULT_NOTIFY_MASK		0x1000001
+#define SSR_RESTART_COMPLETE_MASK	0x1000004
 
 /* Register offsets */
 #define T_LPAIF_I2S_CTL				0x1000
@@ -491,6 +495,15 @@ typedef unsigned int __poll_t;
 #define HS_BITCLK_UPDATE 0x1
 #define HS_BITCLK_RESET 0x71F
 
+#define L_HS0_BITCLK_CMD_REG	0x3947000
+#define L_HS0_BITCLK_CFG_REG	0x3947004
+#define L_HS1_BITCLK_CMD_REG	0x3947020
+#define L_HS1_BITCLK_CFG_REG	0x3947024
+#define MO_HS4_BITCLK_CMD_REG	0x3947080
+#define MO_HS4_BITCLK_CFG_REG	0x3947084
+
+
+
 enum operation_mode {
 	NORMAL,
 	INTERNAL_LB,
@@ -598,6 +611,10 @@ struct hsi2s_core {
 	bool enable_adsp_clk_flg;
 	bool disable_adsp_clk_flg;
 	bool suspend_to_disk_trigger_flg;
+
+	struct task_struct *ssr_thread;
+	int ssr_thread_active;
+	int ssr_active;
 };
 
 /* LPAIF HS-I2S device structure */
