@@ -1,4 +1,4 @@
-ifneq ($(TARGET_USES_GY), true)
+ifneq ($(TARGET_DISABLE_HSI2S_DLKM), true)
 HSI2S_ENABLED := true
 ifeq ($(TARGET_USES_QMAA),true)
         ifdef TARGET_USES_QMAA_OVERRIDE_HSI2S
@@ -10,6 +10,10 @@ endif # TARGET_USES_QMAA
 
 ifeq ($(HSI2S_ENABLED),true)
 LOCAL_PATH := $(call my-dir)
+$(warning @@@@@hsi2s@@@@@@@)
+LOCAL_MODULE_DDK_BUILD := true
+LOCAL_MODULE_DDK_ALLOW_UNSAFE_HEADERS := true
+LOCAL_MODULE_KO_DIRS := hsi2s.ko
 DLKM_DIR := $(TOP)/device/qcom/common/dlkm
 
 
@@ -25,6 +29,9 @@ include $(CLEAR_VARS)
 #Defining the local options
 LOCAL_SRC_FILES             :=  \
                                 $(LOCAL_PATH)/driver/hsi2s_drv.c \
+                                $(LOCAL_PATH)/driver/hsi2s_param.c \
+                                $(LOCAL_PATH)/driver/lemans.c \
+                                $(LOCAL_PATH)/driver/nord.c \
                                 $(LOCAL_PATH)/Android.mk \
                                 $(LOCAL_PATH)/hsi2s-board.mk   \
                                 $(LOCAL_PATH)/hsi2s-product.mk \
@@ -37,4 +44,4 @@ LOCAL_MODULE_TAGS         := optional
 include $(DLKM_DIR)/Build_external_kernelmodule.mk
 include $(LOCAL_PATH)/test/generic/Android.mk
 endif #HSI2S_ENABLED
-endif # TARGET_USES_GY
+endif #TARGET_DISABLE_HSI2S_DLKM

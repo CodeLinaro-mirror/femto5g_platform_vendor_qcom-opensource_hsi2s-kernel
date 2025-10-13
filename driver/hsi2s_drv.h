@@ -22,6 +22,7 @@
 #include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/slab.h>
+#include <linux/vmalloc.h>
 #include <linux/string.h>
 #include <linux/gpio.h>
 #include <linux/of_gpio.h>
@@ -35,19 +36,22 @@
 #include <linux/io.h>
 #include <linux/poll.h>
 #include <linux/soc/qcom/qmi.h>
+#include <linux/pinctrl/consumer.h>
 #if defined(CONFIG_MSM_HAB_MODULE)
 #include <linux/habmm.h>
 #endif
 #include <linux/version.h>
 #include <uapi/linux/sched/types.h>
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 #include <soc/qcom/boot_stats.h>
+#endif
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(4,15,1)
 #include <asm/dma-iommu.h>
 #include <linux/eventpoll.h>
 typedef unsigned int __poll_t;
 #endif
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5,15,0)
-#if (!defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM))
+#if (!defined(CONFIG_QTI_GVM) && !defined(CONFIG_QTI_QUIN_GVM) && !defined(CONFIG_ARCH_QTI_VM))
 #if defined(CONFIG_QCOM_QMI_HELPERS_MODULE)
 #define CONFIG_QCOM_QMI_HELPERS 1
 #endif
@@ -541,6 +545,9 @@ struct hsi2s_core {
 	void __iomem *lpass_core_cc_hs_if;
 	void __iomem *lpass_core_cc_hs_if_ctl;
 
+	void *bases[8];
+	unsigned int bases_count;
+
 	/* IRQ */
 	struct irq_desc *desc;
 	int irq0;
@@ -740,7 +747,7 @@ struct hsi2s_device {
 };
 
 /* I2S parameters */
-struct hsi2s_params {
+struct i2s_params {
 	u32 bit_clk;
 	u32 buffer_ms;
 	u32 bit_depth;
@@ -751,7 +758,7 @@ struct hsi2s_params {
 };
 
 /* PCM parameters */
-struct hspcm_params {
+struct pcm_params {
 	u32 bit_clk;
 	u32 buffer_ms;
 	u8 rate;
@@ -762,7 +769,7 @@ struct hspcm_params {
 };
 
 /* TDM parameters */
-struct hstdm_params {
+struct tdm_params {
 	u8 sync_delay;
 	u32 tpcm_width;
 	u32 rpcm_width;
@@ -771,6 +778,9 @@ struct hstdm_params {
 	u32 tpcm_sample_width;
 	u32 rpcm_sample_width;
 };
+#define hsi2s_params i2s_params
+#define hspcm_params pcm_params
+#define hstdm_params tdm_params
 
 /* FIFO for holding HSI2S data in the kernel space */
 struct hsi2s_buffer {
