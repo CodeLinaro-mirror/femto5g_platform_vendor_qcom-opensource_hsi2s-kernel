@@ -2516,6 +2516,12 @@ static unsigned long get_contiguous_size(struct sg_table *sgt)
 	unsigned int i;
 	unsigned long size = 0;
 
+    if(sgt->sgl == NULL)
+    {
+		pr_err("sgt is null\n");
+        return 0;
+    }
+
 	for_each_sg(sgt->sgl, s, sgt->nents, i) {
 		pr_info("hsi2s: index=%u size=%u", i, sg_dma_len(s));
 		size += sg_dma_len(s);
