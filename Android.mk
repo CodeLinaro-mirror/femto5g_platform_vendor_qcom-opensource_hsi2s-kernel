@@ -29,6 +29,9 @@ include $(CLEAR_VARS)
 #Defining the local options
 LOCAL_SRC_FILES             :=  \
                                 $(LOCAL_PATH)/driver/hsi2s_drv.c \
+                                $(LOCAL_PATH)/driver/hsi2s_param.c \
+                                $(LOCAL_PATH)/driver/lemans.c \
+                                $(LOCAL_PATH)/driver/nord.c \
                                 $(LOCAL_PATH)/Android.mk \
                                 $(LOCAL_PATH)/hsi2s-board.mk   \
                                 $(LOCAL_PATH)/hsi2s-product.mk \
