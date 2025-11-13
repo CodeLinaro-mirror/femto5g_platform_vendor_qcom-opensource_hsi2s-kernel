@@ -587,6 +587,9 @@ struct hsi2s_core {
 	int hab_handle;
 	msg_t *hab_req;
 	msg_t *hab_resp;
+	int debug_clck_enabled;
+	int debug_clck_disabled;
+	wait_queue_head_t wq_clk;
 
 	/* Clocks */
 	struct clk *core_clk;
