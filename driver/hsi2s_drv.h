@@ -545,6 +545,9 @@ struct hsi2s_core {
 	void __iomem *lpass_core_cc_hs_if;
 	void __iomem *lpass_core_cc_hs_if_ctl;
 
+	void *bases[8];
+	unsigned int bases_count;
+
 	/* IRQ */
 	struct irq_desc *desc;
 	int irq0;
@@ -744,7 +747,7 @@ struct hsi2s_device {
 };
 
 /* I2S parameters */
-struct hsi2s_params {
+struct i2s_params {
 	u32 bit_clk;
 	u32 buffer_ms;
 	u32 bit_depth;
@@ -755,7 +758,7 @@ struct hsi2s_params {
 };
 
 /* PCM parameters */
-struct hspcm_params {
+struct pcm_params {
 	u32 bit_clk;
 	u32 buffer_ms;
 	u8 rate;
@@ -766,7 +769,7 @@ struct hspcm_params {
 };
 
 /* TDM parameters */
-struct hstdm_params {
+struct tdm_params {
 	u8 sync_delay;
 	u32 tpcm_width;
 	u32 rpcm_width;
@@ -775,6 +778,9 @@ struct hstdm_params {
 	u32 tpcm_sample_width;
 	u32 rpcm_sample_width;
 };
+#define hsi2s_params i2s_params
+#define hspcm_params pcm_params
+#define hstdm_params tdm_params
 
 /* FIFO for holding HSI2S data in the kernel space */
 struct hsi2s_buffer {
