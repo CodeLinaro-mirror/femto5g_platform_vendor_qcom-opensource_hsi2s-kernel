@@ -13,16 +13,11 @@
 
 #if LINUX_VERSION_CODE == KERNEL_VERSION(5,14,0)
 #define LRH_KERNEL
+#define place_marker pr_info
 #endif
 #if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
 /* restart notifier */
 static struct notifier_block restart_hsi2s;
-#endif
-#ifdef LRH_KERNEL
-#define place_marker pr_info
-#include <linux/pinctrl/consumer.h>
-#else
-#include <soc/qcom/boot_stats.h>
 #endif
 /* Device number */
 static dev_t devid;
@@ -2516,6 +2511,12 @@ static unsigned long get_contiguous_size(struct sg_table *sgt)
 	unsigned int i;
 	unsigned long size = 0;
 
+    if(sgt->sgl == NULL)
+    {
+		pr_err("sgt is null\n");
+        return 0;
+    }
+
 	for_each_sg(sgt->sgl, s, sgt->nents, i) {
 		pr_info("hsi2s: index=%u size=%u", i, sg_dma_len(s));
 		size += sg_dma_len(s);
@@ -4355,6 +4356,12 @@ static int do_vm_hsi2s_restart(struct notifier_block *unused, unsigned long acti
 {
 	int i;
 	struct hsi2s_device *hs_dev = NULL;
+	if (hsi2s_core == NULL) {
+		pr_err("%s hsi2s_core == NULL\n", __func__);
+		return NOTIFY_DONE;
+	}
+
+	dev_info(hsi2s_core->dev, "HS-I2S going down for vm restart now\n");
 	/* Disable the irq line until next insmod */
 	if(hsi2s_core->is_irq_enabled == true) {
 		dev_info(hsi2s_core->dev, "Disabling IRQ line");
@@ -5175,7 +5182,7 @@ static int hsi2s_interface_probe(struct platform_device *pdev)
 	else
 		devname = SDR4;
 
-#ifdef LRH_KERNEL
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
 	hs_dev->class_sdr = class_create(devname);
 #else
 	hs_dev->class_sdr = class_create(THIS_MODULE,
@@ -5684,7 +5691,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 		goto err_free_cdev;
 	}
 
-#ifdef LRH_KERNEL
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
 	hsi2s_core->class_sdr = class_create("hsi2s_reginfo");
 #else
 	hsi2s_core->class_sdr = class_create(THIS_MODULE, "hsi2s_reginfo");
@@ -5738,6 +5745,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 		dev_info(hsi2s_core->dev, "Request_irq succeed : irq0 = %d \n",
 				hsi2s_core->irq0);
 		hsi2s_core->is_irq_enabled = true;
+	}
 #endif
 #if defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)
 	if (target != 6155) {
@@ -5831,6 +5839,7 @@ err_close_hab:
 			hsi2s_core->hab_handle = 0;
 			kfree(hsi2s_core->hab_req);
 			kfree(hsi2s_core->hab_resp);
+			unregister_restart_handler(&restart_hsi2s);
 #endif
 #endif
 		} else {
@@ -5894,7 +5903,11 @@ static int hsi2s_interface_remove(struct platform_device *pdev)
 }
 
 /* Function to release all resources from driver */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0))
 static int hsi2s_remove(struct platform_device *pdev)
+#else
+static void hsi2s_remove(struct platform_device *pdev)
+#endif
 {
 	struct hsi2s_core *hs_core;
 	int ret = 0;
@@ -5902,8 +5915,14 @@ static int hsi2s_remove(struct platform_device *pdev)
 	u32 resp_size = sizeof(msg_t);
 #endif
 
-	if (of_device_is_compatible(pdev->dev.of_node, "qcom,hsi2s-interface"))
-		return hsi2s_interface_remove(pdev);
+	if (of_device_is_compatible(pdev->dev.of_node, "qcom,hsi2s-interface")) {
+		ret = hsi2s_interface_remove(pdev);
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0))
+                return ret;
+#else
+                return;
+#endif
+	}
 
 	/* Remove the child devices */
 	of_platform_depopulate(&pdev->dev);
@@ -5998,7 +6017,7 @@ err_close_hab:
 			hs_core->hab_handle = 0;
 			kfree(hs_core->hab_req);
 			kfree(hs_core->hab_resp);
-
+			unregister_restart_handler(&restart_hsi2s);
 #endif
 #endif
 		} else {
@@ -6024,7 +6043,9 @@ err_close_hab:
 
 	pr_info("[hsi2s] Core device removed");
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0))
 	return 0;
+#endif
 }
 
 #if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM)) && defined(CONFIG_MSM_HAB))
