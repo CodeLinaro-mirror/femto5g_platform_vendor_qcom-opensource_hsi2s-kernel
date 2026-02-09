@@ -3756,7 +3756,7 @@ static int ssr_notify(void *data)
 				}
 				ret = habmm_socket_recv(hs_core->hab_handle, hs_core->hab_resp, &resp_size,
 						UINT_MAX, HABMM_SOCKET_RECV_FLAGS_UNINTERRUPTIBLE);
-				if (ret || hs_core->hab_resp) {
+				if (ret || hs_core->hab_resp->rsp) {
 					dev_err(hs_core->dev, "habmm socket receive failed (%d) with response (%d)", ret, hs_core->hab_resp->rsp);
 					break;
 				}
@@ -6963,7 +6963,7 @@ static int hsi2s_pm_restore(struct device *dev)
 {
 	int ret =0;
 	struct platform_device *pdev = to_platform_device(dev);
-	hsi2s_core->enable_adsp_clk_flg = false;
+	hsi2s_core->enable_adsp_clk_flg = (hsi2s_core->target == 8255) ? true : false;
 	ret = hsi2s_resume(pdev);
 	return ret;
 }
