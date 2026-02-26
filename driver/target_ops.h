@@ -64,6 +64,7 @@ struct target_ops {
         void (*configure_lpaif_mode)(int interface, u32 mode);
         void (*configure_muxmode)(int interface, int mode);
         void (*reset_interface)(int interface);
+        void (*reset_interface_notify_be)(int interface, void (*notify)(void *data, int len));
         void (*configure_normal_mode)(int interface);
         void (*configure_int_loopback_mode)(int interface);
         void (*configure_ext_loopback_mode)(int interface);

@@ -1049,6 +1049,96 @@ static void h_audio_mux_pin(int enable)
 	iounmap(h_gpio_out97);
 }
 
+#if ((defined(CONFIG_QTI_GVM) || defined(CONFIG_QTI_QUIN_GVM) || defined(CONFIG_ARCH_QTI_VM)) && defined(CONFIG_MSM_HAB))
+static int notify_hsi2s_be(int type, void *data, int len);
+static void notify_hsi2s_be_dma(void *data, int len)
+{
+	notify_hsi2s_be(DMA_REG, data, len);
+}
+static u32 va2pa(void __iomem *addr)
+{
+	u32 offset = addr - hsi2s_core->lpaif_base_va;
+	return hsi2s_core->lpaif_base_pa + offset;
+}
+
+static void reset_registers_notify_be(struct hsi2s_device *hs_dev)
+{
+	if (using_target_ops) {
+		return target_ops->reset_interface_notify_be(minor2intf(hs_dev->minor_num), notify_hsi2s_be_dma);
+	}
+
+	u32 data[64] = {0};
+	u32 val = 0;
+	int i = 0;
+
+	data[i++] = va2pa(hs_dev->i2s_ctl);
+	data[i++] = 0;
+	data[i++] = va2pa(hs_dev->pcm_ctl);
+	data[i++] = 0;
+	data[i++] = va2pa(hs_dev->tdm_ctl);
+	data[i++] = 0;
+	data[i++] = va2pa(hsi2s_core->irq_clear);
+	data[i++] = 0xFFFFFFFF;
+	data[i++] = va2pa(hsi2s_core->irq2_clear);
+	data[i++] = 0xFFFFFFFF;
+
+	data[i++] = va2pa(hs_dev->rddma_ctl);
+	data[i++] = 0;
+	data[i++] = va2pa(hs_dev->rddma_base);
+	data[i++] = 0;
+	data[i++] = va2pa(hs_dev->rddma_buff_len);
+	data[i++] = 0;
+	data[i++] = va2pa(hs_dev->rddma_per_len);
+	data[i++] = 0;
+	data[i++] = va2pa(hs_dev->rddma_curr_addr);
+	data[i++] = 0;
+
+	val = 0;
+	data[i++] = va2pa(hs_dev->rddma_ctl);
+	data[i++] = val | hsi2s_core->macro->bit_rddma_reset;
+	data[i++] = va2pa(hs_dev->rddma_ctl);
+	data[i++] = val & ~hsi2s_core->macro->bit_rddma_reset;
+
+	data[i++] = va2pa(hs_dev->wrdma_ctl);
+	data[i++] = 0;
+	data[i++] = va2pa(hs_dev->wrdma_base);
+	data[i++] = 0;
+	data[i++] = va2pa(hs_dev->wrdma_buff_len);
+	data[i++] = 0;
+	data[i++] = va2pa(hs_dev->wrdma_per_len);
+	data[i++] = 0;
+	data[i++] = va2pa(hs_dev->wrdma_curr_addr);
+	data[i++] = 0;
+	data[i++] = va2pa(hs_dev->wrdma_ram_addr);
+	data[i++] = 0;
+	data[i++] = va2pa(hs_dev->wrdma_ram_len);
+	data[i++] = 0;
+
+	val = 0;
+	data[i++] = va2pa(hs_dev->wrdma_ctl);
+	data[i++] = val | hsi2s_core->macro->bit_wrdma_reset;
+	data[i++] = va2pa(hs_dev->wrdma_ctl);
+	data[i++] = val & ~hsi2s_core->macro->bit_wrdma_reset;
+
+	val = 0;
+	data[i++] = va2pa(hs_dev->i2s_ctl);
+	data[i++] = val | hsi2s_core->macro->bit_i2s_reset;
+	data[i++] = va2pa(hs_dev->i2s_ctl);
+	data[i++] = val & ~hsi2s_core->macro->bit_i2s_reset;
+
+	val = 0;
+	data[i++] = va2pa(hs_dev->pcm_ctl);
+	data[i++] = val | hsi2s_core->macro->bit_pcm_reset;
+	data[i++] = va2pa(hs_dev->pcm_ctl);
+	data[i++] = val & ~hsi2s_core->macro->bit_pcm_reset;
+
+	notify_hsi2s_be_dma(data, i*sizeof(u32));
+}
+
+#else
+static void reset_registers_notify_be(struct hsi2s_device *hs_dev) {}
+#endif
+
 /* Reset the registers */
 static void reset_registers(struct hsi2s_device *hs_dev)
 {
@@ -5842,6 +5932,40 @@ static int resume_via_hab(void)
 */
         return 0;
 }
+
+static int notify_hsi2s_be(int type, void *data, int len)
+{
+	int ret;
+
+	hab_msg_hdr_t *msg = kzalloc(sizeof(hab_msg_hdr_t) + HSI2S_HAB_MSG_DATA_MAX_LEN, GFP_KERNEL);
+	if (!msg) {
+		dev_err(hsi2s_core->dev, "Failed to allocate hab msg");
+		return -ENOMEM;
+	}
+	msg->type = DMA_REG;
+
+	while(len > 0) {
+		if (len > HSI2S_HAB_MSG_DATA_MAX_LEN) {
+			msg->len = HSI2S_HAB_MSG_DATA_MAX_LEN;
+		} else {
+			msg->len = len;
+		}
+		memcpy(msg->data, data, msg->len);
+
+		ret = habmm_socket_send(hsi2s_core->hab_handle, msg, sizeof(*msg) + msg->len, 0);
+		if (ret) {
+			dev_err(hsi2s_core->dev, "habmm socket send failed (%d)", ret);
+			kfree(msg);
+			return ret;
+		}
+
+		data += msg->len;
+		len -= msg->len;
+	}
+
+	kfree(msg);
+	return 0;
+}
 #endif
 
 
@@ -6147,6 +6271,8 @@ static int hsi2s_probe(struct platform_device *pdev)
 			goto err_disable_core_clocks;
 		}
 
+		hsi2s_core->lpaif_base_pa = resource->start;
+		dev_info(hsi2s_core->dev, "lpaif_base_pa 0x%x\n", hsi2s_core->lpaif_base_pa);
 		hsi2s_core->lpaif_base_va = devm_ioremap_resource(&pdev->dev,
 				resource);
 		if (IS_ERR(hsi2s_core->lpaif_base_va)) {
@@ -6428,6 +6554,12 @@ static int hsi2s_probe(struct platform_device *pdev)
 	if (using_target_ops) {
 		target_ops->init_interfaces(&intf_config);
 	}
+	for(int i=0;i<hsi2s_core->i_count;i++){
+		if (hsi2s_core->hsi2s_arr[i]) {
+			reset_registers_notify_be(hsi2s_core->hsi2s_arr[i]);
+		}
+	}
+
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0))
 	place_marker("M - DRIVER HS-I2S Ready");

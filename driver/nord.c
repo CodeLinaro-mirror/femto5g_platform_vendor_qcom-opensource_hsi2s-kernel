@@ -622,6 +622,10 @@ static void nord_reset_interface(int interface)
 	hsi2s_intf_log(interface, HSI2S_DEBUG, module, "%s() leave\n", __func__);
 }
 
+void nord_reset_interface_notify_be(int interface, void (*notify)(void *data, int len))
+{
+}
+
 /* Configure pcm sync source */
 static void configure_pcm_sync_src(int interface, u8 sync_src)
 {
@@ -1273,6 +1277,7 @@ struct target_ops nord_ops = {
 	.configure_lpaif_mode = nord_configure_lpaif_mode,
 	.configure_muxmode = nord_configure_muxmode,
 	.reset_interface = nord_reset_interface,
+	.reset_interface_notify_be = nord_reset_interface_notify_be,
 	.configure_normal_mode = nord_configure_normal_mode,
 	.configure_int_loopback_mode = nord_configure_int_loopback_mode,
 	.configure_ext_loopback_mode = nord_configure_ext_loopback_mode ,
