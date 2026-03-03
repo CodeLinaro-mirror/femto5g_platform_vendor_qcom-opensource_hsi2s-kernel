@@ -49,6 +49,7 @@ struct interface_config {
                 u32 txdmaaddr;
                 u32 rxdmaaddr;
         } intf[5];
+        u32 dma_buffer_length;
 };
 
 

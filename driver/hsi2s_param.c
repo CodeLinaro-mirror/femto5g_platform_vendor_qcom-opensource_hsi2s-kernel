@@ -174,7 +174,7 @@ static int config_dma_params(struct dma_config *dma, u32 bit_clk, u32 buffer_ms)
 		return -1;
 	}
 	dma->wrdma_periodic_length_bytes = set_periodic_length(bit_clk, buffer_ms);
-	hsi2s_log(HSI2S_INFO, module, "Periodic length configured as %u bytes(%u words)\n", dma->wrdma_periodic_length_bytes, dma->wrdma_periodic_length_bytes / BYTES_PER_SAMPLE );
+	hsi2s_log(HSI2S_INFO, module, "Periodic length configured as %u bytes\n", dma->wrdma_periodic_length_bytes);
 	return 0;
 }
 
