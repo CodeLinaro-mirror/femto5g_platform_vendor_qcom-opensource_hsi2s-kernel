@@ -50,13 +50,6 @@ struct dma_config {
 	u32 wrdma_per_len;
 };
 
-#define MAX_SLOTS 32
-#define BYTES_PER_SAMPLE 4
-#define BYTES_PER_SAMPLE_NORD 8
-#define DEFAULT_BUFF_LEN_BYTES   (4 * 1024 * 1024)
-#define DEFAULT_BUFF_LEN_WORDS   ((DEFAULT_BUFF_LEN_BYTES / 4) - 1)
-#define WRDMA_RAM_LENGTH 512
-
 #define BIT_CLK_MAX 73728000
 struct i2s_params {
 	u32 bit_clk;

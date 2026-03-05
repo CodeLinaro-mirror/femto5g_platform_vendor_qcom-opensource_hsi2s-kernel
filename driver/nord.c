@@ -357,7 +357,10 @@ void set_nord_reg_base(void * base[], const int count)
 #define setbits(pa, bits) do_setbits(pa, bits)
 #define clearbits(pa, bits) do_clearbits(pa, bits)
 
+#define DEFAULT_BUFF_LEN_BYTES   (4 * 1024 * 1024)
+#define BYTES_PER_SAMPLE_NORD 8
 static int slave;
+static u32 dma_buffer_length = DEFAULT_BUFF_LEN_BYTES;
 
 enum operation_mode {
 	NORMAL,
@@ -440,11 +443,8 @@ static void reset_registers(int interface)
 
 static void update_dma_config(int interface)
 {
-#define DEFAULT_BUFF_LEN_BYTES   (4 * 1024 * 1024)
-#define BYTES_PER_SAMPLE_NORD 8
-#define BYTES_PER_SAMPLE 4
 	struct hsi2s_interface *hs_intf = &hs_intfs[interface];
-	static u32 dma_buffer_length_words = ((DEFAULT_BUFF_LEN_BYTES / 8) - 1);//DEFAULT_BUFF_LEN_WORDS;
+	u32 dma_buffer_length_words = ((dma_buffer_length / BYTES_PER_SAMPLE_NORD) - 1);
 
 	hs_intf->dma.rddma_buff_len = dma_buffer_length_words;
 	hs_intf->dma.rddma_per_len = ((dma_buffer_length_words + 1) / 2) - 1;
@@ -1015,6 +1015,7 @@ static void nord_init_interfaces(struct interface_config *config)
 		//nord_set_pcm_lane_config(interface, MULTI_LANE_RX);
 		//configure_normal_mode(interface);
 	}
+	dma_buffer_length = config->dma_buffer_length;
 }
 
 static u32 nord_get_wrdma_base(int interface)
