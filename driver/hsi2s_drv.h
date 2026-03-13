@@ -513,7 +513,7 @@ typedef unsigned int __poll_t;
 #define MO_HS4_BITCLK_CMD_REG	0x3947080
 #define MO_HS4_BITCLK_CFG_REG	0x3947084
 
-
+#define HSI2S_HAB_MSG_DATA_MAX_LEN  128
 
 enum operation_mode {
 	NORMAL,
@@ -525,11 +525,25 @@ enum operation_mode {
 /* Structure prototypes */
 
 /* HAB */
+enum hab_msg_type {
+        CLK_DISABLE = 0,
+        CLK_ENABLE = 1,
+        DMA_REG = 2,
+};
 typedef struct
 {
 	uint32_t clk_en;
 	uint32_t rsp;
 }msg_t;
+typedef struct
+{
+	uint32_t type;
+	union {
+		uint32_t rsp;
+		uint32_t len;
+	};
+	u8 data[];
+}hab_msg_hdr_t;
 
 /* LPAIF HS-I2S core structure */
 struct hsi2s_core {
@@ -544,6 +558,7 @@ struct hsi2s_core {
 	void __iomem *lpass_tcsr_base_va;
 	void __iomem *lpass_core_cc_hs_if;
 	void __iomem *lpass_core_cc_hs_if_ctl;
+	uint32_t lpaif_base_pa;
 
 	/* IRQ */
 	struct irq_desc *desc;
