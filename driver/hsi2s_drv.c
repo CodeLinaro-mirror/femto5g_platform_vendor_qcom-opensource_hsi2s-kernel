@@ -2887,6 +2887,7 @@ static int hsi2s_buffer_init(struct hsi2s_device *hs_dev)
 		int intf = hs_dev->minor_num;
 		intf_config.intf[intf].txdmaaddr = hs_dev->read_buffer->buffer->dma_addr;
 		intf_config.intf[intf].rxdmaaddr = hs_dev->write_buffer->buffer->dma_addr;
+		intf_config.dma_buffer_length = dma_buffer_length;
 	}
 
 	return ret;
