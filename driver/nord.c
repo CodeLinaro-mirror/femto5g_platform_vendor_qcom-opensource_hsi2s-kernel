@@ -388,6 +388,11 @@ static struct hsi2s_interface {
 } hs_intfs[5];
 
 
+static u32 index2intfc(int interface)
+{
+	return nord_reg.intf_base + interface;
+}
+
 static void clear_irqs(void)
 {
 	hsi2s_log(HSI2S_DEBUG, module, "%s() enter\n", __func__);
@@ -465,7 +470,7 @@ static void configure_rddma(int interface)
 	hsi2s_intf_log(interface, HSI2S_DEBUG, module, "%s() enter\n", __func__);
 	hsi2s_intf_log(interface, HSI2S_INFO, module, "%s() operation_mode %d\n", __func__, hs_intf->operation_mode);
 
-	int intf = nord_reg.intf_base + interface;
+	int intf = index2intfc(interface);
 	write_paddr(nord_reg.QAIF_RDDMA0_INTF_MAP + intf * 0x4, intf);
 
 	setbits(nord_reg.QAIF_RDDMA_MAPPED_TO_DDR, 0x1 << intf);
@@ -485,7 +490,7 @@ static void configure_wrdma(int interface, int loopback)
 	struct hsi2s_interface *hs_intf = &hs_intfs[interface];
 
 	hsi2s_intf_log(interface, HSI2S_DEBUG, module, "%s() enter\n", __func__);
-	int intf = nord_reg.intf_base + interface;
+	int intf = index2intfc(interface);
 	write_paddr(nord_reg.QAIF_WRDMA0_INTF_MAP + intf * 0x4, intf);
 
 	setbits(nord_reg.QAIF_WRDMA_MAPPED_TO_DDR, 0x1 << intf);
@@ -512,24 +517,6 @@ static void configure_wrdma(int interface, int loopback)
 	write_paddr(nord_reg.QAIF_WRDMAa_BASE_ADDR + interface * 0x1000, hs_intf->dma.wrdma_base); //writeBuf);
 	hsi2s_intf_log(interface, HSI2S_DEBUG, module, "%s() leave\n", __func__);
 }
-
-#define configure_rddma_int_lb configure_rddma
-#define configure_wrdma_int_lb configure_wrdma
-
-
-
-#if 0
-/* Enable RPCM slots */
-static void enable_rpcm_slot(int interface)
-{
-}
-
-
-/* Enable TPCM slots */
-static void enable_tpcm_slot(int interface)
-{
-}
-#endif
 
 static void nord_configure_lpaif_mode(int interface, u32 mode)
 {
@@ -558,7 +545,7 @@ static void nord_configure_lpaif_mode(int interface, u32 mode)
 static void nord_configure_muxmode(int interface, int mode)
 {
 	hsi2s_intf_log(interface, HSI2S_DEBUG, module, "%s() enter\n", __func__);
-	int intf = nord_reg.intf_base + interface;
+	int intf = index2intfc(interface);
 	if (mode ) {
 		/* Configure slave */
 		/* 0: master, 1: slave */
@@ -574,6 +561,51 @@ static void nord_configure_muxmode(int interface, int mode)
 
 static void nord_set_pcm_lane_config(int interface, u32 config)
 {
+#define SINGLE_LANE 0
+#define MULTI_LANE_RX 1
+#define MULTI_LANE_TX 2
+	struct hsi2s_interface *hs_intf = &hs_intfs[interface];
+	u32 paddr = nord_reg.QAIF_AUD_INTFa_LANE_CFG + interface * 0x1000;
+
+	u32 bit_lane0_dir = BIT(0);
+	u32 bit_lane1_dir = BIT(1);
+	u32 bit_lane0_en = BIT(8);
+	u32 bit_lane1_en = BIT(9);
+
+	hs_intf->pcm.lane_config = config;
+	switch (config) {
+		case SINGLE_LANE:
+			/* Single lane */
+			hsi2s_intf_log(interface, HSI2S_INFO, module, "Single lane configuration\n");
+			setbits(paddr, bit_lane0_dir);
+			setbits(paddr, bit_lane0_en);
+			clearbits(paddr, bit_lane1_dir);
+			setbits(paddr, bit_lane1_en);
+			break;
+		case MULTI_LANE_RX:
+			/* Multi lane Rx */
+			hsi2s_intf_log(interface, HSI2S_INFO, module, "Multi lane Rx configuration\n");
+			setbits(paddr, bit_lane0_dir);
+			setbits(paddr, bit_lane0_en);
+			setbits(paddr, bit_lane1_dir);
+			setbits(paddr, bit_lane1_en);
+			break;
+		case MULTI_LANE_TX:
+			/* Multi lane Tx */
+			hsi2s_intf_log(interface, HSI2S_INFO, module, "Multi lane Tx configuration\n");
+			clearbits(paddr, bit_lane0_dir);
+			setbits(paddr, bit_lane0_en);
+			clearbits(paddr, bit_lane1_dir);
+			setbits(paddr, bit_lane1_en);
+			break;
+		default:
+			/* Single lane */
+			hsi2s_intf_log(interface, HSI2S_WARN, module, "Setting default lane configuration(single lane)\n");
+			setbits(paddr, bit_lane0_dir);
+			setbits(paddr, bit_lane0_en);
+			clearbits(paddr, bit_lane1_dir);
+			setbits(paddr, bit_lane1_en);
+	}
 }
 
 static void nord_reset_interface(int interface)
@@ -590,62 +622,75 @@ static void nord_reset_interface(int interface)
 	hsi2s_intf_log(interface, HSI2S_DEBUG, module, "%s() leave\n", __func__);
 }
 
-#if 0
-/* Configure i2s control register for mic operation */
-static void configure_i2s_mic(int interface)
-{
-	//struct hsi2s_interface *hs_intf = &hs_intfs[interface];
-	// QAIF_AUD_INTFa_BIT_WIDTH_CFG
-	// QAIF_AUD_INTFa_MI2S_CFG
-}
-
-/* Configure i2s control register for speaker operation */
-static void configure_i2s_spkr(int interface)
-{
-	//struct hsi2s_interface *hs_intf = &hs_intfs[interface];
-}
-
 /* Configure pcm sync source */
 static void configure_pcm_sync_src(int interface, u8 sync_src)
 {
+#define PCM_SYNC_EXT 0
+#define PCM_SYNC_INT 1
+	u32 bit_sync_src = BIT(0);
+	u32 paddr = nord_reg.QAIF_AUD_INTFa_SYNC_CFG + interface * 0x1000;
+
+	switch (sync_src) {
+		case PCM_SYNC_EXT:
+			hsi2s_intf_log(interface, HSI2S_INFO, module, "Setting pcm sync source as external\n");
+			clearbits(paddr, bit_sync_src);  //bit_sync_src
+			break;
+		case PCM_SYNC_INT:
+			hsi2s_intf_log(interface, HSI2S_INFO, module, "Setting pcm sync source as internal\n");
+			setbits(paddr, bit_sync_src); //bit_sync_src
+			break;
+		default:
+			hsi2s_intf_log(interface, HSI2S_WARN, module, "Undefined sync source input. Setting default source(internal)\n");
+			setbits(paddr, bit_sync_src); //bit_sync_src
+			break;
+	}
 }
 
 /* Configure pcm aux mode */
 static void configure_pcm_aux_mode(int interface, u8 aux_mode)
 {
-}
+#define PCM_AUXMODE_PCM 0
+#define PCM_AUXMODE_AUX 1
+	struct hsi2s_interface *hs_intf = &hs_intfs[interface];
+	u32 paddr = nord_reg.QAIF_AUD_INTFa_SYNC_CFG + interface * 0x1000;
 
-/* Configure pcm rpcm width */
-static void configure_pcm_rpcm_width(int interface, u8 rpcm_width)
-{
+	u32 bit_aux_mode = BIT(9);
+	u32 bit_inv_sync = BIT(12);
+	switch (aux_mode) {
+		case PCM_AUXMODE_PCM:
+			hsi2s_intf_log(interface, HSI2S_INFO, module, "Setting PCM mode(short sync)\n");
+			clearbits(paddr, bit_aux_mode);
+			break;
+		case PCM_AUXMODE_AUX:
+			hsi2s_intf_log(interface, HSI2S_INFO, module, "Setting AUX mode(long sync)\n");
+			setbits(paddr, bit_aux_mode);
+			if (hs_intf->pcm.tdm_inv_sync) {
+				hsi2s_intf_log(interface, HSI2S_INFO, module, "Inverting frame sync pulses\n");
+				setbits(paddr, bit_inv_sync);
+			}
+			break;
+		default:
+			hsi2s_intf_log(interface, HSI2S_WARN, module, "Undefined AUX mode input. Setting default mode(PCM)\n");
+			clearbits(paddr, bit_aux_mode);
+			break;
+	}
 }
-
-/* Configure pcm tpcm width */
-static void configure_pcm_tpcm_width(int interface, u8 tpcm_width)
-{
-}
-
 
 /* Configure PCM control register */
 static void configure_pcm_ctl(int interface)
 {
-}
+	struct hsi2s_interface *hs_intf = &hs_intfs[interface];
 
-/* Configure PCM control register for tx operation */
-static void configure_pcm_tx(int interface)
-{
-}
+	write_paddr(nord_reg.QAIF_AUD_INTFa_FRAME_CFG + interface * 0x1000, hs_intf->pcm.rate_val - 1);
+	configure_pcm_sync_src(interface, hs_intf->pcm.pcm_sync_src);
+	configure_pcm_aux_mode(interface, hs_intf->pcm.pcm_aux_mode);
 
-/* Configure PCM control register for rx operation */
-static void configure_pcm_rx(int interface)
-{
+	u32 sync_delay = hs_intf->pcm.sync_delay_val;
+	u32 val = read_paddr(nord_reg.QAIF_AUD_INTFa_SYNC_CFG + interface * 0x1000);
+	val &= ~(BIT(8)|BIT(9));
+	val |= (sync_delay << 8);
+	write_paddr(nord_reg.QAIF_AUD_INTFa_SYNC_CFG + interface * 0x1000, val);
 }
-
-/* Configure TDM control register */
-static void configure_tdm_ctl(int interface)
-{
-}
-#endif
 
 static void nord_configure_normal_mode(int interface)
 {
@@ -660,7 +705,7 @@ static void nord_configure_normal_mode(int interface)
 	reset_rddma_registers(interface);
 	reset_wrdma_registers(interface);
 
-	int intf = nord_reg.intf_base + interface;
+	int intf = index2intfc(interface);
 	hsi2s_intf_log(interface, HSI2S_INFO, module, "intf = %d !!!!!\n ", intf);
 
 
@@ -698,20 +743,31 @@ static void nord_configure_normal_mode(int interface)
 
 	//  === aud_intf_init ===
 
-	int slot_width = hs_intf->i2s.bit_depth_val;
-	int mic_ch_count = hs_intf->i2s.mic_ch_count_val;
-	hsi2s_intf_log(interface, HSI2S_INFO, module, "ch = %d, bit_depth= %d\n", mic_ch_count, hs_intf->i2s.bit_depth_val);
-	if (hs_intf->lpaif_mode == HS_I2S)
-		write_paddr(nord_reg.QAIF_AUD_INTFa_SYNC_CFG + interface * 0x1000, 0x1120);
-	else
-		write_paddr(nord_reg.QAIF_AUD_INTFa_SYNC_CFG + interface * 0x1000, 0x100);
+	int slot_width = 32;
+	int lane_cnt = 2;
+	if (hs_intf->lpaif_mode == HS_I2S ) {
+		slot_width = hs_intf->i2s.bit_depth_val;
+		int mic_ch_count = hs_intf->i2s.mic_ch_count_val;
+		lane_cnt = (mic_ch_count == 2) ? 1 : 2;
+		hsi2s_intf_log(interface, HSI2S_INFO, module, "i2s : ch = %d, bit_depth= %d\n", mic_ch_count, hs_intf->i2s.bit_depth_val);
 
-	if (slot_width == 24 || slot_width == 25) {
-		slot_width = 32;
+		write_paddr(nord_reg.QAIF_AUD_INTFa_SYNC_CFG + interface * 0x1000, 0x1120);
+
+		if (slot_width == 24 || slot_width == 25) {
+			slot_width = 32;
+		}
+		write_paddr(nord_reg.QAIF_AUD_INTFa_FRAME_CFG + interface * 0x1000, slot_width * 2 -1);
+	} else {
+		slot_width = hs_intf->pcm.sample_width_rx_val;
+		lane_cnt = 2;
+		hsi2s_intf_log(interface, HSI2S_INFO, module, "pcm: sample_width= %d\n", hs_intf->pcm.sample_width_rx_val);
+
+		write_paddr(nord_reg.QAIF_AUD_INTFa_SYNC_CFG + interface * 0x1000, 0x100);
+		configure_pcm_ctl(interface);
 	}
+
 	write_paddr(nord_reg.QAIF_AUD_INTFa_BIT_WIDTH_CFG + interface * 0x1000, (slot_width-1)<<24 | (slot_width-1) <<16 | (slot_width-1) << 8 | (slot_width-1));
 
-	write_paddr(nord_reg.QAIF_AUD_INTFa_FRAME_CFG + interface * 0x1000, slot_width * 2 -1);
 
 	if (slot_width == 8) {
 		write_paddr(nord_reg.QAIF_AUD_INTFa_MI2S_CFG + interface * 0x1000, 0x3);
@@ -721,7 +777,7 @@ static void nord_configure_normal_mode(int interface)
 
 	write_paddr(nord_reg.QAIF_AUD_INTFa_ACTV_SLOT_EN_RX + interface * 0x1000, 0x3);
 
-	if (mic_ch_count == 2) {
+	if (lane_cnt == 1) {
 		write_paddr(nord_reg.QAIF_AUD_INTFa_LANE_CFG + interface * 0x1000, 0x101);
 	} else {
 		write_paddr(nord_reg.QAIF_AUD_INTFa_LANE_CFG + interface * 0x1000, 0x303);
@@ -745,36 +801,12 @@ static void nord_configure_normal_mode(int interface)
 	hsi2s_intf_log(interface, HSI2S_DEBUG, module, "%s() leave\n", __func__);
 }
 
-#if 0
-/* Configure the I2S control register for internal loopback */
-static void configure_i2s_int_lb(int interface)
-{
-}
-
-/* Configure the PCM control register for internal loopback */
-static void configure_pcm_int_lb(int interface)
-{
-}
-
-
-/* Configure the I2S control register for external loopback */
-static void configure_i2s_ext_lb(int interface)
-{
-}
-
-/* Configure the PCM control register for external loopback */
-static void configure_pcm_ext_lb(int interface)
-{
-}
-
-#endif
-
 static void nord_configure_loopback(int interface, int loopback)
 {
         /* 0: diable loopback , 1: wrdma loopback, 2: lane loopback, 3: npl loopback*/
 
         struct hsi2s_interface *hs_intf = &hs_intfs[interface];
-        int intf = nord_reg.intf_base + interface;
+        int intf = index2intfc(interface);
         hsi2s_intf_log(interface, HSI2S_INFO, module, "intf = %d !!!!!\n ", intf);
 
         //  === exec_environment_init ===
@@ -919,7 +951,7 @@ static void nord_set_master_clock(int interface, u32 value)
 #define HS_BITCLK_UPDATE 0x1
 #define HS_BITCLK_RESET 0x71F
 	hsi2s_intf_log(interface, HSI2S_INFO, module, "%s() enter\n", __func__);
-	int intf = nord_reg.intf_base + interface;
+	int intf = index2intfc(interface);
 
 	clearbits(nord_reg.HPASS_AUDIO_CC_AUD_INTF0_CFG_RCGR + intf * 0x1000, HS_BITCLK_RESET);
 	setbits(nord_reg.HPASS_AUDIO_CC_AUD_INTF0_CFG_RCGR + intf * 0x1000, value);

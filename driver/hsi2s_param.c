@@ -110,30 +110,37 @@ static void configure_pcm_rate(struct pcm_config *config, struct dma_config *dma
                 case PCM_RATE_8_BIT_CLKS:
                         hsi2s_log(HSI2S_INFO, module, "Setting pcm rate as 8 bit clocks per frame sync\n");
                         config->pcm_rate_val = 8;
+                        config->rate_val = 8;
                         break;
                 case PCM_RATE_16_BIT_CLKS:
                         hsi2s_log(HSI2S_INFO, module, "Setting pcm rate as 16 bit clocks per frame sync\n");
                         config->pcm_rate_val = 16;
+                        config->rate_val = 16;
 			break;
                 case PCM_RATE_32_BIT_CLKS:
                         hsi2s_log(HSI2S_INFO, module, "Setting pcm rate as 32 bit clocks per frame sync\n");
                         config->pcm_rate_val = 32;
+                        config->rate_val = 32;
 			break;
                 case PCM_RATE_64_BIT_CLKS:
                         hsi2s_log(HSI2S_INFO, module, "Setting pcm rate as 64 bit clocks per frame sync\n");
                         config->pcm_rate_val = 64;
+                        config->rate_val = 64;
 			break;
                 case PCM_RATE_128_BIT_CLKS:
                         hsi2s_log(HSI2S_INFO, module, "Setting pcm rate as 128 bit clocks per frame sync\n");
                         config->pcm_rate_val = 128;
+                        config->rate_val = 128;
 			break;
                 case PCM_RATE_256_BIT_CLKS:
                         hsi2s_log(HSI2S_INFO, module, "Setting pcm rate as 256 bit clocks per frame sync\n");
                         config->pcm_rate_val = 256;
+                        config->rate_val = 256;
 			break;
                 default:
                         hsi2s_log(HSI2S_WARN, module, "Undefined PCM rate. Setting default value of 256 bit clocks per frame sync\n");
                         config->pcm_rate_val = 256;
+                        config->rate_val = 256;
 			break;
         }
 }
@@ -150,18 +157,22 @@ static void configure_tdm_sync_delay(struct pcm_config *config, u8 sync_delay)
                 case DELAY_2_CYCLE:
                         hsi2s_log(HSI2S_INFO, module, "Setting 2 cycle delay\n");
                         config->tdm_sync_delay = 0x2;
+			config->sync_delay_val = 2;
                         break;
                 case DELAY_1_CYCLE:
                         hsi2s_log(HSI2S_INFO, module, "Setting 1 cycle delay\n");
                         config->tdm_sync_delay = 0x1;
+			config->sync_delay_val = 1;
                         break;
                 case DELAY_0_CYCLE:
                         hsi2s_log(HSI2S_INFO, module, "Setting 0 cycle delay\n");
                         config->tdm_sync_delay = 0x0;
+			config->sync_delay_val = 0;
                         break;
                 default:
                         hsi2s_log(HSI2S_WARN, module, "Undefined sync delay input. Setting 1 cycle delay\n");
                         config->tdm_sync_delay = 0x1;
+			config->sync_delay_val = 1;
                         break;
         }
 }
@@ -228,6 +239,9 @@ int do_configure_pcm_params(struct pcm_config *config, struct dma_config *dma, s
 		config->pcm_rpcm_width = params->rpcm_width;
 		/* Set PCM tpcm width */
 		config->pcm_tpcm_width = params->tpcm_width;
+
+		config->sample_width_rx_val = (params->rpcm_width) ? 16 : 8;
+		config->sample_width_tx_val = (params->tpcm_width) ? 16 : 8;
 	} else {
 		hsi2s_log(HSI2S_ERROR, module, "Passed null pcm_params structure \n");
 		ret = -1;
@@ -245,10 +259,14 @@ int do_configure_tdm_params(struct pcm_config *config, struct dma_config *dma, s
                 config->tdm_en = 1;
                 /* Set TDM rate */
                 config->tdm_rate = params->rate;
+		config->rate_val = params->rate;
+
                 /* Set RPCM width */
                 config->tdm_rpcm_width = params->rpcm_width;
+		config->sample_width_rx_val = params->rpcm_width;
                 /* Set TPCM width */
                 config->tdm_tpcm_width = params->tpcm_width;
+		config->sample_width_tx_val = params->tpcm_width;
                 /* Set sync delay */
                 configure_tdm_sync_delay(config, params->sync_delay);
                 /* Check whether different sample width is enabled */
