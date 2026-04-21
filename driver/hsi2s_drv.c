@@ -6853,7 +6853,9 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 				    "qcom,hsi2s-interface")) {
 		/* Call reset_registers before suspending the core clocks */
 		hs_dev = (struct hsi2s_device *)platform_get_drvdata(pdev);
-		reset_registers(hs_dev);
+		if (hsi2s_core->ssr_active == 0) {
+			reset_registers(hs_dev);
+		}
 		dev_info(hs_dev->dev, "rddma_in_progress state %d",hs_dev->rddma_in_progress);
 		if((hs_dev->rddma_thread) && (hs_dev->rddma_in_progress == 1)) {
 			hs_dev->rddma_in_progress = 0;
@@ -6953,39 +6955,41 @@ static int hsi2s_resume(struct platform_device *pdev)
 			dev_err(&pdev->dev, "Failed to set gpios in active state");
 			goto err_resume;
 		}
-		/* Reset Registers from S2R/S2D */
-		reset_registers(hs_dev);
-		/* Configure the operational mode */
-		if (operation_mode) {
-			/* Setting slave mode for SA8155/SA8195 targets */
-			if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195)
-				configure_muxmode(hs_dev, 1);
-			configure_normal_mode(hs_dev, hs_dev->minor_num );
-		} else {
-			if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195)
-				configure_muxmode(hs_dev, 0);
-			configure_int_loopback_mode(hs_dev, hs_dev->minor_num);
-		}
-		/* Enable the IRQ line after suspend*/
-		if (hs_dev->minor_num == (hsi2s_core->i_count - 1) && !(hsi2s_core->is_irq_enabled)) {
-			if (hsi2s_core->irq0 > 0) {
-				hsi2s_core->desc = irq_to_desc(hsi2s_core->irq0);
-				if (hsi2s_core->desc) {
-					if (hsi2s_core->desc->core_internal_state__do_not_mess_with_it & IRQ0_PENDING_MASK) {
-						dev_info(hsi2s_core->dev, "Removing pending IRQs");
-						hsi2s_core->desc->core_internal_state__do_not_mess_with_it &= ~(IRQ0_PENDING_MASK);
+		if (hsi2s_core->ssr_active == 0) {
+			/* Reset Registers from S2R/S2D */
+			reset_registers(hs_dev);
+			/* Configure the operational mode */
+			if (operation_mode) {
+				/* Setting slave mode for SA8155/SA8195 targets */
+				if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195)
+					configure_muxmode(hs_dev, 1);
+				configure_normal_mode(hs_dev, hs_dev->minor_num );
+			} else {
+				if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195)
+					configure_muxmode(hs_dev, 0);
+				configure_int_loopback_mode(hs_dev, hs_dev->minor_num);
+			}
+			/* Enable the IRQ line after suspend*/
+			if (hs_dev->minor_num == (hsi2s_core->i_count - 1) && !(hsi2s_core->is_irq_enabled)) {
+				if (hsi2s_core->irq0 > 0) {
+					hsi2s_core->desc = irq_to_desc(hsi2s_core->irq0);
+					if (hsi2s_core->desc) {
+						if (hsi2s_core->desc->core_internal_state__do_not_mess_with_it & IRQ0_PENDING_MASK) {
+							dev_info(hsi2s_core->dev, "Removing pending IRQs");
+							hsi2s_core->desc->core_internal_state__do_not_mess_with_it &= ~(IRQ0_PENDING_MASK);
+						}
+					} else {
+						dev_warn(hsi2s_core->dev, "Unable to remove pending IRQs");
 					}
-				} else {
-					dev_warn(hsi2s_core->dev, "Unable to remove pending IRQs");
-				}
-				dev_info(hsi2s_core->dev, "Enabling IRQ line");
-				enable_irq(hsi2s_core->irq0);
-				hsi2s_core->is_irq_enabled = true;
-				if(hsi2s_core->target == 8155){
-					h_audio_mux_pin(1);
-				}
-				if(hsi2s_core->target == 8195){
-					p_audio_mux_pin(1);
+					dev_info(hsi2s_core->dev, "Enabling IRQ line");
+					enable_irq(hsi2s_core->irq0);
+					hsi2s_core->is_irq_enabled = true;
+					if(hsi2s_core->target == 8155){
+						h_audio_mux_pin(1);
+					}
+					if(hsi2s_core->target == 8195){
+						p_audio_mux_pin(1);
+					}
 				}
 			}
 		}
