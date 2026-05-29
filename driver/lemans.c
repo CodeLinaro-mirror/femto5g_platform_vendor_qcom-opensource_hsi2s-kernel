@@ -208,7 +208,13 @@ void set_lemans_reg_base(void * base[], const int count)
 
 #define reg_clear(paddr) clearallbits(paddr)
 
+#define MAX_SLOTS 32
+#define BYTES_PER_SAMPLE 4
+#define DEFAULT_BUFF_LEN_BYTES   (4 * 1024 * 1024)
+#define DEFAULT_BUFF_LEN_WORDS   ((DEFAULT_BUFF_LEN_BYTES / 4) - 1)
+#define WRDMA_RAM_LENGTH 512
 static int slave;
+static u32 dma_buffer_length = DEFAULT_BUFF_LEN_BYTES;
 
 enum operation_mode {
 	NORMAL,
@@ -327,7 +333,7 @@ static void reset_registers(int interface)
 static void update_dma_config(int interface)
 {
 	struct hsi2s_interface *hs_intf = &hs_intfs[interface];
-	static u32 dma_buffer_length_words = DEFAULT_BUFF_LEN_WORDS;
+	u32 dma_buffer_length_words = dma_buffer_length / BYTES_PER_SAMPLE - 1;
 
 	hs_intf->dma.rddma_buff_len = dma_buffer_length_words;
 	hs_intf->dma.rddma_per_len = ((dma_buffer_length_words + 1) / 2) - 1;
@@ -1447,6 +1453,7 @@ static void lemans_init_interfaces(struct interface_config *config)
 		//configure_normal_mode(interface);
 		valid_intf_count ++;
 	}
+	dma_buffer_length = config->dma_buffer_length;
 }
 
 static u32 lemans_get_wrdma_base(int interface)

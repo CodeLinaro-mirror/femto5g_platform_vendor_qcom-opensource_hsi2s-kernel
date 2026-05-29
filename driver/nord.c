@@ -357,7 +357,10 @@ void set_nord_reg_base(void * base[], const int count)
 #define setbits(pa, bits) do_setbits(pa, bits)
 #define clearbits(pa, bits) do_clearbits(pa, bits)
 
+#define DEFAULT_BUFF_LEN_BYTES   (4 * 1024 * 1024)
+#define BYTES_PER_SAMPLE_NORD 8
 static int slave;
+static u32 dma_buffer_length = DEFAULT_BUFF_LEN_BYTES;
 
 enum operation_mode {
 	NORMAL,
@@ -440,11 +443,8 @@ static void reset_registers(int interface)
 
 static void update_dma_config(int interface)
 {
-#define DEFAULT_BUFF_LEN_BYTES   (4 * 1024 * 1024)
-#define BYTES_PER_SAMPLE_NORD 8
-#define BYTES_PER_SAMPLE 4
 	struct hsi2s_interface *hs_intf = &hs_intfs[interface];
-	static u32 dma_buffer_length_words = ((DEFAULT_BUFF_LEN_BYTES / 8) - 1);//DEFAULT_BUFF_LEN_WORDS;
+	u32 dma_buffer_length_words = ((dma_buffer_length / BYTES_PER_SAMPLE_NORD) - 1);
 
 	hs_intf->dma.rddma_buff_len = dma_buffer_length_words;
 	hs_intf->dma.rddma_per_len = ((dma_buffer_length_words + 1) / 2) - 1;
@@ -698,34 +698,31 @@ static void nord_configure_normal_mode(int interface)
 
 	//  === aud_intf_init ===
 
-	int sample_width = hs_intf->i2s.bit_depth_val;
+	int slot_width = hs_intf->i2s.bit_depth_val;
+	int mic_ch_count = hs_intf->i2s.mic_ch_count_val;
+	hsi2s_intf_log(interface, HSI2S_INFO, module, "ch = %d, bit_depth= %d\n", mic_ch_count, hs_intf->i2s.bit_depth_val);
 	if (hs_intf->lpaif_mode == HS_I2S)
 		write_paddr(nord_reg.QAIF_AUD_INTFa_SYNC_CFG + interface * 0x1000, 0x1120);
 	else
 		write_paddr(nord_reg.QAIF_AUD_INTFa_SYNC_CFG + interface * 0x1000, 0x100);
 
-	if (sample_width == 8) {
-		write_paddr(nord_reg.QAIF_AUD_INTFa_BIT_WIDTH_CFG + interface * 0x1000, 0x07070707);
-		write_paddr(nord_reg.QAIF_AUD_INTFa_FRAME_CFG + interface * 0x1000, 0xF);
+	if (slot_width == 24 || slot_width == 25) {
+		slot_width = 32;
+	}
+	write_paddr(nord_reg.QAIF_AUD_INTFa_BIT_WIDTH_CFG + interface * 0x1000, (slot_width-1)<<24 | (slot_width-1) <<16 | (slot_width-1) << 8 | (slot_width-1));
+
+	write_paddr(nord_reg.QAIF_AUD_INTFa_FRAME_CFG + interface * 0x1000, slot_width * 2 -1);
+
+	if (slot_width == 8) {
 		write_paddr(nord_reg.QAIF_AUD_INTFa_MI2S_CFG + interface * 0x1000, 0x3);
-	} else if (sample_width == 16) {
-		write_paddr(nord_reg.QAIF_AUD_INTFa_BIT_WIDTH_CFG + interface * 0x1000, 0x0F0F0F0F);
-		write_paddr(nord_reg.QAIF_AUD_INTFa_FRAME_CFG + interface * 0x1000, 0x1F);
-		write_paddr(nord_reg.QAIF_AUD_INTFa_MI2S_CFG + interface * 0x1000, 0x0);
-	} else if (sample_width == 32) {
-		write_paddr(nord_reg.QAIF_AUD_INTFa_BIT_WIDTH_CFG + interface * 0x1000, 0x1F1F1F1F);
-		write_paddr(nord_reg.QAIF_AUD_INTFa_FRAME_CFG + interface * 0x1000, 0x3F);
-		write_paddr(nord_reg.QAIF_AUD_INTFa_MI2S_CFG + interface * 0x1000, 0x0);
 	} else {
-		write_paddr(nord_reg.QAIF_AUD_INTFa_BIT_WIDTH_CFG + interface * 0x1000, 0x1F1F1F1F);
-		write_paddr(nord_reg.QAIF_AUD_INTFa_FRAME_CFG + interface * 0x1000, 0x3F);
 		write_paddr(nord_reg.QAIF_AUD_INTFa_MI2S_CFG + interface * 0x1000, 0x0);
 	}
-	//write_paddr(nord_reg.QAIF_AUD_INTFa_ACTV_SLOT_EN_TX + interface * 0x1000, 0x1);
+
 	write_paddr(nord_reg.QAIF_AUD_INTFa_ACTV_SLOT_EN_RX + interface * 0x1000, 0x3);
 
-	if (loopback == 2) {
-		write_paddr(nord_reg.QAIF_AUD_INTFa_LANE_CFG + interface * 0x1000, 0x80000303);
+	if (mic_ch_count == 2) {
+		write_paddr(nord_reg.QAIF_AUD_INTFa_LANE_CFG + interface * 0x1000, 0x101);
 	} else {
 		write_paddr(nord_reg.QAIF_AUD_INTFa_LANE_CFG + interface * 0x1000, 0x303);
 	}
@@ -1018,6 +1015,7 @@ static void nord_init_interfaces(struct interface_config *config)
 		//nord_set_pcm_lane_config(interface, MULTI_LANE_RX);
 		//configure_normal_mode(interface);
 	}
+	dma_buffer_length = config->dma_buffer_length;
 }
 
 static u32 nord_get_wrdma_base(int interface)
