@@ -36,6 +36,12 @@ struct pcm_config {
 	u32 tdm_rpcm_sample_width;
 	u8 tdm_inv_sync;
 	u32 lane_config;
+
+	/* Absolute values */
+	u32 rate_val;
+	u32 sample_width_rx_val;
+	u32 sample_width_tx_val;
+	u32 sync_delay_val;
 };// pcm;
 
 struct dma_config {
