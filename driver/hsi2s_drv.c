@@ -3612,15 +3612,22 @@ static int ssr_notify(void *data)
 				}
 			}
 			hs_core->ssr_active = 0;
-			dev_info(hs_core->dev, "Enabling IRQ line");
-			enable_irq(hs_core->irq0);
+			int cnt = atomic_dec_return(&hsi2s_core->disable_irq_cnt);
+			if (cnt == 0 && hsi2s_core->is_irq_enabled == false) {
+				dev_info(hs_core->dev, "Enabling IRQ line");
+				enable_irq(hs_core->irq0);
+				hs_core->is_irq_enabled = true;
+			}
 			continue;
 		} else if (hs_core->hab_resp->rsp == SSR_FAULT_NOTIFY_MASK) {
 			dev_info(hsi2s_core->dev, " SSR notify SSR_FAULT_NOTIFY_MASK mask (%d)", hs_core->hab_resp->rsp);
-			dev_info(hs_core->dev, "Disabling IRQ line");
 			hs_core->ssr_active = 1;
-			disable_irq_nosync(hs_core->irq0);
-			hs_core->is_irq_enabled = false;
+			int cnt = atomic_inc_return(&hsi2s_core->disable_irq_cnt);
+			if(cnt == 1 && hsi2s_core->is_irq_enabled == true) {
+				dev_info(hs_core->dev, "Disabling IRQ line");
+				disable_irq_nosync(hs_core->irq0);
+				hs_core->is_irq_enabled = false;
+			}
 			continue;
 		} else {
 			dev_err(hs_core->dev, " send response (%d)", hs_core->hab_resp->rsp);
@@ -5496,6 +5503,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 	hsi2s_core->target = target;
 	hsi2s_core->ssr_thread_active = 0;
 	hsi2s_core->ssr_active = 0;
+	atomic_set(&hsi2s_core->disable_irq_cnt, 0);
 	/* Read the number of HS-I2S interfaces */
 	ret = of_property_read_u32(dev->of_node, "number-of-interfaces",
 				   &interface_count);
@@ -6210,8 +6218,10 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	int ret = 0;
 	struct hsi2s_device *hs_dev;
+
+	int cnt = atomic_inc_return(&hsi2s_core->disable_irq_cnt);
 	/* Disable the irq line until resume */
-	if(hsi2s_core->is_irq_enabled == true) {
+	if(cnt == 1 && hsi2s_core->is_irq_enabled == true) {
 		dev_info(hsi2s_core->dev, "Disabling IRQ line");
 		disable_irq_nosync(hsi2s_core->irq0);
 		hsi2s_core->is_irq_enabled = false;
@@ -6312,6 +6322,7 @@ static int hsi2s_resume(struct platform_device *pdev)
 	int ret = 0;
     struct hsi2s_device * hs_dev = NULL;
 
+	int cnt = atomic_dec_return(&hsi2s_core->disable_irq_cnt);
 	if (of_device_is_compatible(pdev->dev.of_node,
 				    "qcom,hsi2s-interface")) {
 		hs_dev = (struct hsi2s_device *)platform_get_drvdata(pdev);
@@ -6344,7 +6355,7 @@ static int hsi2s_resume(struct platform_device *pdev)
 				configure_int_loopback_mode(hs_dev, hs_dev->minor_num);
 			}
 			/* Enable the IRQ line after suspend*/
-			if (hs_dev->minor_num == (hsi2s_core->i_count - 1) && !(hsi2s_core->is_irq_enabled)) {
+			if (cnt == 0 && !(hsi2s_core->is_irq_enabled)) {
 				if (hsi2s_core->irq0 > 0) {
 					hsi2s_core->desc = irq_to_desc(hsi2s_core->irq0);
 					if (hsi2s_core->desc) {
