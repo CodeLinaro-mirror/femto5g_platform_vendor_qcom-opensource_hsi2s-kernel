@@ -647,6 +647,7 @@ struct hsi2s_core {
 	struct task_struct *ssr_thread;
 	int ssr_thread_active;
 	int ssr_active;
+	atomic_t disable_irq_cnt;
 };
 
 /* LPAIF HS-I2S device structure */
