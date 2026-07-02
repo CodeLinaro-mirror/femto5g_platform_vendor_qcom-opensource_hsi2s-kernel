@@ -4783,6 +4783,15 @@ static int device_release(struct inode *inode, struct file *file)
 	dev_err(hs_dev->dev, "Client disconnected. Active clients : %d",
 		hs_dev->client_count);
 
+	if (hs_dev->rddma_thread) {
+		dev_warn(hs_dev->dev, "rddma_thread still running, stop it...");
+		hs_dev->rddma_copy_busy = 1;
+		stop_rddma(hs_dev);
+		hs_dev->rddma_xfer_busy = 0;
+		hs_dev->rddma_in_progress = 0;
+		kthread_stop(hs_dev->rddma_thread);
+		hs_dev->rddma_thread = NULL;
+	}
 	/* Decrement usage count to be able to properly close the module. */
 	module_put(THIS_MODULE);
 
@@ -5148,13 +5157,16 @@ static int ioctl_handler3(struct hsi2s_device *hs_dev, unsigned int cmd, unsigne
 
 	if (cmd == LPAIF_DEINIT_TX) {
 		dev_info(hs_dev->dev, "Stopping rddma\n");
-		hs_dev->rddma_copy_busy = 1;
-		stop_rddma(hs_dev);
-		/* Clear the RDDMA busy flags */
-		hs_dev->rddma_xfer_busy = 0;
-		hs_dev->rddma_in_progress = 0;
-		/* Stop the DMA scheduler thread */
-		kthread_stop(hs_dev->rddma_thread);
+		if(hs_dev->rddma_thread) {
+			hs_dev->rddma_copy_busy = 1;
+			stop_rddma(hs_dev);
+			/* Clear the RDDMA busy flags */
+			hs_dev->rddma_xfer_busy = 0;
+			hs_dev->rddma_in_progress = 0;
+			/* Stop the DMA scheduler thread */
+			kthread_stop(hs_dev->rddma_thread);
+			hs_dev->rddma_thread = NULL;
+		}
 	} else if (cmd == LPAIF_SET_CLOCK) {
 		if (hsi2s_core->target == 6155) {
 			dev_err(hs_dev->dev, "Master mode not supported by target\n");
@@ -6668,7 +6680,7 @@ static int hsi2s_interface_remove(struct platform_device *pdev)
 		/* Reset the interface registers */
 		reset_registers(hs_dev);
 		dev_info(hs_dev->dev, "rddma_in_progress state %d",hs_dev->rddma_in_progress);
-		if((hs_dev->rddma_thread) && (hs_dev->rddma_in_progress == 1)) {
+		if(hs_dev->rddma_thread) {
 			hs_dev->rddma_in_progress = 0;
 			/* Stop the DMA scheduler thread */
 			kthread_stop(hs_dev->rddma_thread);
@@ -6857,10 +6869,11 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 			reset_registers(hs_dev);
 		}
 		dev_info(hs_dev->dev, "rddma_in_progress state %d",hs_dev->rddma_in_progress);
-		if((hs_dev->rddma_thread) && (hs_dev->rddma_in_progress == 1)) {
+		if(hs_dev->rddma_thread) {
 			hs_dev->rddma_in_progress = 0;
 			/* Stop the DMA scheduler thread */
 			kthread_stop(hs_dev->rddma_thread);
+			hs_dev->rddma_thread = NULL;
 			dev_info(hs_dev->dev, "rddma thread stoped..");
 		}
 		/* Set the GPIOs in sleep state */
