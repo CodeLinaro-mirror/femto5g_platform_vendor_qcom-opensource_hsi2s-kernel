@@ -680,6 +680,83 @@ static void lemans_reset_interface(int interface)
 	hsi2s_intf_log(interface, HSI2S_DEBUG, module, "%s() leave\n", __func__);
 }
 
+void lemans_reset_interface_notify_be(int interface, void (*notify)(void *data, int len))
+{
+	u32 hs_index = intf2hs(interface);
+	u32 dma_index = intf2dma(interface);
+
+	u32 data[64] = {0};
+	u32 val = 0;
+	int i = 0;
+	u32 bit_rddma_reset = BIT(31);
+	u32 bit_wrdma_reset = BIT(31);
+	u32 bit_i2s_reset = BIT(31);
+	u32 bit_pcm_reset = BIT(31);
+
+	data[i++] = lemans_reg.i2s_ctl + hs_index * 0x1000;
+	data[i++] = 0;
+	data[i++] = lemans_reg.pcm_ctl + hs_index * 0x1000;
+	data[i++] = 0;
+	data[i++] = lemans_reg.tdm_ctl + hs_index * 0x1000;
+	data[i++] = 0;
+	data[i++] = lemans_reg.irq_clear;
+	data[i++] = 0xFFFFFFFF;
+	data[i++] = lemans_reg.irq2_clear;
+	data[i++] = 0xFFFFFFFF;
+
+	data[i++] = lemans_reg.rddma_ctl + dma_index * 0x1000;
+	data[i++] = 0;
+	data[i++] = lemans_reg.rddma_base + dma_index * 0x1000;
+	data[i++] = 0;
+	data[i++] = lemans_reg.rddma_buff_len + dma_index * 0x1000;
+	data[i++] = 0;
+	data[i++] = lemans_reg.rddma_per_len + dma_index * 0x1000;
+	data[i++] = 0;
+	data[i++] = lemans_reg.rddma_curr_addr + dma_index * 0x1000;
+	data[i++] = 0;
+
+	val = 0;
+	data[i++] = lemans_reg.rddma_ctl + dma_index * 0x1000;
+	data[i++] = val | bit_rddma_reset;
+	data[i++] = lemans_reg.rddma_ctl + dma_index * 0x1000;
+	data[i++] = val & ~bit_rddma_reset;
+
+	data[i++] = lemans_reg.wrdma_ctl + dma_index * 0x1000;
+	data[i++] = 0;
+	data[i++] = lemans_reg.wrdma_base + dma_index * 0x1000;
+	data[i++] = 0;
+	data[i++] = lemans_reg.wrdma_buff_len + dma_index * 0x1000;
+	data[i++] = 0;
+	data[i++] = lemans_reg.wrdma_per_len + dma_index * 0x1000;
+	data[i++] = 0;
+	data[i++] = lemans_reg.wrdma_curr_addr + dma_index * 0x1000;
+	data[i++] = 0;
+	data[i++] = lemans_reg.wrdma_ram_addr + dma_index * 0x1000;
+	data[i++] = 0;
+	data[i++] = lemans_reg.wrdma_ram_len + dma_index * 0x1000;
+	data[i++] = 0;
+
+	val = 0;
+	data[i++] = lemans_reg.wrdma_ctl + dma_index * 0x1000;
+	data[i++] = val | bit_wrdma_reset;
+	data[i++] = lemans_reg.wrdma_ctl + dma_index * 0x1000;
+	data[i++] = val & ~bit_wrdma_reset;
+
+	val = 0;
+	data[i++] = lemans_reg.i2s_ctl + hs_index * 0x1000;
+	data[i++] = val | bit_i2s_reset;
+	data[i++] = lemans_reg.i2s_ctl + hs_index * 0x1000;
+	data[i++] = val & ~bit_i2s_reset;
+
+	val = 0;
+	data[i++] = lemans_reg.pcm_ctl + hs_index * 0x1000;
+	data[i++] = val | bit_pcm_reset;
+	data[i++] = lemans_reg.pcm_ctl + hs_index * 0x1000;
+	data[i++] = val & ~bit_pcm_reset;
+
+	notify(data, i*sizeof(u32));
+}
+
 static u32 bit_depth_to_fields(u32 val)
 {
 	//  LPASS_SDR_LPAIF_I2S_CTLa : BIT_WIDTH
@@ -1755,6 +1832,7 @@ struct target_ops lemans_ops = {
 	.configure_lpaif_mode = lemans_configure_lpaif_mode,
 	.configure_muxmode = lemans_configure_muxmode,
 	.reset_interface = lemans_reset_interface,
+	.reset_interface_notify_be = lemans_reset_interface_notify_be,
 	.configure_normal_mode = lemans_configure_normal_mode,
 	.configure_int_loopback_mode = lemans_configure_int_loopback_mode,
 	.configure_ext_loopback_mode = lemans_configure_ext_loopback_mode ,
