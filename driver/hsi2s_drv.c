@@ -1135,8 +1135,13 @@ static void reset_registers_notify_be(struct hsi2s_device *hs_dev)
 	notify_hsi2s_be_dma(data, i*sizeof(u32));
 }
 
+static void notify_hsi2s_be_intfmask(void *data, int len)
+{
+	notify_hsi2s_be(INTF_MASK, data, len);
+}
 #else
 static void reset_registers_notify_be(struct hsi2s_device *hs_dev) {}
+static void notify_hsi2s_be_intfmask(void *data, int len) {}
 #endif
 
 /* Reset the registers */
@@ -5890,6 +5895,14 @@ static int adsp_clk_init_hab(struct hsi2s_core *hsi2s_core_d){
 		return ret;
 	}
 	local_hsi2s_core->hab_handle = handle;
+
+	if (local_hsi2s_core->intf_mask && local_hsi2s_core->target == 8255) {
+		/*send mask before enable clock*/
+		unsigned int intf_mask = local_hsi2s_core->intf_mask;
+		dev_info(local_hsi2s_core->dev, "send intf_mask 0x%x\n", intf_mask);
+		notify_hsi2s_be_intfmask(&intf_mask, sizeof(intf_mask));
+	}
+
 	local_hsi2s_core->hab_req->clk_en = 1;
 	ret = habmm_socket_send(handle, local_hsi2s_core->hab_req, resp_size, 0);
 	if (ret) {
@@ -5962,7 +5975,7 @@ static int notify_hsi2s_be(int type, void *data, int len)
 		dev_err(hsi2s_core->dev, "Failed to allocate hab msg");
 		return -ENOMEM;
 	}
-	msg->type = DMA_REG;
+	msg->type = type;
 
 	while(len > 0) {
 		if (len > HSI2S_HAB_MSG_DATA_MAX_LEN) {
@@ -6142,6 +6155,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct resource *resource = NULL;
 	int interface_count = 0;
+	unsigned int intf_mask = 0;
 	int rate_detector_count = 0;
 	u32 target;
 	u32 rate_array[2];
@@ -6236,6 +6250,17 @@ static int hsi2s_probe(struct platform_device *pdev)
 
 	/* Store the interface count */
 	hsi2s_core->i_count = interface_count;
+
+	/* Read Bit Mask of HS-I2S interfaces */
+	ret = of_property_read_u32(dev->of_node, "mask-of-interfaces",
+				   &intf_mask);
+	if (ret) {
+		dev_info(hsi2s_core->dev, "Resource 'mask-of-interfaces' unavailable in dtsi");
+		hsi2s_core->intf_mask = 0;
+	} else {
+		dev_info(hsi2s_core->dev, "Resource 'mask-of-interfaces' is 0x%x", intf_mask);
+		hsi2s_core->intf_mask = intf_mask;
+	}
 
 	/* Set the write DMA buffer length */
 	if (dma_buffer_length < 1 || dma_buffer_length > 4) {
