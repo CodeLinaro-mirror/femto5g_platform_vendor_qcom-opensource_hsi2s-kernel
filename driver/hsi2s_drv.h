@@ -529,6 +529,7 @@ enum hab_msg_type {
         CLK_DISABLE = 0,
         CLK_ENABLE = 1,
         DMA_REG = 2,
+        INTF_MASK = 3,
 };
 typedef struct
 {
@@ -625,6 +626,9 @@ struct hsi2s_core {
 	/* Interface count */
 	int i_count;
 
+	/* Interface bit mask */
+	u32 intf_mask;
+
 	/* Mic enable flag */
 	u8 en_mic;
 
@@ -647,6 +651,7 @@ struct hsi2s_core {
 	struct task_struct *ssr_thread;
 	int ssr_thread_active;
 	int ssr_active;
+	atomic_t disable_irq_cnt;
 };
 
 /* LPAIF HS-I2S device structure */

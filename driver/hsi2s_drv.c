@@ -1135,8 +1135,13 @@ static void reset_registers_notify_be(struct hsi2s_device *hs_dev)
 	notify_hsi2s_be_dma(data, i*sizeof(u32));
 }
 
+static void notify_hsi2s_be_intfmask(void *data, int len)
+{
+	notify_hsi2s_be(INTF_MASK, data, len);
+}
 #else
 static void reset_registers_notify_be(struct hsi2s_device *hs_dev) {}
+static void notify_hsi2s_be_intfmask(void *data, int len) {}
 #endif
 
 /* Reset the registers */
@@ -3858,15 +3863,22 @@ static int ssr_notify(void *data)
 				}
 			}
 			hs_core->ssr_active = 0;
-			dev_info(hs_core->dev, "Enabling IRQ line");
-			enable_irq(hs_core->irq0);
+			int cnt = atomic_dec_return(&hsi2s_core->disable_irq_cnt);
+			if (cnt == 0 && hsi2s_core->is_irq_enabled == false) {
+				dev_info(hs_core->dev, "Enabling IRQ line");
+				enable_irq(hs_core->irq0);
+				hs_core->is_irq_enabled = true;
+			}
 			continue;
 		} else if (hs_core->hab_resp->rsp == SSR_FAULT_NOTIFY_MASK) {
 			dev_info(hsi2s_core->dev, " SSR notify SSR_FAULT_NOTIFY_MASK mask (%d)", hs_core->hab_resp->rsp);
-			dev_info(hs_core->dev, "Disabling IRQ line");
 			hs_core->ssr_active = 1;
-			disable_irq_nosync(hs_core->irq0);
-			hs_core->is_irq_enabled = false;
+			int cnt = atomic_inc_return(&hsi2s_core->disable_irq_cnt);
+			if(cnt == 1 && hsi2s_core->is_irq_enabled == true) {
+				dev_info(hs_core->dev, "Disabling IRQ line");
+				disable_irq_nosync(hs_core->irq0);
+				hs_core->is_irq_enabled = false;
+			}
 			continue;
 		} else {
 			dev_err(hs_core->dev, " send response (%d)", hs_core->hab_resp->rsp);
@@ -4783,6 +4795,15 @@ static int device_release(struct inode *inode, struct file *file)
 	dev_err(hs_dev->dev, "Client disconnected. Active clients : %d",
 		hs_dev->client_count);
 
+	if (hs_dev->rddma_thread) {
+		dev_warn(hs_dev->dev, "rddma_thread still running, stop it...");
+		hs_dev->rddma_copy_busy = 1;
+		stop_rddma(hs_dev);
+		hs_dev->rddma_xfer_busy = 0;
+		hs_dev->rddma_in_progress = 0;
+		kthread_stop(hs_dev->rddma_thread);
+		hs_dev->rddma_thread = NULL;
+	}
 	/* Decrement usage count to be able to properly close the module. */
 	module_put(THIS_MODULE);
 
@@ -5067,7 +5088,8 @@ static int do_vm_hsi2s_restart(struct notifier_block *unused, unsigned long acti
 
 	dev_info(hsi2s_core->dev, "HS-I2S going down for vm restart now\n");
 	/* Disable the irq line until next insmod */
-	if(hsi2s_core->is_irq_enabled == true) {
+	int cnt = atomic_inc_return(&hsi2s_core->disable_irq_cnt);
+	if(cnt == 1 && hsi2s_core->is_irq_enabled == true) {
 		dev_info(hsi2s_core->dev, "Disabling IRQ line");
 		disable_irq_nosync(hsi2s_core->irq0);
 		hsi2s_core->is_irq_enabled = false;
@@ -5148,13 +5170,16 @@ static int ioctl_handler3(struct hsi2s_device *hs_dev, unsigned int cmd, unsigne
 
 	if (cmd == LPAIF_DEINIT_TX) {
 		dev_info(hs_dev->dev, "Stopping rddma\n");
-		hs_dev->rddma_copy_busy = 1;
-		stop_rddma(hs_dev);
-		/* Clear the RDDMA busy flags */
-		hs_dev->rddma_xfer_busy = 0;
-		hs_dev->rddma_in_progress = 0;
-		/* Stop the DMA scheduler thread */
-		kthread_stop(hs_dev->rddma_thread);
+		if(hs_dev->rddma_thread) {
+			hs_dev->rddma_copy_busy = 1;
+			stop_rddma(hs_dev);
+			/* Clear the RDDMA busy flags */
+			hs_dev->rddma_xfer_busy = 0;
+			hs_dev->rddma_in_progress = 0;
+			/* Stop the DMA scheduler thread */
+			kthread_stop(hs_dev->rddma_thread);
+			hs_dev->rddma_thread = NULL;
+		}
 	} else if (cmd == LPAIF_SET_CLOCK) {
 		if (hsi2s_core->target == 6155) {
 			dev_err(hs_dev->dev, "Master mode not supported by target\n");
@@ -5870,6 +5895,14 @@ static int adsp_clk_init_hab(struct hsi2s_core *hsi2s_core_d){
 		return ret;
 	}
 	local_hsi2s_core->hab_handle = handle;
+
+	if (local_hsi2s_core->intf_mask && local_hsi2s_core->target == 8255) {
+		/*send mask before enable clock*/
+		unsigned int intf_mask = local_hsi2s_core->intf_mask;
+		dev_info(local_hsi2s_core->dev, "send intf_mask 0x%x\n", intf_mask);
+		notify_hsi2s_be_intfmask(&intf_mask, sizeof(intf_mask));
+	}
+
 	local_hsi2s_core->hab_req->clk_en = 1;
 	ret = habmm_socket_send(handle, local_hsi2s_core->hab_req, resp_size, 0);
 	if (ret) {
@@ -5942,7 +5975,7 @@ static int notify_hsi2s_be(int type, void *data, int len)
 		dev_err(hsi2s_core->dev, "Failed to allocate hab msg");
 		return -ENOMEM;
 	}
-	msg->type = DMA_REG;
+	msg->type = type;
 
 	while(len > 0) {
 		if (len > HSI2S_HAB_MSG_DATA_MAX_LEN) {
@@ -6122,6 +6155,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct resource *resource = NULL;
 	int interface_count = 0;
+	unsigned int intf_mask = 0;
 	int rate_detector_count = 0;
 	u32 target;
 	u32 rate_array[2];
@@ -6205,6 +6239,7 @@ static int hsi2s_probe(struct platform_device *pdev)
 	hsi2s_core->target = target;
 	hsi2s_core->ssr_thread_active = 0;
 	hsi2s_core->ssr_active = 0;
+	atomic_set(&hsi2s_core->disable_irq_cnt, 0);
 	/* Read the number of HS-I2S interfaces */
 	ret = of_property_read_u32(dev->of_node, "number-of-interfaces",
 				   &interface_count);
@@ -6215,6 +6250,17 @@ static int hsi2s_probe(struct platform_device *pdev)
 
 	/* Store the interface count */
 	hsi2s_core->i_count = interface_count;
+
+	/* Read Bit Mask of HS-I2S interfaces */
+	ret = of_property_read_u32(dev->of_node, "mask-of-interfaces",
+				   &intf_mask);
+	if (ret) {
+		dev_info(hsi2s_core->dev, "Resource 'mask-of-interfaces' unavailable in dtsi");
+		hsi2s_core->intf_mask = 0;
+	} else {
+		dev_info(hsi2s_core->dev, "Resource 'mask-of-interfaces' is 0x%x", intf_mask);
+		hsi2s_core->intf_mask = intf_mask;
+	}
 
 	/* Set the write DMA buffer length */
 	if (dma_buffer_length < 1 || dma_buffer_length > 4) {
@@ -6668,7 +6714,7 @@ static int hsi2s_interface_remove(struct platform_device *pdev)
 		/* Reset the interface registers */
 		reset_registers(hs_dev);
 		dev_info(hs_dev->dev, "rddma_in_progress state %d",hs_dev->rddma_in_progress);
-		if((hs_dev->rddma_thread) && (hs_dev->rddma_in_progress == 1)) {
+		if(hs_dev->rddma_thread) {
 			hs_dev->rddma_in_progress = 0;
 			/* Stop the DMA scheduler thread */
 			kthread_stop(hs_dev->rddma_thread);
@@ -6836,8 +6882,10 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	int ret = 0;
 	struct hsi2s_device *hs_dev;
+
+	int cnt = atomic_inc_return(&hsi2s_core->disable_irq_cnt);
 	/* Disable the irq line until resume */
-	if(hsi2s_core->is_irq_enabled == true) {
+	if(cnt == 1 && hsi2s_core->is_irq_enabled == true) {
 		dev_info(hsi2s_core->dev, "Disabling IRQ line");
 		disable_irq_nosync(hsi2s_core->irq0);
 		hsi2s_core->is_irq_enabled = false;
@@ -6853,12 +6901,15 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 				    "qcom,hsi2s-interface")) {
 		/* Call reset_registers before suspending the core clocks */
 		hs_dev = (struct hsi2s_device *)platform_get_drvdata(pdev);
-		reset_registers(hs_dev);
+		if (hsi2s_core->ssr_active == 0) {
+			reset_registers(hs_dev);
+		}
 		dev_info(hs_dev->dev, "rddma_in_progress state %d",hs_dev->rddma_in_progress);
-		if((hs_dev->rddma_thread) && (hs_dev->rddma_in_progress == 1)) {
+		if(hs_dev->rddma_thread) {
 			hs_dev->rddma_in_progress = 0;
 			/* Stop the DMA scheduler thread */
 			kthread_stop(hs_dev->rddma_thread);
+			hs_dev->rddma_thread = NULL;
 			dev_info(hs_dev->dev, "rddma thread stoped..");
 		}
 		/* Set the GPIOs in sleep state */
@@ -6927,6 +6978,7 @@ static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 
 err_suspend:
 	dev_err(hsi2s_core->dev, "Failed to suspend HS-I2S device");
+	atomic_dec(&hsi2s_core->disable_irq_cnt);
 	return ret;
 }
 
@@ -6936,6 +6988,7 @@ static int hsi2s_resume(struct platform_device *pdev)
 	int ret = 0;
     struct hsi2s_device * hs_dev = NULL;
 
+	int cnt = atomic_dec_return(&hsi2s_core->disable_irq_cnt);
 	if (of_device_is_compatible(pdev->dev.of_node,
 				    "qcom,hsi2s-interface")) {
 		hs_dev = (struct hsi2s_device *)platform_get_drvdata(pdev);
@@ -6953,39 +7006,41 @@ static int hsi2s_resume(struct platform_device *pdev)
 			dev_err(&pdev->dev, "Failed to set gpios in active state");
 			goto err_resume;
 		}
-		/* Reset Registers from S2R/S2D */
-		reset_registers(hs_dev);
-		/* Configure the operational mode */
-		if (operation_mode) {
-			/* Setting slave mode for SA8155/SA8195 targets */
-			if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195)
-				configure_muxmode(hs_dev, 1);
-			configure_normal_mode(hs_dev, hs_dev->minor_num );
-		} else {
-			if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195)
-				configure_muxmode(hs_dev, 0);
-			configure_int_loopback_mode(hs_dev, hs_dev->minor_num);
-		}
-		/* Enable the IRQ line after suspend*/
-		if (hs_dev->minor_num == (hsi2s_core->i_count - 1) && !(hsi2s_core->is_irq_enabled)) {
-			if (hsi2s_core->irq0 > 0) {
-				hsi2s_core->desc = irq_to_desc(hsi2s_core->irq0);
-				if (hsi2s_core->desc) {
-					if (hsi2s_core->desc->core_internal_state__do_not_mess_with_it & IRQ0_PENDING_MASK) {
-						dev_info(hsi2s_core->dev, "Removing pending IRQs");
-						hsi2s_core->desc->core_internal_state__do_not_mess_with_it &= ~(IRQ0_PENDING_MASK);
+		if (hsi2s_core->ssr_active == 0) {
+			/* Reset Registers from S2R/S2D */
+			reset_registers(hs_dev);
+			/* Configure the operational mode */
+			if (operation_mode) {
+				/* Setting slave mode for SA8155/SA8195 targets */
+				if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195)
+					configure_muxmode(hs_dev, 1);
+				configure_normal_mode(hs_dev, hs_dev->minor_num );
+			} else {
+				if (hsi2s_core->target == 8155 || hsi2s_core->target == 8195)
+					configure_muxmode(hs_dev, 0);
+				configure_int_loopback_mode(hs_dev, hs_dev->minor_num);
+			}
+			/* Enable the IRQ line after suspend*/
+			if (cnt == 0 && !(hsi2s_core->is_irq_enabled)) {
+				if (hsi2s_core->irq0 > 0) {
+					hsi2s_core->desc = irq_to_desc(hsi2s_core->irq0);
+					if (hsi2s_core->desc) {
+						if (hsi2s_core->desc->core_internal_state__do_not_mess_with_it & IRQ0_PENDING_MASK) {
+							dev_info(hsi2s_core->dev, "Removing pending IRQs");
+							hsi2s_core->desc->core_internal_state__do_not_mess_with_it &= ~(IRQ0_PENDING_MASK);
+						}
+					} else {
+						dev_warn(hsi2s_core->dev, "Unable to remove pending IRQs");
 					}
-				} else {
-					dev_warn(hsi2s_core->dev, "Unable to remove pending IRQs");
-				}
-				dev_info(hsi2s_core->dev, "Enabling IRQ line");
-				enable_irq(hsi2s_core->irq0);
-				hsi2s_core->is_irq_enabled = true;
-				if(hsi2s_core->target == 8155){
-					h_audio_mux_pin(1);
-				}
-				if(hsi2s_core->target == 8195){
-					p_audio_mux_pin(1);
+					dev_info(hsi2s_core->dev, "Enabling IRQ line");
+					enable_irq(hsi2s_core->irq0);
+					hsi2s_core->is_irq_enabled = true;
+					if(hsi2s_core->target == 8155){
+						h_audio_mux_pin(1);
+					}
+					if(hsi2s_core->target == 8195){
+						p_audio_mux_pin(1);
+					}
 				}
 			}
 		}
@@ -7089,6 +7144,9 @@ static int hsi2s_pm_freeze(struct device *dev)
 static int hsi2s_pm_thaw(struct device *dev)
 {
 	int ret =0;
+	struct platform_device *pdev = to_platform_device(dev);
+	hsi2s_core->enable_adsp_clk_flg = false;
+	ret = hsi2s_resume(pdev);
 	return ret;
 }
 static int hsi2s_pm_restore(struct device *dev)
