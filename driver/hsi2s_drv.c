@@ -4262,6 +4262,23 @@ static int device_release(struct inode *inode, struct file *file)
 	dev_err(hs_dev->dev, "Client disconnected. Active clients : %d",
 		hs_dev->client_count);
 
+	if (hs_dev->rddma_thread) {
+		dev_warn(hs_dev->dev, "rddma_thread still running, stop it...");
+		hs_dev->rddma_copy_busy = 1;
+		/* Disable speaker */
+		if (hs_dev->lpaif_mode == HS_I2S)
+			clearbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_spkr_en);
+		else
+			clearbits(hs_dev->pcm_ctl, hsi2s_core->macro->bit_pcm_en_tx);
+		/* Disable the DMA channel */
+		clearbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_en);
+		/* Clear the RDDMA busy flags */
+		hs_dev->rddma_xfer_busy = 0;
+		hs_dev->rddma_in_progress = 0;
+		/* Stop the DMA scheduler thread */
+		kthread_stop(hs_dev->rddma_thread);
+		hs_dev->rddma_thread = NULL;
+	}
 	/* Decrement usage count to be able to properly close the module. */
 	module_put(THIS_MODULE);
 
@@ -4504,19 +4521,22 @@ static int ioctl_handler3(struct hsi2s_device *hs_dev, unsigned int cmd, unsigne
 
 	if (cmd == LPAIF_DEINIT_TX) {
 		dev_info(hs_dev->dev, "Stopping rddma\n");
-		hs_dev->rddma_copy_busy = 1;
-		/* Disable speaker */
-		if (hs_dev->lpaif_mode == HS_I2S)
-			clearbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_spkr_en);
-		else
-			clearbits(hs_dev->pcm_ctl, hsi2s_core->macro->bit_pcm_en_tx);
-		/* Disable the DMA channel */
-		clearbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_en);
-		/* Clear the RDDMA busy flags */
-		hs_dev->rddma_xfer_busy = 0;
-		hs_dev->rddma_in_progress = 0;
-		/* Stop the DMA scheduler thread */
-		kthread_stop(hs_dev->rddma_thread);
+		if(hs_dev->rddma_thread) {
+			hs_dev->rddma_copy_busy = 1;
+			/* Disable speaker */
+			if (hs_dev->lpaif_mode == HS_I2S)
+				clearbits(hs_dev->i2s_ctl, hsi2s_core->macro->bit_spkr_en);
+			else
+				clearbits(hs_dev->pcm_ctl, hsi2s_core->macro->bit_pcm_en_tx);
+			/* Disable the DMA channel */
+			clearbits(hs_dev->rddma_ctl, hsi2s_core->macro->bit_rddma_en);
+			/* Clear the RDDMA busy flags */
+			hs_dev->rddma_xfer_busy = 0;
+			hs_dev->rddma_in_progress = 0;
+			/* Stop the DMA scheduler thread */
+			kthread_stop(hs_dev->rddma_thread);
+			hs_dev->rddma_thread = NULL;
+		}
 	} else if (cmd == LPAIF_SET_CLOCK) {
 		if (hsi2s_core->target == 6155) {
 			dev_err(hs_dev->dev, "Master mode not supported by target\n");
@@ -5827,6 +5847,13 @@ static int hsi2s_interface_remove(struct platform_device *pdev)
 
 		/* Reset the interface registers */
 		reset_registers(hs_dev);
+		dev_info(hs_dev->dev, "rddma_in_progress state %d",hs_dev->rddma_in_progress);
+		if(hs_dev->rddma_thread) {
+			hs_dev->rddma_in_progress = 0;
+			/* Stop the DMA scheduler thread */
+			kthread_stop(hs_dev->rddma_thread);
+			dev_info(hs_dev->dev, "rddma thread stoped..");
+		}
 		/* Remove the device file */
 		device_destroy(hs_dev->class_sdr, hs_dev->curr_devid);
 		class_destroy(hs_dev->class_sdr);
@@ -6067,10 +6094,22 @@ int resume_via_hab(void)
 static int hsi2s_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	int ret = 0;
+	struct hsi2s_device *hs_dev;
 	//u32 target;
 
 	if (of_device_is_compatible(pdev->dev.of_node,
 				    "qcom,hsi2s-interface")) {
+		/* Call reset_registers before suspending the core clocks */
+		hs_dev = (struct hsi2s_device *)platform_get_drvdata(pdev);
+		reset_registers(hs_dev);
+		dev_info(hs_dev->dev, "rddma_in_progress state %d",hs_dev->rddma_in_progress);
+		if(hs_dev->rddma_thread) {
+			hs_dev->rddma_in_progress = 0;
+			/* Stop the DMA scheduler thread */
+			kthread_stop(hs_dev->rddma_thread);
+			hs_dev->rddma_thread = NULL;
+			dev_info(hs_dev->dev, "rddma thread stoped..");
+		}
 		/* Set the GPIOs in sleep state */
 		ret = hsi2s_configure_gpio_pins(pdev, 0);
 		if (ret < 0) {
